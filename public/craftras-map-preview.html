@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Craftras Map Preview</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: #151515;
+            color: #eee;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        header {
+            height: 42px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 0 12px;
+            background: #050505;
+            border-bottom: 1px solid #555;
+            box-sizing: border-box;
+            font-size: 13px;
+        }
+
+        main {
+            width: 100vw;
+            height: calc(100vh - 42px);
+            display: grid;
+            place-items: center;
+        }
+
+        img {
+            width: min(calc(100vw - 24px), calc(100vh - 66px));
+            height: min(calc(100vw - 24px), calc(100vh - 66px));
+            image-rendering: pixelated;
+            border: 2px solid #ddd;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <strong>Craftras Map Preview</strong>
+        <span>FULL 732x732 blocks rendered into 768x768 image</span>
+        <span>If this page opens, the image below is the full map preview.</span>
+    </header>
+    <main>
+        <img src="/craftras-map-preview.png?fresh=20260609-png" alt="Craftras full map preview">
+    </main>
+</body>
+</html>

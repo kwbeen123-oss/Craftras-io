@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Craftras Steel Torch Map</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#0c0d10;color:#edf0f5;font-family:Arial,sans-serif}
+#bar{height:50px;display:flex;align-items:center;gap:10px;padding:0 12px;background:#11151b;border-bottom:1px solid #35404c;box-sizing:border-box}
+#bar strong{font-size:15px;white-space:nowrap}
+#bar span{font-size:12px;color:#b8c0ca}
+button{height:30px;border:1px solid #566372;background:#202832;color:#edf0f5;border-radius:4px;padding:0 10px;cursor:pointer}
+button:hover{background:#2a3542}
+#status{margin-left:auto;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#wrap{position:relative;width:100vw;height:calc(100vh - 50px)}
+canvas{display:block;width:100%;height:100%;background:#090a0d;cursor:crosshair}
+#tip{position:absolute;left:12px;bottom:12px;padding:8px 10px;background:rgba(12,15,19,.88);border:1px solid #405060;border-radius:4px;font-size:12px;line-height:1.55;color:#d7dde5;pointer-events:none}
+#coords{color:#ffe28a}
+@media (max-width:760px){
+    #bar{height:88px;align-items:flex-start;flex-wrap:wrap;padding-top:8px}
+    #wrap{height:calc(100vh - 88px)}
+    #status{margin-left:0;max-width:100%}
+    #bar span.help{display:none}
+}
+</style>
+</head>
+<body>
+<div id="bar">
+    <strong>Steel Torch Map</strong>
+    <button id="save">Save</button>
+    <button id="download">Download JSON</button>
+    <button id="clear">Clear</button>
+    <span class="help">Left click add, right click or Shift+click remove, wheel zoom, drag move.</span>
+    <span id="status">Loading...</span>
+</div>
+<div id="wrap">
+    <canvas id="map"></canvas>
+    <div id="tip">
+        <div>Block: <span id="coords">-</span></div>
+        <div>Yellow dots are saved steel torches.</div>
+        <div>Save, then restart the server to apply in World 1.</div>
+    </div>
+</div>
+<script>
+const BLOCKS_X = 732;
+const BLOCKS_Y = 732;
+const MIN_X = -Math.floor(BLOCKS_X / 2);
+const MIN_Y = -Math.floor(BLOCKS_Y / 2);
+const MAX_X = MIN_X + BLOCKS_X - 1;
+const MAX_Y = MIN_Y + BLOCKS_Y - 1;
+
+const canvas = document.getElementById("map");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
+const coordsEl = document.getElementById("coords");
+const torches = new Map();
+const mapImage = new Image();
+
+let scale = 1;
+let offsetX = 0;
+let offsetY = 0;
+let dragging = false;
+let moved = false;
+let dragStart = { x: 0, y: 0, offsetX: 0, offsetY: 0 };
+
+mapImage.src = "/craftras-map-preview-new-cave.png?cachebust=steel-torch-map-fixed1";
+
+function keyOf(x, y) {
+    return x + "," + y;
+}
+
+function setStatus(text) {
+    statusEl.textContent = text + " | " + torches.size + " torches";
+}
+
+function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(canvas.clientWidth * dpr);
+    canvas.height = Math.floor(canvas.clientHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    draw();
+}
+
+function fitView() {
+    const width = Math.max(1, canvas.clientWidth);
+    const height = Math.max(1, canvas.clientHeight);
+    scale = Math.min(width / BLOCKS_X, height / BLOCKS_Y) * 0.94;
+    offsetX = (width - BLOCKS_X * scale) / 2;
+    offsetY = (height - BLOCKS_Y * scale) / 2;
+}
+
+function blockToScreen(x, y) {
+    return {
+        x: offsetX + (x - MIN_X + 0.5) * scale,
+        y: offsetY + (y - MIN_Y + 0.5) * scale,
+    };
+}
+
+function screenToBlock(x, y) {
+    return {
+        x: Math.floor((x - offsetX) / scale) + MIN_X,
+        y: Math.floor((y - offsetY) / scale) + MIN_Y,
+    };
+}
+
+function isInBounds(block) {
+    return block.x >= MIN_X && block.x <= MAX_X && block.y >= MIN_Y && block.y <= MAX_Y;
+}
+
+function drawGrid() {
+    const left = offsetX;
+    const top = offsetY;
+    const width = BLOCKS_X * scale;
+    const height = BLOCKS_Y * scale;
+    ctx.strokeStyle = "rgba(255,255,255,.35)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(left, top, width, height);
+
+    if (scale < 5) return;
+    ctx.strokeStyle = "rgba(255,255,255,.08)";
+    ctx.beginPath();
+    for (let x = MIN_X; x <= MAX_X; x += 10) {
+        const p = blockToScreen(x, MIN_Y);
+        ctx.moveTo(p.x - scale * 0.5, top);
+        ctx.lineTo(p.x - scale * 0.5, top + height);
+    }
+    for (let y = MIN_Y; y <= MAX_Y; y += 10) {
+        const p = blockToScreen(MIN_X, y);
+        ctx.moveTo(left, p.y - scale * 0.5);
+        ctx.lineTo(left + width, p.y - scale * 0.5);
+    }
+    ctx.stroke();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+    ctx.imageSmoothingEnabled = false;
+
+    if (mapImage.complete && mapImage.naturalWidth > 0) {
+        ctx.drawImage(mapImage, offsetX, offsetY, BLOCKS_X * scale, BLOCKS_Y * scale);
+    } else {
+        ctx.fillStyle = "#111820";
+        ctx.fillRect(offsetX, offsetY, BLOCKS_X * scale, BLOCKS_Y * scale);
+    }
+
+    drawGrid();
+
+    const radius = Math.max(4, scale * 1.8);
+    for (const torch of torches.values()) {
+        const point = blockToScreen(torch.x, torch.y);
+        ctx.fillStyle = "#ffe45a";
+        ctx.strokeStyle = "#111318";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+
+        if (scale >= 8) {
+            ctx.strokeStyle = "rgba(255,228,90,.3)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, scale * 60, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+    }
+}
+
+function addTorch(block) {
+    if (!isInBounds(block)) return;
+    torches.set(keyOf(block.x, block.y), { x: block.x, y: block.y });
+    setStatus("Changed");
+    draw();
+}
+
+function removeTorch(block) {
+    if (!isInBounds(block)) return;
+    torches.delete(keyOf(block.x, block.y));
+    setStatus("Changed");
+    draw();
+}
+
+async function loadTorches() {
+    const response = await fetch("/api/craftras/steelTorchMap", { cache: "no-store" });
+    if (!response.ok) throw new Error("Load failed: " + response.status);
+    const saved = await response.json();
+    torches.clear();
+    for (const entry of saved.torches || []) {
+        if (Number.isInteger(entry.x) && Number.isInteger(entry.y)) {
+            torches.set(keyOf(entry.x, entry.y), { x: entry.x, y: entry.y });
+        }
+    }
+}
+
+canvas.addEventListener("contextmenu", event => event.preventDefault());
+
+canvas.addEventListener("pointerdown", event => {
+    dragging = true;
+    moved = false;
+    dragStart = { x: event.clientX, y: event.clientY, offsetX, offsetY };
+    canvas.setPointerCapture(event.pointerId);
+});
+
+canvas.addEventListener("pointermove", event => {
+    const block = screenToBlock(event.offsetX, event.offsetY);
+    coordsEl.textContent = block.x + ", " + block.y;
+
+    if (!dragging) return;
+    const dx = event.clientX - dragStart.x;
+    const dy = event.clientY - dragStart.y;
+    if (Math.hypot(dx, dy) < 3) return;
+    moved = true;
+    offsetX = dragStart.offsetX + dx;
+    offsetY = dragStart.offsetY + dy;
+    draw();
+});
+
+canvas.addEventListener("pointerup", event => {
+    if (!dragging) return;
+    dragging = false;
+    canvas.releasePointerCapture(event.pointerId);
+    if (moved) return;
+
+    const block = screenToBlock(event.offsetX, event.offsetY);
+    if (event.button === 2 || event.shiftKey) removeTorch(block);
+    else addTorch(block);
+});
+
+canvas.addEventListener("wheel", event => {
+    event.preventDefault();
+    const before = screenToBlock(event.offsetX, event.offsetY);
+    const factor = event.deltaY < 0 ? 1.18 : 0.85;
+    scale = Math.max(0.35, Math.min(40, scale * factor));
+    offsetX = event.offsetX - (before.x - MIN_X + 0.5) * scale;
+    offsetY = event.offsetY - (before.y - MIN_Y + 0.5) * scale;
+    draw();
+}, { passive: false });
+
+document.getElementById("save").onclick = async () => {
+    try {
+        setStatus("Saving...");
+        const payload = { torches: Array.from(torches.values()) };
+        const response = await fetch("/api/craftras/steelTorchMap", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "Save failed");
+        setStatus("Saved " + result.count);
+    } catch (error) {
+        console.error(error);
+        setStatus("Error: " + error.message);
+    }
+};
+
+document.getElementById("download").onclick = () => {
+    const data = {
+        savedAt: new Date().toISOString(),
+        block: "steel_torch",
+        torches: Array.from(torches.values()).sort((a, b) => a.y - b.y || a.x - b.x),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2) + "\n"], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "steelTorchMap.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+};
+
+document.getElementById("clear").onclick = () => {
+    if (!confirm("Clear all steel torch markers?")) return;
+    torches.clear();
+    setStatus("Cleared");
+    draw();
+};
+
+window.addEventListener("resize", resize);
+mapImage.onload = draw;
+mapImage.onerror = () => setStatus("Map image failed, editor still works");
+
+resize();
+fitView();
+draw();
+
+loadTorches().then(() => {
+    draw();
+    setStatus("Ready");
+}).catch(error => {
+    console.error(error);
+    setStatus("Error: " + error.message);
+});
+</script>
+</body>
+</html>

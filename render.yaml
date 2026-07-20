@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: craftras-io
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOSTED_MODE
+        value: "true"
+      - key: ALLOW_UNSAFE_ADMIN_COMMANDS
+        value: "false"
+      - key: API_KEY
+        generateValue: true
+      - key: DEVELOPER
+        generateValue: true

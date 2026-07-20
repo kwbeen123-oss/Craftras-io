@@ -1,0 +1,7 @@
+node_modules/
+*.lnk
+.codex-logs/
+server/.env
+server/game/craftras/playerSaves.json
+*.log
+cloudflared.exe
