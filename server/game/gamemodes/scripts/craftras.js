@@ -22708,13 +22708,15 @@ class Craftras {
             if (!this.chooseNpcWanderPath(mob, now, home)) return;
             path = mob.craftrasWanderPath;
             index = 0;
-        } else if (now >= (mob.craftrasNextWanderAt || 0)) {
-            if (!this.chooseNpcWanderPath(mob, now, home)) return;
-            path = mob.craftrasWanderPath;
-            index = 0;
         }
 
         let waypoint = path[index];
+        if (this.isMovementBlockingBlockForEntity(this.getBlock(waypoint.x, waypoint.y), mob)) {
+            mob.craftrasWanderPath = null;
+            mob.craftrasWanderPathIndex = 0;
+            mob.craftrasNextWanderAt = now + 250 + Math.random() * 250;
+            return;
+        }
         if (villageCombatNpc ? !this.isInsideVillageGuardZone(waypoint.x, waypoint.y, combatBounds) : Math.abs(waypoint.x - homeCell.x) > radius || Math.abs(waypoint.y - homeCell.y) > radius) {
             mob.craftrasWanderPath = null;
             mob.craftrasWanderPathIndex = 0;
@@ -23300,13 +23302,15 @@ class Craftras {
             if (!this.chooseMobWanderPath(mob, now)) return;
             path = mob.craftrasWanderPath;
             index = 0;
-        } else if (now >= (mob.craftrasNextWanderAt || 0)) {
-            if (!this.chooseMobWanderPath(mob, now)) return;
-            path = mob.craftrasWanderPath;
-            index = 0;
         }
 
         let waypoint = path[index];
+        if (this.isMovementBlockingBlockForEntity(this.getBlock(waypoint.x, waypoint.y), mob)) {
+            mob.craftrasWanderPath = null;
+            mob.craftrasWanderPathIndex = 0;
+            mob.craftrasNextWanderAt = now + 250 + Math.random() * 250;
+            return;
+        }
         let worldWaypoint = blockToWorld(waypoint.x, waypoint.y);
         if (Math.hypot(worldWaypoint.x - mob.x, worldWaypoint.y - mob.y) < BLOCK_SIZE * 0.28) {
             index++;
@@ -25112,6 +25116,7 @@ class Craftras {
         });
         const activeMonsterPlaces = this.getActiveMonsterPlaces(undergroundPlayers);
         const activePlaceIds = new Set(activeMonsterPlaces.map(({ place }) => place.id));
+        const activePlacesById = new Map(activeMonsterPlaces.map(entry => [entry.place.id, entry]));
         const passiveMonsterPlaces = this.getPassiveBossCavePlaces(activePlaceIds);
         this.resetInactiveZombieCavePressure(activePlaceIds, now);
         if (!challengeServer && !challengeWaiting) this.spawnMonsterPlaceMobs([...activeMonsterPlaces, ...passiveMonsterPlaces], now);
@@ -25376,7 +25381,7 @@ class Craftras {
                 }
             }
             if (mob.craftrasSpawnPlaceId) {
-                const activePlace = activeMonsterPlaces.find(({ place }) => place.id === mob.craftrasSpawnPlaceId);
+                const activePlace = activePlacesById.get(mob.craftrasSpawnPlaceId);
                 if (!activePlace) {
                     const homePlace = this.getMonsterPlaceById(mob.craftrasSpawnPlaceId);
                     if (
@@ -25388,10 +25393,21 @@ class Craftras {
                         this.mobs.delete(mob);
                         continue;
                     }
-                    this.clearMobAggro(mob);
-                    this.updateMobWander(mob, now);
+                    if (!mob.craftrasDormantPlaceMob) {
+                        this.clearMobAggro(mob);
+                        mob.craftrasWanderPath = null;
+                        mob.craftrasWanderPathIndex = 0;
+                        mob.craftrasDormantPlaceMob = true;
+                    }
+                    mob.velocity.x = 0;
+                    mob.velocity.y = 0;
+                    if (mob.accel) {
+                        mob.accel.x = 0;
+                        mob.accel.y = 0;
+                    }
                     continue;
                 }
+                mob.craftrasDormantPlaceMob = false;
                 targetPlayers = activePlace.players;
             }
             const closestPlayer = this.nearestPlayer(mob, targetPlayers);
