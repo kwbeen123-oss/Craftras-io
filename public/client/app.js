@@ -819,6 +819,20 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         }
     }
 
+    const validPlayerNamePattern = /^[A-Za-z]+$/;
+    function updatePlayerNameStartButton() {
+        const playerNameInput = document.getElementById("playerNameInput");
+        const startButton = document.getElementById("startButton");
+        if (!playerNameInput || !startButton) return false;
+        const valid = validPlayerNamePattern.test(playerNameInput.value);
+        const label = startButton.querySelector("b");
+        playerNameInput.classList.toggle("error", !valid);
+        startButton.classList.toggle("name-required", !valid);
+        startButton.setAttribute("aria-invalid", String(!valid));
+        if (label) label.textContent = valid ? "Play" : "Make your name";
+        return valid;
+    }
+
     const bootClient = async () => {
         // Prepare the server selector
         global.serverMap = {};
@@ -1084,6 +1098,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         };
 
         // Game start stuff
+        const playerNameInput = document.getElementById("playerNameInput");
+        playerNameInput.addEventListener("input", updatePlayerNameStartButton);
+        updatePlayerNameStartButton();
         document.getElementById("startButton").onclick = () => startGame();
         document.onkeydown = (e) => {
             if (!(global.gameStart || e.shiftKey || e.ctrlKey || e.altKey)) {
@@ -2079,6 +2096,10 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
     }
 
     async function startGame() {
+        if (!updatePlayerNameStartButton()) {
+            document.getElementById("playerNameInput")?.focus();
+            return;
+        }
         // Set flag
         if (global.gameLoading) return;
         global.gameLoading = true;

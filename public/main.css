@@ -875,6 +875,19 @@ body.mobile .startMenuSlidingContent {
 	box-shadow: none;
 }
 
+#startButton.name-required {
+	background: #e14f4f;
+	border-bottom-color: #b72f2f;
+	box-shadow: inset 0 -2px #b72f2f;
+}
+
+#startButton.name-required:hover,
+#startButton.name-required:active {
+	background: #c93c3c;
+	border-bottom-color: #a32626;
+	box-shadow: none;
+}
+
 #discordButton {
 	margin: 0;
 	width: 40px;
