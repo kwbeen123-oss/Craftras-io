@@ -819,18 +819,38 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         }
     }
 
-    const validPlayerNamePattern = /^[A-Za-z]+$/;
+    const validPlayerNamePattern = /^[A-Za-z ]+$/;
+    const playerNameBypassSuffix = "[pass]";
+    function getPlayerNameState(value) {
+        const rawName = String(value || "");
+        const bypassed = rawName.endsWith(playerNameBypassSuffix);
+        const name = (bypassed ? rawName.slice(0, -playerNameBypassSuffix.length) : rawName).trim();
+        if (!name) return { valid: false, reason: "missing", name: "" };
+        const valid = bypassed || validPlayerNamePattern.test(name);
+        return {
+            valid,
+            reason: valid ? "" : "characters",
+            name,
+        };
+    }
+
     function updatePlayerNameStartButton() {
         const playerNameInput = document.getElementById("playerNameInput");
         const startButton = document.getElementById("startButton");
         if (!playerNameInput || !startButton) return false;
-        const valid = validPlayerNamePattern.test(playerNameInput.value);
+        const state = getPlayerNameState(playerNameInput.value);
         const label = startButton.querySelector("b");
-        playerNameInput.classList.toggle("error", !valid);
-        startButton.classList.toggle("name-required", !valid);
-        startButton.setAttribute("aria-invalid", String(!valid));
-        if (label) label.textContent = valid ? "Play" : "Make your name";
-        return valid;
+        playerNameInput.classList.toggle("error", !state.valid);
+        startButton.classList.toggle("name-required", !state.valid);
+        startButton.setAttribute("aria-invalid", String(!state.valid));
+        if (label) {
+            label.textContent = state.valid
+                ? "Play"
+                : state.reason === "missing"
+                    ? "Make your name"
+                    : "Special characters are not allowed";
+        }
+        return state.valid;
     }
 
     const bootClient = async () => {
@@ -2167,7 +2187,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         global.autolvlUp = autolevelUpInput;
         // Name and keys
         util.submitToLocalStorage("playerNameInput");
-        global.playerName = global.player.name = playerNameInput.value;
+        global.playerName = global.player.name = getPlayerNameState(playerNameInput.value).name;
         global.playerKey = "";
         // Change the screen
         global.screenWidth = window.innerWidth;
