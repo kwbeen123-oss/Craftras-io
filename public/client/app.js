@@ -5711,6 +5711,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 cave: getCraftrasCaveMobVisibility(instance),
                 kingdom: getCraftrasKingdomEntityVisibility(instance),
                 infoAlpha: null,
+                onScreen: false,
             };
             craftrasVisibilityCache.set(instance.id, visibility);
             return visibility;
@@ -5768,9 +5769,23 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             }
             x += global.screenWidth / 2;
             y += global.screenHeight / 2;
+            const renderRadius = Math.max(180, Math.min(
+                Math.max(global.screenWidth, global.screenHeight),
+                Math.max(Number(isize) || 0, Number(instance.size) || 0) * ratio * 8 + 80,
+            ));
+            const visibility = getFrameVisibility(instance);
+            visibility.onScreen = instance.id === gui.playerid || (
+                x + renderRadius >= 0 &&
+                x - renderRadius <= global.screenWidth &&
+                y + renderRadius >= 0 &&
+                y - renderRadius <= global.screenHeight
+            );
+            if (!visibility.onScreen) {
+                global.renderingInfo.culledEntities = (global.renderingInfo.culledEntities || 0) + 1;
+                continue;
+            }
             let alpha = instance.id === gui.playerid ? 1 : instance.alpha;
             alpha = handleScreenDistance(alpha, instance, false);
-            const visibility = getFrameVisibility(instance);
             const caveMobVisibility = visibility.cave;
             if (caveMobVisibility <= 0.01) continue;
             alpha *= caveMobVisibility;
@@ -5783,6 +5798,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         if (!global.screenshotGuiHidden) {
             for (let instance of global.entities) {
                 const visibility = getFrameVisibility(instance);
+                if (!visibility.onScreen) continue;
                 const caveMobVisibility = visibility.cave;
                 if (caveMobVisibility <= 0.01) continue;
                 const kingdomRainVisibility = visibility.kingdom;
@@ -5798,6 +5814,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             }
             for (let instance of global.entities) {
                 const visibility = getFrameVisibility(instance);
+                if (!visibility.onScreen) continue;
                 const caveMobVisibility = visibility.cave;
                 if (caveMobVisibility <= 0.01) continue;
                 const kingdomRainVisibility = visibility.kingdom;
@@ -6871,7 +6888,13 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             drawText(`Coordinates: (${xloc.toFixed(2)}, ${yloc.toFixed(2)})`, x + len, y - 50 - 8 * 14, 10, color.guiwhite, "right");
             drawText("Speed: " + tankSpeed.toFixed(2) + " gu/s", x + len, y - 50 - 7 * 14, 10, color.guiwhite, "right");
             drawText("Memory: " + global.metrics.rendergap.toFixed(1) + " Mib", x + len, y - 50 - 6 * 14, 10, color.guiwhite, "right");
-            drawText(`Rendering: e ${global.renderingInfo.entities} t: ${global.renderingInfo.turretEntities} n: ${global.renderingInfo.entitiesWithName}`, x + len, y - 50 - 5 * 14, 10, color.guiwhite, "right");
+            const renderStages = global.metrics.craftrasRenderStages || {};
+            const slowestRenderStage = Object.entries(renderStages).reduce(
+                (slowest, entry) => !slowest || entry[1] > slowest[1] ? entry : slowest,
+                null,
+            );
+            const renderStageText = slowestRenderStage ? ` ${slowestRenderStage[0]}:${slowestRenderStage[1].toFixed(1)}ms` : "";
+            drawText(`Rendering: e ${global.renderingInfo.entities} c ${global.renderingInfo.culledEntities || 0}${renderStageText}`, x + len, y - 50 - 5 * 14, 10, color.guiwhite, "right");
             drawText(`Bandwidth: tx ${global.bandwidth.finalHa} rx ${global.bandwidth.finalFa}`, x + len, y - 50 - 4 * 14, 10, color.guiwhite, "right");
             drawText("Update Rate: " + global.metrics.updatetime + "Hz", x + len, y - 50 - 3 * 14, 10, color.guiwhite, "right");
             drawText("Prediction: " + Math.round(GRAPHDATA) + "ms", x + len, y - 50 - 2 * 14, 10, color.guiwhite, "right");
@@ -7766,6 +7789,12 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         global.player.renderx += cdx;
         global.player.rendery += cdy;
     }
+    function recordCraftrasRenderStage(name, startedAt) {
+        const elapsed = performance.now() - startedAt;
+        const stages = global.metrics.craftrasRenderStages || (global.metrics.craftrasRenderStages = {});
+        stages[name] = stages[name] == null ? elapsed : stages[name] * 0.9 + elapsed * 0.1;
+    }
+
     const drawGameplay = (tick, ratio) => {
         // Prep stuff
         global.metrics.rendertimes++;
@@ -7804,12 +7833,21 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
 
         let spacing = 20;
         //draw the in game stuff
+        let renderStageStartedAt = performance.now();
         drawFloor(px, py, ratio, tick);
+        recordCraftrasRenderStage("floor", renderStageStartedAt);
+        renderStageStartedAt = performance.now();
         drawCraftrasBlocks(px, py, ratio);
+        recordCraftrasRenderStage("blocks", renderStageStartedAt);
+        renderStageStartedAt = performance.now();
         prewarmCraftrasCaveDepthCache();
         updateCraftrasCaveDarkness();
         updateCraftrasWeatherVisuals();
+        recordCraftrasRenderStage("world", renderStageStartedAt);
+        renderStageStartedAt = performance.now();
         drawEntities(px, py, ratio, tick, spacing);
+        recordCraftrasRenderStage("entities", renderStageStartedAt);
+        renderStageStartedAt = performance.now();
         ctx[1].globalAlpha = 1;
         ctx[2].globalAlpha = 1;
         drawCraftrasClouds(px, py, ratio);
@@ -7825,6 +7863,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         drawCraftrasLaserBeams(px, py, ratio);
         drawCraftrasJaneScreenCutEffect();
         drawCraftrasJanePhaseTwoSkillTwoScreenEffect();
+        recordCraftrasRenderStage("effects", renderStageStartedAt);
     };
 
     function drawCraftrasCaveDarknessOverlay(ratio) {
@@ -10317,12 +10356,16 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
     (!/Chrome\/8[4-6]\.0\.41([4-7][0-9]|8[0-3])\./.test(navigator.userAgent) &&
       window.requestAnimationFrame) ||
     ((a) => setTimeout(() => a(Date.now()), 1e3 / 60));
+    let craftrasLastBackgroundFrame = 0;
     function animloop(tick) {
         if (document.getElementById("gameAreaWrapper").style.display === "none") {
             setTimeout(() => animloop(Date.now()), 200); // Slow down when tab is hidden
             return;
         }
         animationFrame(animloop);
+        const craftrasFrameNow = performance.now();
+        if ((document.hidden || !document.hasFocus()) && craftrasFrameNow - craftrasLastBackgroundFrame < 50) return;
+        craftrasLastBackgroundFrame = craftrasFrameNow;
         if (global.gameStart) {
             // Update fov
             let fovtickMotion = fovlasttick ? tick - fovlasttick : null;
@@ -10334,6 +10377,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             global.renderingInfo.entities = 0;
             global.renderingInfo.turretEntities = 0;
             global.renderingInfo.entitiesWithName = 0;
+            global.renderingInfo.culledEntities = 0;
         }
 
         var ratio = config.graphical.screenshotMode ? 2 : util.getRatio();
@@ -10382,7 +10426,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         let p = performance.now();
         try {
             drawGameplay(tick, ratio);
+            const guiRenderStartedAt = performance.now();
             drawGUI(tick, util.getScreenRatio());
+            recordCraftrasRenderStage("gui", guiRenderStartedAt);
             if (global.gameConnecting && !global.disconnected) {
                 drawConnectingScreen();
             };
