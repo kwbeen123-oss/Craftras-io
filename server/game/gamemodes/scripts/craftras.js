@@ -22619,30 +22619,6 @@ class Craftras {
         return true;
     }
 
-    chooseMobWanderPath(mob, now) {
-        const center = worldToBlock(mob.x, mob.y);
-        mob.craftrasWanderPath = null;
-        mob.craftrasWanderPathIndex = 0;
-
-        for (let attempt = 0; attempt < 24; attempt++) {
-            const angle = Math.random() * Math.PI * 2;
-            const distance = 4 + Math.floor(Math.random() * 8);
-            const x = center.x + Math.round(Math.cos(angle) * distance);
-            const y = center.y + Math.round(Math.sin(angle) * distance);
-            if (this.getCell(x, y)?.region !== "underground" || this.getBlock(x, y) !== BLOCKS.AIR) continue;
-            const destination = blockToWorld(x, y);
-            const path = this.findMobPath(mob, destination, { budgeted: true, now, deferredPath: [] });
-            if (!path?.length) break;
-            mob.craftrasWanderPath = path;
-            mob.craftrasWanderPathIndex = 0;
-            mob.craftrasNextWanderAt = now + 4000 + Math.random() * 4000;
-            return true;
-        }
-
-        mob.craftrasNextWanderAt = now + 1000 + Math.random() * 1500;
-        return false;
-    }
-
     chooseNpcWanderPath(mob, now, home) {
         const homeCell = worldToBlock(home.x, home.y);
         const radius = mob.craftrasMobType === "blesser" || mob.craftrasMobType === "monster_merchant" ? 2 : mob.craftrasNpcWanderRadius || VILLAGE_NPC_MAX_HOME_DISTANCE;
@@ -23295,46 +23271,25 @@ class Craftras {
     }
 
     updateMobWander(mob, now) {
-        let path = mob.craftrasWanderPath;
-        let index = mob.craftrasWanderPathIndex || 0;
-        if (!path?.length || index >= path.length) {
-            if (now < (mob.craftrasNextWanderAt || 0)) return;
-            if (!this.chooseMobWanderPath(mob, now)) return;
-            path = mob.craftrasWanderPath;
-            index = 0;
+        mob.craftrasWanderPath = null;
+        mob.craftrasWanderPathIndex = 0;
+        let goal = mob.craftrasWanderGoal;
+        if (!goal || now >= (mob.craftrasNextWanderAt || 0)) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = BLOCK_SIZE * (5 + Math.random() * 7);
+            goal = mob.craftrasWanderGoal = {
+                x: mob.x + Math.cos(angle) * distance,
+                y: mob.y + Math.sin(angle) * distance,
+            };
+            mob.craftrasNextWanderAt = now + 4000 + Math.random() * 4000;
         }
-
-        let waypoint = path[index];
-        if (this.isMovementBlockingBlockForEntity(this.getBlock(waypoint.x, waypoint.y), mob)) {
-            mob.craftrasWanderPath = null;
-            mob.craftrasWanderPathIndex = 0;
-            mob.craftrasNextWanderAt = now + 250 + Math.random() * 250;
-            return;
-        }
-        let worldWaypoint = blockToWorld(waypoint.x, waypoint.y);
-        if (Math.hypot(worldWaypoint.x - mob.x, worldWaypoint.y - mob.y) < BLOCK_SIZE * 0.28) {
-            index++;
-            mob.craftrasWanderPathIndex = index;
-            if (index >= path.length) {
-                mob.craftrasWanderPath = null;
-                mob.craftrasNextWanderAt = now + 800 + Math.random() * 1400;
-                mob.craftrasControl = {
-                    goal: { x: mob.x, y: mob.y },
-                    target: { x: Math.cos(mob.facing || 0), y: Math.sin(mob.facing || 0) },
-                    fire: false,
-                    power: 0,
-                };
-                return;
-            }
-            waypoint = path[index];
-            worldWaypoint = blockToWorld(waypoint.x, waypoint.y);
-        }
-
+        const dx = goal.x - mob.x;
+        const dy = goal.y - mob.y;
         mob.craftrasControl = {
-            goal: { x: worldWaypoint.x, y: worldWaypoint.y },
-            target: { x: worldWaypoint.x - mob.x, y: worldWaypoint.y - mob.y },
+            goal,
+            target: { x: dx, y: dy },
             fire: false,
-            power: 0.55,
+            power: 0.42,
         };
     }
 
@@ -23565,9 +23520,15 @@ class Craftras {
         );
         if (!target || target.isDead?.() || unavailablePlayerTarget || (target.craftrasMobFamily === "npc" && !target.craftrasChallengeActor && (!VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType) || !this.isInsideVillageGuardZone(target)))) {
             target = null;
+            if (now < (mob.craftrasNextTargetScanAt || 0)) {
+                if (mob.craftrasTarget || mob.craftrasAggroTarget || mob.craftrasPath) this.clearMobAggro(mob);
+                this.updateMobWander(mob, now);
+                return null;
+            }
+            mob.craftrasNextTargetScanAt = now + 250 + Math.random() * 150;
             let nearestDistance = Infinity;
+            const mobCell = worldToBlock(mob.x, mob.y);
             for (const { body } of players) {
-                const mobCell = worldToBlock(mob.x, mob.y);
                 const playerCell = worldToBlock(body.x, body.y);
                 if (Math.max(Math.abs(playerCell.x - mobCell.x), Math.abs(playerCell.y - mobCell.y)) > detectionBlocks) continue;
                 const distance = Math.hypot(body.x - mob.x, body.y - mob.y);
@@ -23584,6 +23545,7 @@ class Craftras {
             mob.craftrasNextPathAt = 0;
             mob.craftrasWanderPath = null;
             mob.craftrasWanderPathIndex = 0;
+            mob.craftrasWanderGoal = null;
         }
 
         const targetCell = worldToBlock(target.x, target.y);
