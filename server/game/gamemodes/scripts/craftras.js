@@ -681,6 +681,12 @@ const CRAFTRAS_MOB_SEPARATION_CELL_SIZE = BLOCK_SIZE * 1.5;
 const CRAFTRAS_MOB_SEPARATION_RADIUS_SCALE = 1.05;
 const CRAFTRAS_MOB_SEPARATION_STRENGTH = 0.28;
 const CRAFTRAS_MOB_SEPARATION_MAX_PUSH = BLOCK_SIZE * 0.09;
+const CRAFTRAS_MOB_PATH_REQUESTS_PER_TICK = 3;
+const CRAFTRAS_MOB_PATH_MAX_VISITED = 900;
+const CRAFTRAS_PATH_NEIGHBORS = Object.freeze([
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [1, 1], [1, -1], [-1, 1], [-1, -1],
+]);
 const DAY_PHASE_DURATION = 10 * 60 * 1000;
 const DAY_CYCLE_DURATION = DAY_PHASE_DURATION * 3;
 const DAY_PHASES = ["morning", "afternoon", "night"];
@@ -1428,6 +1434,7 @@ class Craftras {
         this.animalSpawnCounter = 0;
         this.treeClientCount = 0;
         this.performanceWindow = null;
+        this.mobPathfindingFrame = null;
         this.baseLoadRadius = 8;
         this.maxLoadRadius = 48;
         this.updateCounter = 0;
@@ -22427,17 +22434,56 @@ class Craftras {
         return true;
     }
 
-    findMobPath(mob, target) {
+    beginMobPathfindingFrame() {
+        this.mobPathfindingFrame = { remaining: CRAFTRAS_MOB_PATH_REQUESTS_PER_TICK };
+    }
+
+    claimMobPathfindingRequest(mob, now) {
+        const frame = this.mobPathfindingFrame;
+        if (!frame || frame.remaining <= 0) {
+            if (this.performanceWindow) {
+                this.performanceWindow.pathfindingDeferred = (this.performanceWindow.pathfindingDeferred || 0) + 1;
+            }
+            if (mob) mob.craftrasNextPathAt = now + 50 + Math.random() * 100;
+            return false;
+        }
+        frame.remaining--;
+        return true;
+    }
+
+    findMobPath(mob, target, options = {}) {
+        const {
+            budgeted = false,
+            maxVisited = budgeted ? CRAFTRAS_MOB_PATH_MAX_VISITED : 2500,
+            now = Date.now(),
+            deferredPath,
+        } = options;
+        if (budgeted && !this.claimMobPathfindingRequest(mob, now)) {
+            if (deferredPath !== undefined) return deferredPath;
+            const currentPath = mob?.craftrasPath;
+            return Array.isArray(currentPath) ? currentPath.slice(mob.craftrasPathIndex || 0) : [];
+        }
+        const startedAt = performance.now();
         const start = worldToBlock(mob.x, mob.y);
         const goal = worldToBlock(target.x, target.y);
-        if (start.x === goal.x && start.y === goal.y) return [];
+        const finish = (result, visited = 0) => {
+            if (this.performanceWindow) {
+                this.recordPerformanceStage("pathfinding", performance.now() - startedAt);
+                this.performanceWindow.pathfindingCalls = (this.performanceWindow.pathfindingCalls || 0) + 1;
+                this.performanceWindow.pathfindingVisited = (this.performanceWindow.pathfindingVisited || 0) + visited;
+            }
+            return result;
+        };
+        if (start.x === goal.x && start.y === goal.y) return finish([]);
 
         const margin = 20;
         const minX = Math.min(start.x, goal.x) - margin;
         const maxX = Math.max(start.x, goal.x) + margin;
         const minY = Math.min(start.y, goal.y) - margin;
         const maxY = Math.max(start.y, goal.y) + margin;
-        const key = (x, y) => `${x},${y}`;
+        const width = maxX - minX + 1;
+        const idFor = (x, y) => (y - minY) * width + x - minX;
+        const pointFor = id => ({ x: minX + id % width, y: minY + Math.floor(id / width) });
         const heuristic = (x, y) => {
             const dx = Math.abs(goal.x - x);
             const dy = Math.abs(goal.y - y);
@@ -22473,33 +22519,29 @@ class Craftras {
             }
             return result;
         };
-        pushOpen({ x: start.x, y: start.y, g: 0, f: heuristic(start.x, start.y) });
-        const bestCost = new Map([[key(start.x, start.y), 0]]);
+        const startId = idFor(start.x, start.y);
+        const goalId = idFor(goal.x, goal.y);
+        pushOpen({ x: start.x, y: start.y, id: startId, g: 0, f: heuristic(start.x, start.y) });
+        const bestCost = new Map([[startId, 0]]);
         const parents = new Map();
         let visited = 0;
 
-        while (open.length && visited++ < 2500) {
+        while (open.length && visited++ < maxVisited) {
             const current = popOpen();
-            const currentKey = key(current.x, current.y);
-            if (current.g !== bestCost.get(currentKey)) continue;
-            if (current.x === goal.x && current.y === goal.y) {
+            if (current.g !== bestCost.get(current.id)) continue;
+            if (current.id === goalId) {
                 const path = [];
-                let cursor = key(goal.x, goal.y);
-                const startKey = key(start.x, start.y);
-                while (cursor !== startKey) {
-                    const [x, y] = cursor.split(",").map(Number);
-                    path.push({ x, y });
+                let cursor = goalId;
+                while (cursor !== startId) {
+                    path.push(pointFor(cursor));
                     cursor = parents.get(cursor);
-                    if (!cursor) return null;
+                    if (cursor === undefined) return finish(null, visited);
                 }
                 path.reverse();
-                return path;
+                return finish(path, visited);
             }
 
-            for (const [offsetX, offsetY] of [
-                [1, 0], [-1, 0], [0, 1], [0, -1],
-                [1, 1], [1, -1], [-1, 1], [-1, -1],
-            ]) {
+            for (const [offsetX, offsetY] of CRAFTRAS_PATH_NEIGHBORS) {
                 const x = current.x + offsetX;
                 const y = current.y + offsetY;
                 if (x < minX || x > maxX || y < minY || y > maxY) continue;
@@ -22509,15 +22551,15 @@ class Craftras {
                     const verticalBlocked = this.isMovementBlockingBlockForEntity(this.getBlock(current.x, current.y + offsetY), mob);
                     if (horizontalBlocked || verticalBlocked) continue;
                 }
-                const nextKey = key(x, y);
+                const nextId = idFor(x, y);
                 const nextCost = current.g + (offsetX && offsetY ? Math.SQRT2 : 1);
-                if (nextCost >= (bestCost.get(nextKey) ?? Infinity)) continue;
-                bestCost.set(nextKey, nextCost);
-                parents.set(nextKey, currentKey);
-                pushOpen({ x, y, g: nextCost, f: nextCost + heuristic(x, y) });
+                if (nextCost >= (bestCost.get(nextId) ?? Infinity)) continue;
+                bestCost.set(nextId, nextCost);
+                parents.set(nextId, current.id);
+                pushOpen({ x, y, id: nextId, g: nextCost, f: nextCost + heuristic(x, y) });
             }
         }
-        return null;
+        return finish(null, visited);
     }
 
     clearMobAggro(mob) {
@@ -22589,8 +22631,8 @@ class Craftras {
             const y = center.y + Math.round(Math.sin(angle) * distance);
             if (this.getCell(x, y)?.region !== "underground" || this.getBlock(x, y) !== BLOCKS.AIR) continue;
             const destination = blockToWorld(x, y);
-            const path = this.findMobPath(mob, destination);
-            if (!path?.length) continue;
+            const path = this.findMobPath(mob, destination, { budgeted: true, now, deferredPath: [] });
+            if (!path?.length) break;
             mob.craftrasWanderPath = path;
             mob.craftrasWanderPathIndex = 0;
             mob.craftrasNextWanderAt = now + 4000 + Math.random() * 4000;
@@ -22619,8 +22661,8 @@ class Craftras {
             if (villageCombatNpc && !this.isInsideVillageGuardZone(x, y, bounds)) continue;
             if (this.getBlock(x, y) !== BLOCKS.AIR) continue;
             const destination = blockToWorld(x, y);
-            const path = this.findMobPath(mob, destination);
-            if (!path?.length) continue;
+            const path = this.findMobPath(mob, destination, { budgeted: true, now, deferredPath: [] });
+            if (!path?.length) break;
             if (villageCombatNpc) {
                 if (!path.every(point => this.isInsideVillageGuardZone(point.x, point.y, bounds))) continue;
             } else if (!path.every(point => Math.abs(point.x - homeCell.x) <= radius && Math.abs(point.y - homeCell.y) <= radius)) continue;
@@ -23230,7 +23272,7 @@ class Craftras {
         if (now >= (mob.craftrasNextPathAt || 0) || mob.craftrasPathTargetKey !== targetKey) {
             mob.craftrasNextPathAt = now + 450;
             mob.craftrasPathTargetKey = targetKey;
-            mob.craftrasPath = this.findMobPath(mob, target) || [];
+            mob.craftrasPath = this.findMobPath(mob, target, { budgeted: true, now }) || [];
             mob.craftrasPathIndex = 0;
         }
         const path = mob.craftrasPath || [];
@@ -23418,7 +23460,7 @@ class Craftras {
         } else if (now >= (mob.craftrasNextPathAt || 0) || mob.craftrasPathTargetKey !== targetKey) {
             mob.craftrasNextPathAt = now + 350;
             mob.craftrasPathTargetKey = targetKey;
-            mob.craftrasPath = this.findMobPath(mob, target) || [];
+            mob.craftrasPath = this.findMobPath(mob, target, { budgeted: true, now }) || [];
             mob.craftrasPathIndex = 0;
         }
 
@@ -23551,7 +23593,7 @@ class Craftras {
             const baseInterval = mob.craftrasWorld2SurfaceMob ? 1000 : 500;
             mob.craftrasNextPathAt = now + baseInterval + Math.random() * 250;
             mob.craftrasPathTargetKey = pathTargetKey;
-            mob.craftrasPath = this.findMobPath(mob, target);
+            mob.craftrasPath = this.findMobPath(mob, target, { budgeted: true, now });
             mob.craftrasPathIndex = 0;
             if (!mob.craftrasPath) {
                 if (canBreakToTarget) {
@@ -25044,6 +25086,7 @@ class Craftras {
     }
 
     updateMobs(players, now) {
+        this.beginMobPathfindingFrame();
         this.updateJaneSkillEntities(players, now);
         const challengeServer = !!Config.craftras_world1_challenge_builder;
         const challengeWaiting = challengeServer && this.challengeStage !== "active";
@@ -29603,7 +29646,9 @@ class Craftras {
         console.log(
             `[Craftras Perf] server=${this.gameManager.name} clients=${this.gameManager.clients.length} `
             + `entities=${entities.size} active=${activeEntities} mobs=${this.mobs.size} `
-            + `trees=${this.loadedTrees.size} drops=${this.itemDrops.size} ${stages}`,
+            + `trees=${this.loadedTrees.size} drops=${this.itemDrops.size} `
+            + `pathCalls=${window.pathfindingCalls || 0} pathDeferred=${window.pathfindingDeferred || 0} `
+            + `pathVisited=${window.pathfindingVisited || 0} ${stages}`,
         );
         this.performanceWindow = null;
     }
