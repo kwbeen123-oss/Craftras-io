@@ -1,5 +1,5 @@
-import { global } from "./global.js?v=20260719-challenge-instance1";
-import { config } from "./config.js?v=20260719-challenge-instance1";
+import { global } from "./global.js?v=20260815-play-fix1";
+import { config } from "./config.js?v=20260815-play-fix1";
 
 const util = (function() {
     return {

@@ -1,4 +1,4 @@
-﻿const {
+const {
     WORLD_SIZE,
     WALL_SIZE,
     BLOCK_SIZE,
@@ -7,6 +7,7 @@
     BLOCKS_X,
     BLOCKS_Y,
     generateCell,
+    isInsideWorld2,
     isBrokenKingdomSurfaceCell,
     isNearBrokenKingdomSurfaceCell,
     worldToBlock,
@@ -25,8 +26,11 @@ const STEEL_TORCH_MAP_FILE = path.join(__dirname, "../../craftras/steelTorchMap.
 const BROKEN_KINGDOM_BLUEPRINT_FILE = path.join(__dirname, "../../craftras/brokenKingdomBlueprint.json");
 const ROYAL_KINGDOM_INTACT_BLUEPRINT_FILE = path.join(__dirname, "../../craftras/royalKingdomIntactBlueprint.json");
 const CAVE_EXCAVATION_FILE = path.join(__dirname, "../../craftras/caveExcavation.json");
+const WORLD2_VILLAGE_BLUEPRINT_FILE = path.join(__dirname, "../../craftras/world2VillageBlueprint.json");
 const WORLD1_CHALLENGE_BLUEPRINT_FILE = path.join(__dirname, "../../craftras/world1ChallengeBlueprint.json");
 const WORLD1_CHALLENGE_BLUEPRINT_BACKUP_FILE = path.join(__dirname, "../../craftras/world1ChallengeBlueprint.backup.json");
+const CRAFTRAS_LASER_HITBOX = require("../../craftras/hitboxes/laserBeam.json");
+const CRAFTRAS_GIANT_LASER_HITBOX = require("../../craftras/hitboxes/giantLaser.json");
 const VILLAGE_NATURE_CLEAR_RADIUS = 12;
 const BROKEN_KINGDOM_SPAWN_CLEAR_RADIUS = 20;
 const VILLAGE_NPC_MAX_HOME_DISTANCE = 15;
@@ -35,19 +39,196 @@ const VILLAGE_CLERIC_INTERACT_RANGE = BLOCK_SIZE * 3;
 const VILLAGE_MERCHANT_INTERACT_RANGE = BLOCK_SIZE * 3;
 const VILLAGE_POPE_INTERACT_RANGE = BLOCK_SIZE * 3;
 const VILLAGE_BLESSER_INTERACT_RANGE = BLOCK_SIZE * 3;
+const VILLAGE_HEALER_INTERACT_RANGE = BLOCK_SIZE * 3;
 const VILLAGE_BLESSER_BUFF_COST = 1_000;
 const VILLAGE_BLESSER_DURATION = 15 * 60 * 1000;
 const VILLAGE_BLESSER_FREE_INTERVAL = 12 * 60 * 60 * 1000;
 const VILLAGE_BLESSER_ITEM_COOLDOWN = 15 * 60 * 1000;
 const VILLAGE_BLESSER_HEALTH_BONUS = 200;
 const VILLAGE_BLESSER_DAMAGE_BONUS = 40;
+const WORLD2_HEALER_BUFF_COST = 2_000;
+const WORLD2_HEALER_BUFF_DURATION = 15 * 60 * 1000;
+const WORLD2_HEALER_HEALTH_BONUS = 3_000;
+const WORLD2_HEALER_DAMAGE_BONUS = 500;
+const WORLD2_HEALER_HASTE_MULTIPLIER = 1.5;
 const VILLAGE_BLESSER_DAMAGE_MULTIPLIER = 1.25;
 const CRAFTRAS_BLESSER_STAFF_COOLDOWN = 10_000;
 const CRAFTRAS_POPE_HAT_HEALTH_BONUS = 5_000;
 const CRAFTRAS_POPE_HAT_REGEN_PER_SECOND = 200;
 const CRAFTRAS_BLESSER_HAT_HEALTH_BONUS = 200;
+const CRAFTRAS_PARRY_WINDOW = 200;
+const CRAFTRAS_PARRY_PRE_INPUT_WINDOW = 150;
+const CRAFTRAS_PARRY_RECHARGE_INTERVAL = 100;
+const CRAFTRAS_PARRY_COUNTER_STEP = 100;
+const CRAFTRAS_PARRY_COUNTER_MAX = 1000;
+const CRAFTRAS_PARRY_SPECIAL_THRESHOLD = 500;
+const CRAFTRAS_PARRY_CONTACT_IMMUNITY = 500;
+const CRAFTRAS_PARRY_SLOW_DURATION = 5_000;
+const CRAFTRAS_PARRY_SHOCKWAVE_RADIUS = BLOCK_SIZE * 5;
+const CRAFTRAS_PARRY_GUARD_DAMAGE_MULTIPLIER = 0.70;
+const CRAFTRAS_BOSS_FORM_SKILL_COOLDOWN = 20_000;
+const CRAFTRAS_WORLD1_BASIC_FORM_HEALTH = 3_000;
+const CRAFTRAS_WORLD1_BASIC_FORM_SIZE = 32;
+const CRAFTRAS_WORLD1_BASIC_FORM_DAMAGE_RATIOS = Object.freeze({
+    melee: 0.10,
+    slash: 0.05,
+    friend: 0.025,
+    bullet: 0.025,
+});
+const CRAFTRAS_WORLD2_BASIC_FORM_HEALTH = 25_000;
+const CRAFTRAS_WORLD2_BASIC_FORM_SIZE = 32;
+const CRAFTRAS_JANE_FORM_SIZE = 44.8;
+const CRAFTRAS_BOSS_FORM_MELEE_RATIO = 0.10;
+const CRAFTRAS_BOSS_FORM_MELEE_COOLDOWN = 650;
+
+// Jane (Sword Guy's father) encounter.
+const CRAFTRAS_JANE_INTRO_SWORD_GUY_HEALTH = 500_000;
+const CRAFTRAS_JANE_PHASE_HEALTH = 1_000_000;
+const CRAFTRAS_JANE_SKILL_ONE_REST = 6_000;
+const CRAFTRAS_JANE_SAW_DAMAGE_RATIO = 0.30;
+const CRAFTRAS_JANE_SAW_SPEED = 22;
+const CRAFTRAS_JANE_SAW_BOUNCE_SPEED = 32;
+const CRAFTRAS_JANE_SAW_REARM_DELAY = 450;
+const CRAFTRAS_JANE_PARRY_BREAK_DURATION = 2_000;
+const CRAFTRAS_JANE_DASH_SET_INTERVAL = 2_000;
+const CRAFTRAS_JANE_DASH_STEP_INTERVAL = 300;
+const CRAFTRAS_JANE_DASH_DURATION = 170;
+const CRAFTRAS_JANE_DASH_DISTANCE = BLOCK_SIZE * 1.75;
+const CRAFTRAS_JANE_SLASH_DAMAGE_RATIO = 0.10;
+const CRAFTRAS_JANE_SLASH_SPEED = 68;
+const CRAFTRAS_JANE_PHASE_TWO_SLASH_DAMAGE_RATIO = 0.20;
+const CRAFTRAS_JANE_PHASE_TWO_SAW_COUNT = 2;
+const CRAFTRAS_JANE_PHASE_TWO_TELEPORT_MIN_RADIUS = BLOCK_SIZE * 10.5;
+const CRAFTRAS_JANE_PHASE_TWO_TELEPORT_MAX_RADIUS = BLOCK_SIZE * 18;
+const CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_WARNING_DURATION = 500;
+const CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_PARRY_WINDOW = 200;
+const CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_DURATION = 3_000;
+const CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_DAMAGE_RATIO = 10;
+const CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_SHIFT = 72;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_DURATION = 18_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_START_RADIUS = BLOCK_SIZE * 18;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_END_RADIUS = BLOCK_SIZE * 2.8;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_ROTATION_SPEED = 0.032;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_VOLLEY_INTERVAL = 850;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_SCREEN_SHIFT = 54;
+const CRAFTRAS_JANE_SKILL_TWO_RING_INTERVAL = 7_000;
+const CRAFTRAS_JANE_SKILL_TWO_RING_COUNT = 3;
+const CRAFTRAS_JANE_SKILL_TWO_DURATION = CRAFTRAS_JANE_SKILL_TWO_RING_INTERVAL * CRAFTRAS_JANE_SKILL_TWO_RING_COUNT;
+const CRAFTRAS_JANE_SKILL_TWO_ROTATE_DURATION = 3_500;
+const CRAFTRAS_JANE_SKILL_TWO_ROTATION_SPEED = 0.022;
+const CRAFTRAS_JANE_SKILL_TWO_SHOVE_WARNING = 1_000;
+const CRAFTRAS_JANE_SKILL_TWO_SHOVE_KNOCKBACK = 100;
+const CRAFTRAS_JANE_SKILL_TWO_SHOVE_IMPACT_DELAY = 220;
+const CRAFTRAS_JANE_SKILL_TWO_SHOVE_SWING_DURATION = 480;
+const CRAFTRAS_JANE_SKILL_TWO_SWORD_COUNT = 36;
+const CRAFTRAS_JANE_SKILL_TWO_BLUE_SWORDS = 2;
+const CRAFTRAS_JANE_SKILL_TWO_SWORD_RADIUS = BLOCK_SIZE * 16;
+const CRAFTRAS_JANE_SKILL_TWO_SWORD_SPEED = 5;
+const CRAFTRAS_JANE_SKILL_TWO_SWORD_DAMAGE_RATIO = 0.20;
+const CRAFTRAS_JANE_SKILL_TWO_BULLET_INTERVAL = 5_000;
+const CRAFTRAS_JANE_SKILL_TWO_BULLET_RADIUS = BLOCK_SIZE * 12;
+const CRAFTRAS_JANE_SKILL_TWO_BULLET_SPEED = 18;
+const CRAFTRAS_JANE_SKILL_TWO_BULLET_DAMAGE_RATIO = 0.10;
+const CRAFTRAS_JANE_SKILL_TWO_REPEL_SPEED = 30;
+const CRAFTRAS_JANE_SKILL_TWO_REPEL_DURATION = 900;
+const CRAFTRAS_JANE_SKILL_THREE_DURATION = 25_000;
+const CRAFTRAS_JANE_SKILL_THREE_CLONE_INTERVAL = 5_000;
+const CRAFTRAS_JANE_SKILL_THREE_CLONE_COUNT = 5;
+const CRAFTRAS_JANE_SKILL_THREE_JANE_DASH_INTERVAL = 10_000;
+const CRAFTRAS_JANE_SKILL_THREE_JANE_DASH_COUNT = 3;
+const CRAFTRAS_JANE_SKILL_THREE_SPEED = BLOCK_SIZE * 0.09 * 1.5 * 1.5;
+const CRAFTRAS_JANE_SKILL_THREE_REARM_DELAY = 2_000;
+const CRAFTRAS_JANE_SKILL_THREE_EXPLOSION_DAMAGE_RATIO = 0.50;
+const CRAFTRAS_JANE_SKILL_THREE_TRAIL_INTERVAL = 55;
+const CRAFTRAS_JANE_SKILL_THREE_MIMIC_HEALTH = 50_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_CLONE_HEALTH = 10_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ESCAPE_DEADLINE = 15_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ESCAPE_SPEED = BLOCK_SIZE * 4.5;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_INFERNO_DURATION = 3_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_INFERNO_DAMAGE_RATIO = 0.90;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_WARNING = 1_500;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_INTERVAL = 3_200;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_DURATION = 3_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_TURN_RATE = 0.0006;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_DURATION = 15_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_LENGTH = 9_600;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_WIDTH = 1_395;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_TRACKING = 0.001;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ONE_USE_CLONE_INTERVAL = 3_000;
+const CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ONE_USE_CLONE_COUNT = 5;
+const CRAFTRAS_JANE_SKILL_FOUR_SCREEN_DELAY = 1_700;
+const CRAFTRAS_JANE_SKILL_FOUR_SCREEN_DAMAGE_RATIO = 0.20;
+const CRAFTRAS_JANE_SKILL_FOUR_LASER_ACTIVE_DURATION = 28_000;
+const CRAFTRAS_JANE_SKILL_FOUR_DURATION = 35_000;
+const CRAFTRAS_JANE_SKILL_FOUR_LASER_WIDTH = 600;
+const CRAFTRAS_JANE_SKILL_FOUR_HITBOX_WIDTH = 300;
+const CRAFTRAS_JANE_SKILL_FOUR_LASER_DAMAGE_RATIO = 0.01;
+const CRAFTRAS_JANE_SKILL_FOUR_LASER_DAMAGE_INTERVAL = 100;
+const CRAFTRAS_JANE_SKILL_FOUR_LASER_SWEEP = Math.PI * 4 / CRAFTRAS_JANE_SKILL_FOUR_LASER_ACTIVE_DURATION;
+const CRAFTRAS_JANE_SKILL_FOUR_VOLLEY_INTERVAL = 750;
+const CRAFTRAS_JANE_SKILL_FOUR_VOLLEY_COUNT = 36;
+const CRAFTRAS_JANE_SKILL_FOUR_INNER_PETALS = 6;
+const CRAFTRAS_JANE_SKILL_FOUR_OUTER_PETALS = 8;
+const CRAFTRAS_JANE_SKILL_FOUR_BULLET_DAMAGE_RATIO = 0.10;
+const CRAFTRAS_JANE_SKILL_FOUR_BULLET_LIFETIME = 4_200;
+const CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION = 3_200;
+const CRAFTRAS_JANE_SKILL_FIVE_ROTATION_COUNT = 10;
+const CRAFTRAS_JANE_SKILL_FIVE_SPEED_MULTIPLIER = 1.2;
+const CRAFTRAS_JANE_SKILL_FIVE_ROTATION_DURATIONS = Object.freeze(Array.from(
+    { length: CRAFTRAS_JANE_SKILL_FIVE_ROTATION_COUNT },
+    (_, index) => CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION
+        / Math.pow(CRAFTRAS_JANE_SKILL_FIVE_SPEED_MULTIPLIER, index + 1),
+));
+const CRAFTRAS_JANE_SKILL_FIVE_IMPACT_DELAY = 500;
+const CRAFTRAS_JANE_SKILL_FIVE_DURATION = CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION
+    + CRAFTRAS_JANE_SKILL_FIVE_ROTATION_DURATIONS.reduce((sum, duration) => sum + duration, 0) + 800;
+const CRAFTRAS_JANE_SKILL_FIVE_LASER_LENGTH = 5_000;
+const CRAFTRAS_JANE_SKILL_FIVE_LASER_WIDTH = 1_400;
+const CRAFTRAS_JANE_SKILL_FIVE_HITBOX_WIDTH = 600;
+const CRAFTRAS_JANE_SKILL_FIVE_DAMAGE_RATIO = 0.50;
+const CRAFTRAS_JANE_SKILL_FIVE_MOVE_TOLERANCE = BLOCK_SIZE * 0.25;
+const CRAFTRAS_JANE_SKILL_FIVE_PULL_RADIUS = BLOCK_SIZE * 18;
+const CRAFTRAS_JANE_SKILL_FIVE_PULL_SPEED = BLOCK_SIZE * 1.35 * 1.2;
+const CRAFTRAS_JANE_SKILL_FIVE_PULL_VELOCITY = 0.14 * 1.2;
+const CRAFTRAS_JANE_INTRO_LINES = Object.freeze([
+    { speaker: "SWORD GUY", text: "Good... We meet again...", duration: 4_000 },
+    { speaker: "SWORD GUY", text: "You know what comes next, don't you?", duration: 4_000 },
+    { speaker: "SWORD GUY", text: "Are you ready?", duration: 3_000 },
+]);
+const CRAFTRAS_JANE_APPEARANCE_DIALOGUE = Object.freeze([
+    { speaker: "jane", text: "Son! It's time to dinner—", duration: 4_000 },
+    { speaker: "jane", text: "...", duration: 2_000 },
+    { speaker: "jane", text: "What happened to you?", duration: 4_000 },
+    { speaker: "sword", text: "Father... wait...", duration: 4_000 },
+    { speaker: "jane", text: "You.", duration: 2_000 },
+    { speaker: "jane", text: "Step away from my son.", duration: 4_000 },
+    { speaker: "jane", text: "You will pay for what you've done...", duration: 4_000 },
+]);
+const CRAFTRAS_JANE_PHASE_TWO_DIALOGUE = Object.freeze([
+    { speaker: "jane", text: "Why do you resist?", duration: 4_000 },
+    { speaker: "jane", text: "Do you not even know what your sin is?", duration: 4_000 },
+    { speaker: "jane", text: "There will be no mercy now.", duration: 4_000 },
+    { speaker: "jane", text: "Let me see how long you can survive.", duration: 4_000 },
+]);
+const CRAFTRAS_MAGIC_BOOK_GAUGE_MAX = 5_000;
+const CRAFTRAS_MAGIC_BOOK_RECHARGE_STEP = 10;
+const CRAFTRAS_MAGIC_BOOK_RECHARGE_INTERVAL = 100;
+const CRAFTRAS_MAGIC_BOOK_RECHARGE_LOCK = 5_000;
+const CRAFTRAS_MAGIC_BOOK_SHIFT_COST = 20;
+const CRAFTRAS_MAGIC_BOOK_SLASH_COST = 500;
+const CRAFTRAS_MAGIC_BOOK_SLASH_CHARGE = 3_000;
+const CRAFTRAS_MAGIC_BOOK_SLASH_COOLDOWN = 5_000;
+const CRAFTRAS_MAGIC_BOOK_BARRAGE_COST = 1_500;
+const CRAFTRAS_MAGIC_BOOK_BARRAGE_DURATION = 6_000;
+const CRAFTRAS_MAGIC_BOOK_BARRAGE_INTERVAL = 300;
+const CRAFTRAS_MAGIC_BOOK_BARRAGE_COOLDOWN = 10_000;
+const CRAFTRAS_MAGIC_BOOK_BARRAGE_SPEED = 34.5;
+const CRAFTRAS_MAGIC_BOOK_BARRAGE_ORBIT_DISTANCE = 2.64;
 const CRAFTRAS_BASE_LEVEL_CAP = 100;
 const CRAFTRAS_REBIRTH_LEVEL_STEP = 100;
+const CRAFTRAS_REBIRTH_ONE_RECIPE_UNLOCKS = Object.freeze(["great_iron_helmet", "great_diamond_helmet"]);
+const CRAFTRAS_REBIRTH_DASH_COOLDOWN = 5_000;
+const CRAFTRAS_REBIRTH_DASH_SPEED = 34;
 const CRAFTRAS_LEVEL_SCORE_BASE = 10_000;
 const CRAFTRAS_SHOP_REFRESH_INTERVAL = 10 * 60 * 1000;
 const VILLAGE_NPC_COUNTS = Object.freeze({
@@ -60,6 +241,7 @@ const VILLAGE_NPC_COUNTS = Object.freeze({
     pope: 1,
     blesser: 1,
 });
+const WORLD2_VILLAGE_GUARD_COUNT = 5;
 const VILLAGE_GUARD_AGGRO_RANGE = BLOCK_SIZE * 18;
 const VILLAGE_GUARD_ZONE_PADDING = 6;
 const VILLAGE_GUARD_ATTACK_RANGE = BLOCK_SIZE * 1.55;
@@ -74,6 +256,16 @@ const CRAFTRAS_CLERIC_STAFF_REVIVE_COOLDOWN = 30_000;
 const CRAFTRAS_OP_CLERIC_STAFF_DURATION = 30_000;
 const CRAFTRAS_OP_CLERIC_STAFF_HEAL_INTERVAL = 100;
 const CRAFTRAS_OP_CLERIC_STAFF_HEAL_RATE = 0.2;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_COOLDOWN = 7_000;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_CAST_DURATION = 900;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_DAMAGE = 700;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_DAMAGE = 200;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SIZE = 48;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_SIZE = 16;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SPEED = 25;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_SPEED = 34;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_TURN = 0.24;
+const CRAFTRAS_ZOMBIE_WIZARD_STAFF_PROJECTILE_LIFE = 8_000;
 const CRAFTRAS_POPE_STAFF_CUBE_COUNT = 8;
 const CRAFTRAS_POPE_STAFF_ORBIT_RADIUS = BLOCK_SIZE * 1.75;
 const CRAFTRAS_POPE_STAFF_ORBIT_SPEED = 0.0032;
@@ -102,6 +294,34 @@ const CRAFTRAS_POPE_STAFF_BEAM_LENGTH = 2000;
 const CRAFTRAS_POPE_STAFF_BEAM_WIDTH = CRAFTRAS_POPE_STAFF_BEAM_PARTICLE_SIZE * 1.75;
 const CRAFTRAS_POPE_STAFF_BEAM_COLOR = "yellow";
 const CRAFTRAS_POPE_STAFF_BEAM_ALPHA = 0.45;
+const CRAFTRAS_LASER_TEST_DURATION = 700;
+const CRAFTRAS_LASER_TEST_LENGTH = 2400;
+const CRAFTRAS_LASER_TEST_WIDTH = 450;
+const CRAFTRAS_LASER_TEST_DAMAGE = 10_000;
+const CRAFTRAS_LASER_TEST_DAMAGE_INTERVAL = 10;
+const CRAFTRAS_LASER_TEST_SHAKE_RANGE = 900;
+const CRAFTRAS_WORLD2_CHALLENGE_HEALTH = 10_000;
+const CRAFTRAS_WORLD2_CHALLENGE_FOV_MULTIPLIER = 6;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_DAMAGE_RATIO = 0.0005;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_MAX = 100;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_INTERVAL = 100;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_RECHARGE_PER_STEP = 2;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_RECHARGE_DELAY = 1_000;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_OVERHEAT_DURATION = 3_000;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_TURN_RATE = Math.PI * 0.9;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_RECOIL_PER_SECOND = 60;
+const CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_DURATION = 60_000;
+const CRAFTRAS_WORLD2_CHALLENGE_VELOCITY_DAMP = 0;
+const CRAFTRAS_WORLD2_CHALLENGE_ROCK_SPEED_RETAINED = 0.72;
+
+const craftrasChallenge2Hash = (x, y, salt = 0) => {
+    let value = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul((salt + 7331) | 0, 1274126177);
+    value = Math.imul(value ^ value >>> 13, 1274126177);
+    return ((value ^ value >>> 16) >>> 0) / 4294967295;
+};
+const CRAFTRAS_SCREEN_CUT_TEST_RADIUS = BLOCK_SIZE * 30;
+const CRAFTRAS_SCREEN_CUT_TEST_EFFECT_DURATION = 2_000;
+const CRAFTRAS_SCREEN_CUT_TEST_SHIFT = 92;
 const VILLAGE_GUARD_CLERIC_RETREAT_HEALTH_RATIO = 0.4;
 const VILLAGE_BUILDER_LIMIT = 5;
 const VILLAGE_BUILDER_REPAIR_RANGE = BLOCK_SIZE * 1.05;
@@ -195,6 +415,135 @@ const CRAFTRAS_THE_SWORD_READY_DURATION = 3000;
 const CRAFTRAS_THE_SWORD_RECOVER_INTERVAL = 100;
 const CRAFTRAS_THE_SWORD_RECOVER_PER_TICK = 100;
 const CRAFTRAS_THE_SWORD_PLAYER_DAMAGE_CAP = 10_000_000_000;
+const CRAFTRAS_SWORD_GUY_MAX_INCOMING_DAMAGE = 100;
+const CRAFTRAS_SWORD_GUY_SHIELD_DAMAGE_RATIO = 0.10;
+const CRAFTRAS_SWORD_GUY_SHIELD_MIN_DAMAGE = 50;
+const CRAFTRAS_SWORD_GUY_2_OPENING_LINES = Object.freeze([
+    { text: "So...", duration: 3_000 },
+    { text: "You came back...", duration: 4_000 },
+    { text: "Let's warm up a little first.", duration: 4_000 },
+]);
+const CRAFTRAS_SWORD_GUY_2_NO_PARRY_LINES = Object.freeze([
+    { text: "Wait.....", duration: 3_000 },
+    { text: "You can't parry?", duration: 4_000 },
+    { text: "Well... well... Then you can't fight me....", duration: 5_000 },
+    { text: 'Come back next time with a "Parrying Tool".', duration: 5_000 },
+    { text: "You can probably buy one at the shop.", duration: 4_000 },
+    { text: "Bye bye", duration: 3_000 },
+]);
+const CRAFTRAS_SWORD_GUY_2_READY_LINE = Object.freeze({ text: "Are you ready?", duration: 4_000 });
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_DIALOGUE = Object.freeze([
+    { speaker: "basic", text: "Alright....", duration: 3_000 },
+    { speaker: "basic", text: "That should be enough for a warm-up, right?", duration: 5_000 },
+    { speaker: "basic", text: "Now let's get serious!", duration: 4_000 },
+    { speaker: "basic", text: "READ-", duration: 1_000, startPhaseTwo: true, spawnBominik: true },
+    { speaker: "unknown", text: "hi basic", duration: 3_000 },
+    { speaker: "basic", text: "Bominik?? What are you doing here!?", duration: 5_000, revealBominik: true },
+    { speaker: "bominik", text: "That's what I want to ask you.", duration: 4_000 },
+    { speaker: "bominik", text: "What are you doing here?", duration: 5_000 },
+    { speaker: "basic", text: "I was playing with my friend.", duration: 4_000 },
+    { speaker: "bominik", text: "Really?", duration: 3_000 },
+    { speaker: "bominik", text: "Is this guy strong enough to play with you?", duration: 4_000 },
+    { speaker: "basic", text: "Yeah. He's much stronger than I expected.", duration: 5_000 },
+    { speaker: "bominik", text: "Then I can join too, right?", duration: 4_000 },
+    { speaker: "basic", text: "Wouldn't that be too much for him?", duration: 4_000 },
+    { speaker: "bominik", text: "Who cares?", duration: 3_000 },
+    { speaker: "bominik", text: "If he's really that strong, he should be able to take both of us at once.", duration: 5_000 },
+    { speaker: "basic", text: "Alright....", duration: 3_000 },
+    { speaker: "basic", text: "Then, are you ready?", duration: 4_000 },
+]);
+const CRAFTRAS_SWORD_GUY_2_TOKEN_STRIPPED_MESSAGE = "A mysterious power has stripped you of your TOKEN.";
+const CRAFTRAS_SWORD_GUY_2_HEALTH = 3_000;
+const CRAFTRAS_SWORD_GUY_2_MAX_INCOMING_DAMAGE = 500;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAX_INCOMING_DAMAGE = 1_000;
+const CRAFTRAS_SWORD_GUY_2_SCREEN_DAMAGE_RATIO = 0.30;
+const CRAFTRAS_SWORD_GUY_2_SCREEN_MIN_DAMAGE = 300;
+const CRAFTRAS_SWORD_GUY_2_SWORD_DAMAGE_RATIO = 0.10;
+const CRAFTRAS_SWORD_GUY_2_SWORD_MIN_DAMAGE = 100;
+const CRAFTRAS_SWORD_GUY_2_FRIEND_DAMAGE_RATIO = 0.05;
+const CRAFTRAS_SWORD_GUY_2_FRIEND_MIN_DAMAGE = 100;
+const CRAFTRAS_SWORD_GUY_2_NOW_COOLDOWN = 15_000;
+const CRAFTRAS_SWORD_GUY_2_NOW_STEP_DURATION = 500;
+const CRAFTRAS_SWORD_GUY_2_NOW_DURATION = 200;
+const CRAFTRAS_SWORD_GUY_2_FRIEND_INTERVAL = 3_000;
+const CRAFTRAS_SWORD_GUY_2_FRIEND_SPAWN_DELAY = 600;
+const CRAFTRAS_SWORD_GUY_2_FRIEND_SPEED = 48;
+const CRAFTRAS_SWORD_GUY_2_FRIEND_LIFE = 8_000;
+const CRAFTRAS_SWORD_GUY_2_SPAWN_EXCLUSION_RADIUS = BLOCK_SIZE * 30;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH = 25_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_COOLDOWN = 10_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_OPENING_CHARGE = 3_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_OPENING_RECOVERY = 3_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_PROJECTILE_LINGER = 500;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY = 2_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FRIEND_SPEED = 22;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_ORB_SPEED = 24;
+const CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FAST_ORB_SPEED = 38;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_HEALTH = 100_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_START = 100;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_DROP_CHANCE = 0.5;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_DROP = 10;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_SWORD_INTERVAL = 5_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_CLONE_INTERVAL = 10_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_ORB_INTERVAL = 10_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_SWORD_INTERVAL = 10_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_SWORD_REPEAT = 3;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_SWORD_DOUBLE_GAP = 600;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_SWORD_RAIN_INTERVAL = 13_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_SWORD_RAIN_COUNT = 20;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_SWORD_RAIN_STEP = 200;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PRISON_SWORDS = 16;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PRISON_WARNING = 850;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_VORTEX_DURATION = 6_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_FRIEND_DAMAGE = 0.30;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FRIEND_DAMAGE = 0.05;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_BULLET_DAMAGE = 0.05;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_BIG_BULLET_DAMAGE = 0.20;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PINGPONG_DAMAGE = 0.50;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_STORM_PINGPONG_BOSS_DAMAGE = 20_000;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_STORM_PINGPONG_PARRIES = 20;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_STORM_RESTART_DELAY = 1_200;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FINAL_PARRIES = 20;
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_DIALOGUE = Object.freeze([
+    { speaker: "bominik", text: "Wow.....", duration: 3_000 },
+    { speaker: "bominik", text: "You're much stronger than I expected.", duration: 4_000 },
+    { speaker: "basic", text: "See? I told you.", duration: 3_000 },
+    { speaker: "basic", text: "He's incredibly strong.", duration: 4_000 },
+    { speaker: "basic", text: "Bominik.", duration: 2_000 },
+    { speaker: "bominik", text: "Huh?", duration: 2_000 },
+    { speaker: "basic", text: "I think we should prepare that attack.", duration: 4_000 },
+    { speaker: "bominik", text: "You mean that attack!?", duration: 3_000 },
+    { speaker: "basic", text: "Yeah, that attack!", duration: 3_000 },
+    { speaker: "basic", text: "Hey, player.", duration: 3_000 },
+    { speaker: "basic", text: "Just remember this.", duration: 3_000 },
+    { speaker: "basic", text: "You're not the only one who can parry!", duration: 4_000 },
+    { speaker: "basic", text: "Let's see how long you can last.", duration: 4_000 },
+    { speaker: "basic", text: "Get ready!", duration: 3_000 },
+]);
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FINAL_SETUP_DIALOGUE = Object.freeze([
+    { speaker: "bominik", text: "Ouch!!!", duration: 3_000 },
+    { speaker: "basic", text: "Oops.... sorry.", duration: 4_000 },
+    { speaker: "basic", text: "PLAYER IT IS OUR LAST ATTACK!!", duration: 4_000 },
+]);
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_WIN_DIALOGUE = Object.freeze([
+    { speaker: "basic", text: "Agh.....", duration: 3_000 },
+    { speaker: "basic", text: "That was the attack I was most confident in.....", duration: 4_000 },
+    { speaker: "basic", text: "Alright, you win....", duration: 4_000 },
+    { speaker: "bominik", text: "You defeated both of us at the same time....", duration: 4_000 },
+    { speaker: "bominik", text: "Still, that was really fun!", duration: 4_000 },
+    { speaker: "bominik", text: "Let's meet again in World 3.", duration: 4_000 },
+    { speaker: "bominik", text: "We'll make it even harder next time!", duration: 5_000 },
+    { speaker: "both", text: "Bye bye", duration: 3_000 },
+]);
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_REWARD_DIALOGUE = Object.freeze([
+    { speaker: "basic", text: "Right, I forgot to give you a reward.", duration: 4_000 },
+    { speaker: "basic", text: "Bominik said to give you this.", duration: 3_000 },
+    { speaker: "basic", text: "Bye bye~", duration: 3_000 },
+]);
+const CRAFTRAS_SWORD_GUY_2_PHASE_THREE_LOSS_DIALOGUE = Object.freeze([
+    { speaker: "basic", text: "Phew.... That was really close....", duration: 4_000 },
+    { speaker: "basic", text: "What a shame.... Better luck next time!", duration: 5_000 },
+]);
 const CRAFTRAS_THE_SWORD_DEATH_LINES = Object.freeze([
     { text: "wow....", duration: 2_000 },
     { text: "very impressive....", duration: 3_000 },
@@ -219,34 +568,95 @@ const CRAFTRAS_CHALLENGE_INTRO_LINES = Object.freeze([
 ]);
 const CRAFTRAS_CHALLENGE_SPAWN_STAGES = Object.freeze({
     1: { cap: 20, interval: 500, normal: 0.70, equipped: 0.05, runner: 0.20, giant: 0.10 },
-    2: { cap: 10, interval: 1_000, normal: 1, equipped: 0, runner: 0, giant: 0 },
-    3: { cap: 50, interval: 200, normal: 0.70, equipped: 0.05, runner: 0.20, giant: 0.10 },
+    2: { cap: 10, interval: 500, normal: 1, equipped: 0, runner: 0, giant: 0 },
+    3: { cap: 50, interval: 400, normal: 0.70, equipped: 0.05, runner: 0.20, giant: 0.10 },
     4: { cap: 20, interval: 2_000, normal: 0.20, equipped: 1, runner: 0, giant: 0.80 },
-    5: { cap: 80, interval: 100, normal: 0.90, equipped: 0.05, runner: 0.07, giant: 0.03 },
+    5: { cap: 80, interval: 500, normal: 0.90, equipped: 0.05, runner: 0.07, giant: 0.03 },
     6: { cap: 20, interval: 500, normal: 0.80, equipped: 0, runner: 0.20, giant: 0 },
-    7: { cap: 80, interval: 100, normal: 0.85, equipped: 0.10, runner: 0.10, giant: 0.05 },
+    7: { cap: 80, interval: 400, normal: 0.85, equipped: 0.10, runner: 0.10, giant: 0.05 },
 });
 const CRAFTRAS_CHALLENGE_STAGE_SPAWN_DELAY = 10_000;
 const CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL = 5_000;
-const CRAFTRAS_CHALLENGE_NPC_REGEN_AMOUNT = 100;
+const CRAFTRAS_CHALLENGE_NPC_REGEN_AMOUNT = 200;
+const CRAFTRAS_CHALLENGE_CAPTAIN_REGEN_INTERVAL = 1_000;
 const CRAFTRAS_CHALLENGE_FAIL_MESSAGE_DURATION = 4_000;
+const CRAFTRAS_CHALLENGE_CLEAR_DIVINE_DURATION = 5_000;
+const CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION = 5_000;
+const CRAFTRAS_CHALLENGE_CLEAR_MESSAGE_DURATION = 4_000;
 const CRAFTRAS_CHALLENGE_STRAGGLER_DISTANCE = BLOCK_SIZE * 18;
+const CRAFTRAS_CHALLENGE_GLITCH_MARKS = Object.freeze(["\u0336", "\u0311", "\u0342", "\u0307", "\u0325", "\u0330"]);
+const makeChallengeGlitchText = text => [...String(text || "")]
+    .map((character, index) => /[A-Za-z]/.test(character)
+        ? `${character}${CRAFTRAS_CHALLENGE_GLITCH_MARKS[index % CRAFTRAS_CHALLENGE_GLITCH_MARKS.length]}`
+        : character)
+    .join("");
 const CRAFTRAS_CHALLENGE_MAGIC_DAMAGE = 20;
 const CRAFTRAS_CHALLENGE_MAGIC_SKILL_COOLDOWN = 10_000;
 const CRAFTRAS_CHALLENGE_MAGIC_FADE_DURATION = 700;
+const CRAFTRAS_CHALLENGE_MAGIC_BOSS_DELAY = 15_000;
+const CRAFTRAS_CHALLENGE_MAGIC_BOSS_HEALTH = 66_666;
+const CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_HEALTH = 44_444;
+const CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_ENTRY_DURATION = 20_000;
+const CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_HEALTH = 22_222;
+const CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_ENTRY_DURATION = 20_000;
+const CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_HEALTH = 11_111;
+const CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_CHARGE_DURATION = 30_000;
+const CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_PUSH = 3.9;
+const CRAFTRAS_CHALLENGE_MAGIC_PHASE_DIALOGUE_DURATION = 4_000;
+const CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_CHARGE_DURATION = 20_000;
+const CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_PULL = CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_PUSH / 1.2;
+const CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_FEED_INTERVAL = 500;
+const CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_FEED_SIZE = 48;
+const CRAFTRAS_CHALLENGE_MAGIC_SIDE_BULLET_CAP = 180;
+const CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE = 18;
+const CRAFTRAS_CHALLENGE_MAGIC_ENTRY_VOLLEY_INTERVAL = 650;
+const CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_ENTRY_CAP = 180;
+const CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_ENTRY_CAP = 280;
+const CRAFTRAS_CHALLENGE_BOSS_DEFEAT_FADE_DURATION = 1_200;
+const CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_NUMBER_DURATION = 300;
+const CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_BANG_DURATION = 200;
+const CRAFTRAS_CHALLENGE_BOSS_DEFEAT_BLUE_FLASH_DURATION = 2_000;
+const CRAFTRAS_CHALLENGE_BOSS_DEFEAT_WAVE_INTERVAL = 200;
+const CRAFTRAS_CHALLENGE_BOSS_DEFEAT_WAVE_CAP = 80;
+const CRAFTRAS_CHALLENGE_CAPTAIN_FAILURE_WAVE_SIZE = 24;
+const CRAFTRAS_CHALLENGE_GUARDIAN_LAST_STAND_SLASH_INTERVAL = 100;
+const CRAFTRAS_CHALLENGE_SKELETON_BULLET_SPEED = 6;
+const CRAFTRAS_CHALLENGE_MAGIC_ORB_SIZE = 32;
 const CRAFTRAS_CHALLENGE_CURSE_SPAWN_INTERVAL = 2_500;
 const CRAFTRAS_CHALLENGE_CURSE_COUNT = 6;
 const CRAFTRAS_CHALLENGE_CURSE_DURATION = 10_000;
+const CRAFTRAS_CHALLENGE_TITAN_DASH_INTERVAL = 1_000;
+const CRAFTRAS_CHALLENGE_TITAN_DASH_DISTANCE = BLOCK_SIZE * 3.25;
+const CRAFTRAS_CHALLENGE_TITAN_SHAKE_DURATION = 180;
+const CRAFTRAS_CHALLENGE_TITAN_SHAKE_AMOUNT = 24;
+const CRAFTRAS_CHALLENGE_STORY_EIGHT_WHITEOUT_DURATION = 3_000;
+const CRAFTRAS_CHALLENGE_STORY_EIGHT_FOG_DURATION = 8_000;
+const CRAFTRAS_CHALLENGE_STORY_EIGHT_DIALOGUE_DELAY = 1_400;
 const CRAFTRAS_CHALLENGE_MAGICIAN_FAREWELL = "L̶̮͎͚̰̠͎͖̠̤̯̭̝͍͚̳͊̾̉̀͗͑̃̅̍̀̽̆̋̓͒̒́̉̇̿͋̏Ü̶̟̭̲̯̜̪̭̝͚̣͚̪̥̝̟̟̗͍̘͆̀̾͆̓̌͆̌̅̿̈́̎̐̊̑̑͋̀̔̚C̸͈̫͙̠̭̪̪̝̮̝͇̑̌̀̑͑̾̎̌͊̔͑̑̏̓̎́͋̊̅̽̈́̆ͅK̴̯̙̘̬͍̤̮̟̘͔͎͖͍̫̲̱̈́̇̎̂́̋̏̈́̍͑̉̿̿̋͐̀̓̉̂̚̚Y҉̦̲̮̣͖̳͎͇̝̱̦̗̋̂̽̌̈̇͑͂̆͛̽̚ Y̵̖͓̤̱͇̬͈̬̘͇̩͈̥̦̮̠̱̓͛̋̒̃̇̉̆̑̐͒̎̊̂̄̚ͅO̷͍̗̗̝̭͓̲͍̙̘͉̞͇͙͎̝̟͈͈͇͕̍͋̓͋̓̅̄̍͋̈́̇̅̈́̀́̽̇́͋̉̀̓Ụ̸̞̘̳̬̥̙͚͔̮̠̳̲̭̗̘̯̠̬͖͋̆͌͒͋͌͆́͛̇̆̇̿.̴͔͖̥̱̬̰̬̩͉͍̱̣̦̥̥̗̲͚͗̈͑̐̂̅̀̿̇́́̚.̶̭̞̯͖͙̣̯̤̭̪̯͉͇̭̜̰̰͇̲̪͇͔͙́͋̐͊̀̀͛̀́͊̊̆̋͐̌͛́́̿̐.̶̬͇̘̬̭̫̞̠̘̟̘̗̬̪̩̞͍̤̝̑̑͌͑̉̊͌̽̓̇͋̓͌̐̾͛ͅͅ.҉̥̠͚̮̬̙̲̲̩͉̝͙͔͇̥̦͕͉̤̜̣͇̀́̐͗̃̌̽̅́͋̀̎́̂͗̽̍̊̽ͅ.҈̟͚̭̫̰̭̯͔̣̞̮̗̥͇̝̟̮̞̫̬̠͕͆̃̽̀͑́̈́̅̆́͋͂͒̓̔̉̽́́͊͋͊͐̚ͅ";
 const CRAFTRAS_GREAT_FRIEND_ITEM_ID = "the_great_friend";
-const CRAFTRAS_GREAT_FRIEND_COMPANION_DAMAGE = 100;
+const CRAFTRAS_GREAT_FRIEND_COMPANION_LEVEL_MULTIPLIER = 4;
 const CRAFTRAS_GREAT_FRIEND_COMPANION_INTERVAL = 1_000;
 const CRAFTRAS_GREAT_FRIEND_COMPANION_RANGE = BLOCK_SIZE * 12;
 const CRAFTRAS_GREAT_FRIEND_COMPANION_SPEED = 51;
 const CRAFTRAS_GREAT_FRIEND_COMPANION_FOLLOW_RADIUS = BLOCK_SIZE * 1.8;
+const CRAFTRAS_GREAT_FRIEND_COMBO_COOLDOWN = 15_000;
+const CRAFTRAS_GREAT_FRIEND_COMBO_SLASH_INTERVAL = 1_000;
+const CRAFTRAS_GREAT_FRIEND_COMBO_FINISH_DELAY = 850;
+const CRAFTRAS_GREAT_FRIEND_COMBO_SPIN_DURATION = 500;
+const CRAFTRAS_GREAT_FRIEND_COMBO_HITBOX_SIZE = BLOCK_SIZE * 2;
+const CRAFTRAS_GREAT_FRIEND_COMBO_DAMAGE_MULTIPLIERS = Object.freeze([5, 5, 7]);
 const CRAFTRAS_CHALLENGE_KEY_ITEM = "royal_key";
+const CRAFTRAS_WORLD2_CHALLENGE_KEY_ITEM = "ancient_key";
 const CRAFTRAS_CHALLENGE_TRANSITION_OUT_MS = 2_400;
 const CRAFTRAS_CHALLENGE_TRANSFER_DELAY_MS = 2_650;
+const CRAFTRAS_CHALLENGE_PLAYER_TEAM = -20_000;
+const CRAFTRAS_WORLD2_CHALLENGE_SPAWN_DELAY = 10_000;
+const CRAFTRAS_WORLD2_CHALLENGE_WARNING_DURATION = 5_000;
+const CRAFTRAS_WORLD2_CHALLENGE_CLEAR_DURATION = 4_000;
+const CRAFTRAS_WORLD2_CHALLENGE_WORM_PART_DELAY = 60;
+const CRAFTRAS_WORLD2_CHALLENGE_WORM_WHITEN_DURATION = 700;
+const CRAFTRAS_WORLD2_CHALLENGE_WORM_FADE_DURATION = 1_000;
+const CRAFTRAS_WORLD2_CHALLENGE_SPAWN_SUPPRESS_RADIUS = BLOCK_SIZE * 16;
 const CRAFTRAS_OP_CLERIC_STAFF_RADIUS = BLOCK_SIZE * 12;
 const CRAFTRAS_THE_SWORD_POSE = Object.freeze({
     idleAngle: 169,
@@ -274,10 +684,107 @@ const CRAFTRAS_MOB_SEPARATION_MAX_PUSH = BLOCK_SIZE * 0.09;
 const DAY_PHASE_DURATION = 10 * 60 * 1000;
 const DAY_CYCLE_DURATION = DAY_PHASE_DURATION * 3;
 const DAY_PHASES = ["morning", "afternoon", "night"];
+const CRAFTRAS_WORLD2_NEARBY_MOB_CAP = 15;
+const CRAFTRAS_WORLD2_NEARBY_MOB_RADIUS = BLOCK_SIZE * 24;
+const CRAFTRAS_WORLD2_ZOMBIE_CAP = 6;
+const CRAFTRAS_WORLD2_SKELETON_CAP = 4;
+const CRAFTRAS_WORLD2_WORM_CAP = 3;
+const CRAFTRAS_WORLD2_GIANT_CAVE_CAP = 8;
+const CRAFTRAS_WORLD2_GIANT_CAVE_SPAWN_INTERVAL = 10_000;
+const CRAFTRAS_WORLD2_GIANT_CAVE_BOUNDS = Object.freeze({ minX: 260, maxX: 448, minY: 286, maxY: 433 });
+const CRAFTRAS_WORLD2_MAGIC_BOSS_HEALTH = 66_666;
+const CRAFTRAS_WORLD2_MAGIC_BOSS_SPAWN_CHANCE = 0.02;
+const CRAFTRAS_WORLD2_MAGIC_SMALL_DAMAGE = 200;
+const CRAFTRAS_WORLD2_MAGIC_LARGE_DAMAGE = 500;
+const CRAFTRAS_WORLD2_MAGIC_HOMING_DAMAGE = 200;
+const CRAFTRAS_WORLD2_MAGIC_SCREEN_DAMAGE = 700;
+const CRAFTRAS_WORLD2_MAGIC_WARNING_STEP = 500;
+const CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY = 1.5;
+const CRAFTRAS_WORLD2_MAGIC_TITAN_HEALTH = 30_000;
+const CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_INTERVAL = 5_000;
+const CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_LIFETIME = 10_000;
+const CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_MAX = 4;
+const CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_PULL_RADIUS = BLOCK_SIZE * 10;
+const CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_DAMAGE = 1_000;
+const CRAFTRAS_WORLD2_MAGIC_DEATH_DIALOGUE_DURATION = 4_000;
+const CRAFTRAS_WORLD2_BANDAGE_SPAWN_INTERVAL = 20_000;
+const CRAFTRAS_WORLD2_SKELETON_SPAWN_INTERVAL = 25_000;
+const CRAFTRAS_WORLD2_WORM_SPAWN_INTERVAL = 15_000;
+const CRAFTRAS_WORM_DASH_INTERVAL = 5_000;
+const CRAFTRAS_WORM_DASH_DURATION = 650;
+const CRAFTRAS_WORM_HIT_STOP_DURATION = 500;
+const CRAFTRAS_WORM_DASH_BLOCKS_PER_SECOND = 6;
+const CRAFTRAS_WORM_BURROW_BLOCKS_PER_SECOND = 3;
+const CRAFTRAS_WORM_TURN_RADIANS_PER_SECOND = Math.PI / 4;
+const CRAFTRAS_WORM_REVEAL_DURATION = 10_000;
+const CRAFTRAS_WORM_TRANSITION_PART_DELAY = 75;
+const CRAFTRAS_WORM_TRANSITION_PART_DURATION = 240;
+const CRAFTRAS_WORM_SURFACE_COLOR = "#79513b";
+const CRAFTRAS_WORM_BURROW_COLOR = "#050505";
+const CRAFTRAS_WORM_BURROW_ALPHA = 0.4;
+const CRAFTRAS_THE_WORM_GRAVE_COLOR = "#f4f4ee";
+const CRAFTRAS_THE_WORM_HEALTH = 1_000_000;
+const CRAFTRAS_THE_WORM_CONTACT_DAMAGE = 1_000;
+const CRAFTRAS_THE_WORM_CONTACT_KNOCKBACK = 100;
+const CRAFTRAS_THE_WORM_BODY_CONTACT_KNOCKBACK = 150;
+const CRAFTRAS_THE_WORM_SPIKE_DAMAGE = 500;
+const CRAFTRAS_THE_WORM_SPEED_BONUS = 100;
+const CRAFTRAS_THE_WORM_DASH_INTERVAL = 5_000;
+const CRAFTRAS_THE_WORM_FINAL_STAND_HEALTH_RATIO = 0.2;
+const CRAFTRAS_THE_WORM_FINAL_STAND_DASH_INTERVAL = 1_000;
+const CRAFTRAS_THE_WORM_FINAL_STAND_SHAKE_MULTIPLIER = 1.5;
+const CRAFTRAS_THE_WORM_DASH_DURATION = 650;
+const CRAFTRAS_THE_WORM_SPIKE_INTERVAL = 20_000;
+const CRAFTRAS_THE_WORM_SPIKE_COUNT = 3;
+const CRAFTRAS_THE_WORM_SKILL_TWO_CHANCE = 0.1;
+const CRAFTRAS_THE_WORM_SKILL_TWO_COOLDOWN = 30_000;
+const CRAFTRAS_THE_WORM_SPIKE_LIFETIME = 20_000;
+const CRAFTRAS_THE_WORM_TURN_RADIANS_PER_SECOND = Math.PI * 0.9;
+const CRAFTRAS_THE_WORM_SPIKE_TURN_RADIANS_PER_SECOND = Math.PI / 3;
+const CRAFTRAS_THE_WORM_TICKS_PER_SECOND = 30;
+const CRAFTRAS_THE_WORM_INTERCEPT_CURVE_SCALE = 2.25;
+const CRAFTRAS_THE_WORM_SHAKE_RANGE = 2_400;
+const CRAFTRAS_THE_WORM_SHAKE_INTERVAL = 250;
+const CRAFTRAS_THE_WORM_PROXIMITY_SHAKE_MULTIPLIER = 2;
+const CRAFTRAS_SPIKER_PULL_DURATION = 10_000;
+const CRAFTRAS_SPIKER_WAIT_DURATION = 5_000;
+const CRAFTRAS_SPIKER_BURROW_BLOCKS_PER_SECOND = 14;
+const CRAFTRAS_SPIKER_EMERGE_DURATION = 650;
+const CRAFTRAS_SPIKER_EXPOSED_DURATION = 10_000;
+const CRAFTRAS_SPIKER_BURROW_DURATION = 120;
+const CRAFTRAS_SPIKER_PULL_RADIUS = BLOCK_SIZE * 18;
+const CRAFTRAS_SPIKER_PULL_TRAIL_INTERVAL = 45;
+const CRAFTRAS_SPIKER_NORMAL_SHOT_INTERVAL = 900;
+const CRAFTRAS_SPIKER_GIANT_SHOT_DELAY = 4_500;
+const CRAFTRAS_SPIKER_PROJECTILE_LIFETIME = 20_000;
+const CRAFTRAS_SPIKER_MAX_NORMAL_SPIKES = 4;
+const CRAFTRAS_SPIKER_NORMAL_TURN_RADIANS_PER_SECOND = Math.PI * 0.42;
+const CRAFTRAS_SPIKER_CONTACT_DAMAGE = 1_000;
+const CRAFTRAS_SPIKER_SPIKE_DAMAGE = 100;
+const CRAFTRAS_SPIKER_GIANT_SPIKE_DAMAGE = 500;
+const CRAFTRAS_SPIKER_ROTATION_RADIANS_PER_SECOND = Math.PI;
+const CRAFTRAS_SPIKER_PROJECTILE_BOUNCE_DURATION = 300;
+const CRAFTRAS_SPIKER_BURROW_ALPHA = 0.4;
+const CRAFTRAS_SPIKER_EMERGE_EFFECT_INTERVAL = 80;
+const CRAFTRAS_FIRE_DURATION = 5_000;
+const CRAFTRAS_FIRE_DAMAGE_INTERVAL = 1_000;
+const CRAFTRAS_FIRE_DAMAGE_RATIO = 0.05;
+const CRAFTRAS_PHOENIX_PROJECTILE_LIFE = 3_000;
+const CRAFTRAS_PHOENIX_EXPLOSION_DAMAGE = 150;
+const CRAFTRAS_PHOENIX_DEATH_DAMAGE = 500;
+const CRAFTRAS_PHOENIX_DEATH_WINDUP = 3_000;
 const WEATHER_CHECK_INTERVAL = 10 * 60 * 1000;
 const WEATHER_RAIN_DURATION = 10 * 60 * 1000;
 const WEATHER_INITIAL_RAIN_CHANCE = 0.05;
 const WEATHER_RAIN_CHANCE_STEP = 0.05;
+const WHITE_INFERNO_INITIAL_CHANCE = 0.20;
+const WHITE_INFERNO_CHANCE_STEP = 0.20;
+const WHITE_INFERNO_WARNING_DURATION = 30_000;
+const WHITE_INFERNO_DURATION = 60_000;
+const WHITE_INFERNO_AFTERMATH_DURATION = 10 * 60 * 1000;
+const WHITE_INFERNO_DAMAGE_INTERVAL = 500;
+const WHITE_INFERNO_HEALTH_DAMAGE_RATIO = 0.01;
+const WHITE_INFERNO_MAX_DAMAGE = 500;
 const KINGDOM_WEATHER_TRANSITION_DURATION = 60_000;
 const KINGDOM_WEATHER_SWAP_DELAY = KINGDOM_WEATHER_TRANSITION_DURATION / 2;
 const BLOCK_CODES = Object.freeze({
@@ -304,10 +811,13 @@ const BLOCK_CODES = Object.freeze({
     [BLOCKS.DIAMOND_BLOCK]: 18,
     [BLOCKS.DIRT_PATH]: 19,
     [BLOCKS.CHALLENGE_START]: 22,
+    [BLOCKS.WORLD2_CHALLENGE_START]: 29,
     [BLOCKS.CHALLENGE_SPAWN]: 23,
     [BLOCKS.TRANSPARENT_BLOCK]: 24,
     [BLOCKS.ROUTE_MARKER]: 25,
+    [FLOORS.SAND]: 27,
 });
+const WORLD2_STONE_FLOOR_CODE = 28;
 const BLOCK_HEALTH = Object.freeze({
     [BLOCKS.GRASS_WALL]: 50,
     [BLOCKS.DIRT_WALL]: 50,
@@ -331,9 +841,16 @@ const BLOCK_HEALTH = Object.freeze({
     [BLOCKS.GOLD_BLOCK]: 400,
     [BLOCKS.DIAMOND_BLOCK]: 600,
     [BLOCKS.CHALLENGE_START]: 1_000_000_000,
+    [BLOCKS.WORLD2_CHALLENGE_START]: 1_000_000_000,
     [BLOCKS.CHALLENGE_SPAWN]: 1_000_000_000,
     [BLOCKS.TRANSPARENT_BLOCK]: 1_000_000_000,
     [BLOCKS.ROUTE_MARKER]: 1_000_000_000,
+});
+const WORLD2_BLOCK_HEALTH = Object.freeze({
+    [BLOCKS.ROCK]: 300,
+    [BLOCKS.CORE_ROCK]: 300,
+    [BLOCKS.CRYSTAL_ORE]: 400,
+    [BLOCKS.IRON_ORE]: 500,
 });
 const BLOCK_DROPS = Object.freeze({
     [BLOCKS.GRASS_WALL]: { id: "grass_block", name: "Grass Block" },
@@ -373,16 +890,41 @@ const MOB_SCORES = Object.freeze({
     iron_sword_zombie: 2500,
     diamond_sword_zombie: 2500,
     giant_zombie: 2500,
+    iron_armored_giant_zombie: 60000,
+    diamond_armored_giant_zombie: 90000,
+    artillery_giant_zombie: 80000,
+    ruby_armored_giant_zombie: 120000,
+    elite_giant_zombie: 500000,
     runner_zombie: 2500,
     cursed_zombie: 0,
     titan_zombie: 10000,
     magical_zombie: 0,
+    world2_magical_zombie: 0,
     king_zombie: 15000,
     king_guardian: 8000,
     skeleton: 2500,
     sniper_skeleton: 3500,
     cannon_skeleton: 5000,
+    bandage_zombie: 20000,
+    armored_bandage_zombie: 40000,
+    giant_bandage_zombie: 40000,
+    elite_bandage_zombie: 60000,
+    burning_skeleton: 20000,
+    sniper_burning_skeleton: 30000,
+    phoenix_skeleton: 60000,
+    fire_zombie: 20000,
+    fire_worm: 30000,
+    worm: 30000,
+    large_worm: 50000,
+    giant_worm: 500000,
+    the_worm: 0,
+    the_worm_grave: 0,
+    spiker: 1000000,
+    spiker_spike: 0,
+    spiker_giant_spike: 0,
     sword_guy: 25000,
+    sword_guy_2: 0,
+    jane: 0,
     creeper: 5000,
     annihilator: 25000,
     the_nuclear: 100000,
@@ -392,11 +934,14 @@ const MOB_SCORES = Object.freeze({
     blacksmith: 0,
     builder: 0,
     guard: 0,
+    world2_guard: 0,
     villager: 0,
     captain: 0,
     cleric: 0,
     merchant: 0,
     monster_merchant: 0,
+    miner: 0,
+    healer: 0,
     pope: 0,
     blesser: 0,
 });
@@ -407,16 +952,41 @@ const MOB_CLASS_NAMES = Object.freeze({
     iron_sword_zombie: "craftrasIronSwordZombie",
     diamond_sword_zombie: "craftrasZombie",
     giant_zombie: "craftrasGiantZombie",
+    iron_armored_giant_zombie: "craftrasIronArmoredGiantZombie",
+    diamond_armored_giant_zombie: "craftrasDiamondArmoredGiantZombie",
+    artillery_giant_zombie: "craftrasArtilleryGiantZombie",
+    ruby_armored_giant_zombie: "craftrasRubyArmoredGiantZombie",
+    elite_giant_zombie: "craftrasEliteGiantZombie",
     runner_zombie: "craftrasRunnerZombie",
     cursed_zombie: "craftrasCursedZombie",
     titan_zombie: "craftrasTitanZombie",
     magical_zombie: "craftrasMagicalZombie",
+    world2_magical_zombie: "craftrasMagicalZombie",
     king_zombie: "craftrasKingZombie",
     king_guardian: "craftrasKingGuardian",
     skeleton: "craftrasSkeleton",
     sniper_skeleton: "craftrasSniperSkeleton",
     cannon_skeleton: "craftrasCannonSkeleton",
+    bandage_zombie: "craftrasBandageZombie",
+    armored_bandage_zombie: "craftrasArmoredBandageZombie",
+    giant_bandage_zombie: "craftrasGiantBandageZombie",
+    elite_bandage_zombie: "craftrasEliteBandageZombie",
+    burning_skeleton: "craftrasBurningSkeleton",
+    sniper_burning_skeleton: "craftrasSniperBurningSkeleton",
+    phoenix_skeleton: "craftrasPhoenixSkeleton",
+    fire_zombie: "craftrasFireZombie",
+    fire_worm: "craftrasFireWorm",
+    worm: "craftrasWorm",
+    large_worm: "craftrasLargeWorm",
+    giant_worm: "craftrasGiantWorm",
+    the_worm: "craftrasTheWorm",
+    the_worm_grave: "craftrasTheWormGrave",
+    spiker: "craftrasSpiker",
+    spiker_spike: "craftrasSpikerSpike",
+    spiker_giant_spike: "craftrasSpikerGiantSpike",
     sword_guy: "craftrasSwordGuy",
+    sword_guy_2: "craftrasSwordGuy2",
+    jane: "craftrasJane",
     creeper: "craftrasCreeper",
     annihilator: "craftrasAnnihilator",
     the_nuclear: "craftrasNuclear",
@@ -429,6 +999,7 @@ const MOB_CLASS_NAMES = Object.freeze({
     blacksmith: "craftrasBlacksmith",
     builder: "craftrasBuilder",
     guard: "craftrasVillageGuard",
+    world2_guard: "craftrasWorld2VillageGuard",
     villager: "craftrasVillager",
     captain: "craftrasKnightCaptain",
     challenge_king: "craftrasChallengeKing",
@@ -436,6 +1007,8 @@ const MOB_CLASS_NAMES = Object.freeze({
     cleric: "craftrasCleric",
     merchant: "craftrasMerchant",
     monster_merchant: "craftrasMonsterMerchant",
+    miner: "craftrasMiner",
+    healer: "craftrasHealer",
     pope: "craftrasPope",
     blesser: "craftrasBlesser",
 });
@@ -446,28 +1019,54 @@ const MOB_HEALTH = Object.freeze({
     iron_sword_zombie: 100,
     diamond_sword_zombie: 100,
     giant_zombie: 500,
+    iron_armored_giant_zombie: 3500,
+    diamond_armored_giant_zombie: 5000,
+    artillery_giant_zombie: 3000,
+    ruby_armored_giant_zombie: 7000,
+    elite_giant_zombie: 15000,
     runner_zombie: 100,
     cursed_zombie: 1,
-    titan_zombie: 4000,
+    titan_zombie: 480_000,
     magical_zombie: 1_000_000_000,
+    world2_magical_zombie: CRAFTRAS_WORLD2_MAGIC_BOSS_HEALTH,
     king_zombie: 400,
-    king_guardian: 1000,
+    king_guardian: 1500,
     skeleton: 100,
     sniper_skeleton: 50,
     cannon_skeleton: 150,
+    bandage_zombie: 700,
+    armored_bandage_zombie: 1200,
+    giant_bandage_zombie: 3000,
+    elite_bandage_zombie: 1200,
+    burning_skeleton: 1200,
+    sniper_burning_skeleton: 600,
+    phoenix_skeleton: 2400,
+    fire_zombie: 3000,
+    fire_worm: 2500,
+    worm: 500,
+    large_worm: 1500,
+    giant_worm: 7000,
+    the_worm: CRAFTRAS_THE_WORM_HEALTH,
+    the_worm_grave: 1_000_000_000,
+    spiker: 15000,
+    spiker_spike: 500,
+    spiker_giant_spike: 12000,
     sword_guy: 1000,
+    sword_guy_2: CRAFTRAS_SWORD_GUY_2_HEALTH,
+    jane: 1000,
     creeper: 100,
     annihilator: 1500,
     the_nuclear: 10000,
     spider: 100,
     toxic_spider: 75,
-    queen_spider: 2500,
+    queen_spider: 3000,
     cow: 100,
     pig: 80,
     chicken: 40,
     blacksmith: 50_000_000,
     builder: 50_000_000,
     guard: 300,
+    world2_guard: 1000,
     villager: 50_000_000,
     captain: 1000,
     challenge_king: 1000,
@@ -475,18 +1074,20 @@ const MOB_HEALTH = Object.freeze({
     cleric: 300,
     merchant: 50_000_000,
     monster_merchant: 50_000_000,
+    miner: 50_000_000,
+    healer: 50_000_000,
     pope: 50_000_000,
     blesser: 50_000_000,
 });
 const MOB_TYPES = new Set(Object.keys(MOB_CLASS_NAMES));
 const ANIMAL_TYPES = new Set(["cow", "pig", "chicken"]);
-const NPC_TYPES = new Set(["blacksmith", "builder", "guard", "villager", "captain", "challenge_king", "royal_guardian", "cleric", "merchant", "monster_merchant", "pope", "blesser"]);
-const VILLAGE_STATIC_NPC_TYPES = new Set(["blacksmith", "guard", "villager", "captain", "cleric", "merchant", "monster_merchant", "pope", "blesser"]);
-const VILLAGE_SPAWNPOINT_NPC_TYPES = Object.freeze(["blacksmith", "merchant", "monster_merchant", "pope", "blesser"]);
-const VILLAGE_IDLE_SHOP_NPC_TYPES = new Set(["merchant", "monster_merchant"]);
-const VILLAGE_COMBAT_NPC_TYPES = new Set(["guard", "captain"]);
+const NPC_TYPES = new Set(["blacksmith", "builder", "guard", "world2_guard", "villager", "captain", "challenge_king", "royal_guardian", "cleric", "merchant", "monster_merchant", "miner", "healer", "pope", "blesser"]);
+const VILLAGE_STATIC_NPC_TYPES = new Set(["blacksmith", "guard", "villager", "captain", "cleric", "merchant", "monster_merchant", "miner", "healer", "pope", "blesser"]);
+const VILLAGE_SPAWNPOINT_NPC_TYPES = Object.freeze(["blacksmith", "merchant", "monster_merchant", "miner", "healer", "pope", "blesser"]);
+const VILLAGE_IDLE_SHOP_NPC_TYPES = new Set(["merchant", "monster_merchant", "miner"]);
+const VILLAGE_COMBAT_NPC_TYPES = new Set(["guard", "world2_guard", "captain"]);
 const VILLAGE_CLERIC_NPC_HEAL_TARGET_TYPES = new Set(["guard", "captain"]);
-const NON_DESPAWNING_MOB_TYPES = new Set(["king_zombie", "king_guardian", "queen_spider", "sword_guy", "annihilator", "the_nuclear", "titan_zombie", "magical_zombie", ...NPC_TYPES]);
+const NON_DESPAWNING_MOB_TYPES = new Set(["king_zombie", "king_guardian", "queen_spider", "sword_guy", "sword_guy_2", "jane", "annihilator", "the_nuclear", "titan_zombie", "magical_zombie", "world2_magical_zombie", "spiker", "the_worm", "the_worm_grave", ...NPC_TYPES]);
 const PLACEABLE_ITEMS = Object.freeze({
     grass_block: BLOCKS.GRASS_WALL,
     dirt: BLOCKS.DIRT_WALL,
@@ -508,6 +1109,7 @@ const PLACEABLE_ITEMS = Object.freeze({
     gold_block: BLOCKS.GOLD_BLOCK,
     diamond_block: BLOCKS.DIAMOND_BLOCK,
     challenge_start_block: BLOCKS.CHALLENGE_START,
+    world2_challenge_block: BLOCKS.WORLD2_CHALLENGE_START,
     challenge_spawn_block: BLOCKS.CHALLENGE_SPAWN,
     transparent_block: BLOCKS.TRANSPARENT_BLOCK,
     route_marker_block: BLOCKS.ROUTE_MARKER,
@@ -533,11 +1135,14 @@ const BLACKSMITH_RECIPE_UNLOCKS = Object.freeze({
     zombie_crown_recipe: { unlock: "zombie_crown", name: "Zombie Crown", cost: 40, output: "zombie_crown" },
     cleric_staff_recipe: { unlock: "cleric_staff", name: "Cleric Staff", cost: 30, output: "cleric_staff" },
     bone_bomb_recipe: { unlock: "bone_bomb", name: "Bone Bomb", cost: 30, output: "bone_bomb" },
+    horn_sword_recipe: { unlock: "horn_sword", name: "Horn Sword", cost: 100, output: "horn_sword" },
+    sturdy_helmet_recipe: { unlock: "sturdy_helmet", name: "Sturdy Helmet", cost: 80, output: "sturdy_helmet" },
+    zombie_wizard_staff_recipe: { unlock: "zombie_wizard_staff", name: "Zombie Wizard's Staff", cost: 0, output: "zombie_wizard_staff" },
 });
 const CRAFTRAS_LOCKED_RECIPE_ITEMS = new Set([
     "venom_sword_recipe", "knight_shield_recipe", "zombie_crown_recipe",
     "cleric_staff_recipe", "cleric_staff_head", "cleric_staff_body", "cleric_staff_handle",
-    "bone_bomb_recipe",
+    "bone_bomb_recipe", "horn_sword_recipe", "sturdy_helmet_recipe", "zombie_wizard_staff_recipe",
 ]);
 const CRAFTRAS_WORLD1_TOKEN_REQUIREMENTS = Object.freeze([
     { id: "knight_shield", name: "Knight's Shield" },
@@ -556,6 +1161,11 @@ const CRAFTRAS_BLESSER_SHOP_OFFERS = Object.freeze([
     { id: "strength_buff", name: "Strength Buff", price: VILLAGE_BLESSER_BUFF_COST, count: 1, kind: "buff" },
     { id: "health_buff", name: "Health Buff", price: VILLAGE_BLESSER_BUFF_COST, count: 1, kind: "buff" },
 ]);
+const CRAFTRAS_HEALER_SHOP_OFFERS = Object.freeze([
+    { id: "health_buff_2", name: "Health Buff Lv.2", price: WORLD2_HEALER_BUFF_COST, count: 1, kind: "buff" },
+    { id: "strength_buff_2", name: "Strength Buff Lv.2", price: WORLD2_HEALER_BUFF_COST, count: 1, kind: "buff" },
+    { id: "haste_buff_2", name: "Haste Buff Lv.2", price: WORLD2_HEALER_BUFF_COST, count: 1, kind: "buff" },
+]);
 const CRAFTRAS_SHOP_SELL_PRICES = Object.freeze({
     stone: 2,
     coal: 10,
@@ -568,25 +1178,46 @@ const CRAFTRAS_SHOP_SELL_PRICES = Object.freeze({
     iron_block: 315,
     gold_block: 495,
     diamond_block: 900,
-    rotten_flesh: 3,
-    bone: 3,
-    gunpowder: 3,
-    spider_eye: 3,
-    toxic_spider_eye: 3,
-    spider_leg: 3,
-    string: 3,
-    spider_venom: 3,
-    zombie_head: 50,
-    skeleton_head: 50,
-    creeper_head: 50,
-    spider_head: 50,
-    toxic_spider_head: 50,
+    bandage: 40,
+    rotten_flesh: 12,
+    bone: 12,
+    burnt_bone: 40,
+    fire_orb: 400,
+    fire_soul: 1000,
+    worm_shell: 80,
+    gunpowder: 12,
+    spider_eye: 12,
+    toxic_spider_eye: 12,
+    spider_leg: 12,
+    string: 12,
+    spider_venom: 12,
+    zombie_head: 200,
+    skeleton_head: 200,
+    creeper_head: 200,
+    spider_head: 200,
+    toxic_spider_head: 200,
+    ruby: 20,
+    sapphire: 40,
 });
+const CRAFTRAS_MINER_SELL_ITEMS = new Set([
+    "stone", "coal", "iron_ore", "gold_ore", "diamond", "ruby", "sapphire",
+    "iron_ingot", "gold_ingot", "coal_block", "iron_block", "gold_block", "diamond_block",
+]);
 const CRAFTRAS_MONSTER_SHOP_OFFERS = Object.freeze([
     { id: "king_zombie_summon_ticket", name: "King Zombie Summon Ticket", price: 1000, count: 1, stock: 10, maxStock: 10 },
     { id: "queen_spider_summon_ticket", name: "Queen Spider Summon Ticket", price: 1000, count: 1, stock: 10, maxStock: 10 },
     { id: "annihilator_summon_ticket", name: "Annihilator Summon Ticket", price: 1000, count: 1, stock: 10, maxStock: 10 },
     { id: "sword_guy_summon_ticket", name: "Sword guy Summon Ticket", price: 1000, count: 1, stock: 10, maxStock: 10 },
+]);
+const CRAFTRAS_MINER_SHOP_OFFERS = Object.freeze([
+    { id: "ruby", name: "Ruby", price: 500, count: 1, stock: 10, maxStock: 10 },
+    { id: "sapphire", name: "Sapphire", price: 750, count: 1, stock: 10, maxStock: 10 },
+    { id: "ruby_pickaxe", name: "Ruby Pickaxe", price: 2_300, count: 1, stock: 3, maxStock: 3 },
+    { id: "sapphire_pickaxe", name: "Sapphire Pickaxe", price: 3_400, count: 1, stock: 3, maxStock: 3 },
+    { id: "ruby_sword", name: "Ruby Sword", price: 1_600, count: 1, stock: 3, maxStock: 3 },
+    { id: "ruby_helmet", name: "Ruby Helmet", price: 2_600, count: 1, stock: 3, maxStock: 3 },
+    { id: "sapphire_helmet", name: "Sapphire Helmet", price: 3_700, count: 1, stock: 3, maxStock: 3 },
+    { id: "parry_tool", name: "Parry Tool", price: 15_000, count: 1, stock: 1, maxStock: 1 },
 ]);
 const CRAFTRAS_SUMMON_TICKET_BOSSES = Object.freeze({
     king_zombie_summon_ticket: "king_zombie",
@@ -594,6 +1225,23 @@ const CRAFTRAS_SUMMON_TICKET_BOSSES = Object.freeze({
     annihilator_summon_ticket: "annihilator",
     sword_guy_summon_ticket: "sword_guy",
 });
+const CRAFTRAS_BOSS_HEALTH_MOB_TYPES = new Set([
+    "king_zombie",
+    "queen_spider",
+    "annihilator",
+    "the_nuclear",
+    "sword_guy",
+    "sword_guy_2",
+    "jane",
+    "giant_worm",
+    "spiker",
+    "elite_giant_zombie",
+    "world2_magical_zombie",
+    "the_worm",
+]);
+const CRAFTRAS_BOSS_HEALTH_VISIBLE_DURATION = 60_000;
+const CRAFTRAS_BOSS_HEALTH_DEFEAT_DURATION = 1_000;
+const CRAFTRAS_BOSS_HEALTH_SYNC_INTERVAL = 100;
 const CRAFTRAS_HEAD_TICKET_REWARDS = Object.freeze({
     zombie_head: "king_zombie_summon_ticket",
     spider_head: "queen_spider_summon_ticket",
@@ -610,6 +1258,8 @@ const CRAFTRAS_SHOP_BASE_PRICES = Object.freeze({
     iron_ore: 32,
     gold_ore: 52,
     diamond: 100,
+    ruby: 500,
+    sapphire: 750,
     iron_ingot: 35,
     gold_ingot: 55,
     charcoal: 12,
@@ -636,8 +1286,8 @@ const CRAFTRAS_SHOP_BOSS_MATERIALS = Object.freeze([
     "spider_leg", "string", "spider_venom",
 ]);
 const CRAFTRAS_SHOP_RECIPE_ITEMS = Object.freeze(["venom_sword_recipe", "knight_shield_recipe", "zombie_crown_recipe", "bone_bomb_recipe"]);
-const CRAFTRAS_BOSS_CAVE_TYPES = new Set(["zombie_boss_room", "queen_spider_boss_room"]);
-const CRAFTRAS_PASSIVE_BOSS_CAVE_MOB_CAP = 20;
+const CRAFTRAS_PASSIVE_BOSS_CAVE_TYPES = new Set(["zombie_boss_room"]);
+const CRAFTRAS_PASSIVE_BOSS_CAVE_MOB_CAP = 10;
 const CRAFTRAS_BOSS_NATURAL_ROLL_INTERVAL = 60_000;
 const CRAFTRAS_BOSS_NATURAL_SPAWN_COOLDOWN = 10 * 60_000;
 const CRAFTRAS_SHIELD_REGEN_DELAY = 10_000;
@@ -675,6 +1325,7 @@ const BLOCK_HARVEST_LEVEL = Object.freeze({
     [BLOCKS.CRYSTAL_ORE]: 3,
     [BLOCKS.DIAMOND_BLOCK]: 3,
     [BLOCKS.BEDROCK]: 999,
+    [BLOCKS.WORLD2_CHALLENGE_START]: 999,
     [BLOCKS.CHALLENGE_SPAWN]: 999,
     [BLOCKS.TRANSPARENT_BLOCK]: 999,
     [BLOCKS.ROUTE_MARKER]: 999,
@@ -682,6 +1333,8 @@ const BLOCK_HARVEST_LEVEL = Object.freeze({
 
 const getToolHarvestLevel = itemId => {
     if (itemId === "admin_pickaxe") return 999;
+    if (itemId?.startsWith("sapphire_")) return 5;
+    if (itemId?.startsWith("ruby_")) return 4;
     if (itemId?.startsWith("diamond_")) return 3;
     if (itemId?.startsWith("iron_")) return 2;
     if (itemId?.startsWith("stone_") || itemId?.startsWith("gold_")) return 1;
@@ -697,6 +1350,7 @@ class Craftras {
         this.destroyedWallKeys = new Set();
         this.brokenKingdomBlueprintClearedKeys = new Set();
         this.caveBlueprintClearedKeys = new Set();
+        this.world2VillageBlueprintClearedKeys = new Set();
         this.placedBlocks = new Map();
         this.placedFloors = new Map();
         this.textStoryMarkers = new Map();
@@ -720,15 +1374,21 @@ class Craftras {
         this.theGreatProjectiles = new Set();
         this.theGreatCompanions = new Map();
         this.theGreatWarnings = new Set();
+        this.janeSkillEntities = new Set();
         this.explosionEffects = new Set();
+        this.magicBookEntities = new Set();
         this.clericHealCircles = new Set();
         this.rocketProjectiles = new Set();
         this.boneBombProjectiles = new Set();
+        this.zombieWizardStaffProjectiles = new Set();
+        this.phoenixProjectiles = new Set();
         this.popeStaffCubes = new Set();
         this.popeStaffMagicCircles = new Set();
         this.popeStaffJudgments = new Set();
         this.popeStaffPendingJudgments = [];
         this.popeStaffBeamStates = [];
+        this.laserTestBeams = [];
+        this.laserTestBeamId = 0;
         this.destroyerQueue = [];
         this.destroyerQueueIndex = 0;
         this.destroyerQueuedBlockKeys = new Set();
@@ -749,6 +1409,10 @@ class Craftras {
         this.weatherLastUpdate = Date.now();
         this.weatherLastSync = 0;
         this.scheduledWeatherChange = null;
+        this.whiteInfernoState = "clear";
+        this.whiteInfernoElapsed = 0;
+        this.whiteInfernoChance = WHITE_INFERNO_INITIAL_CHANCE;
+        this.whiteInfernoAftermathUntil = 0;
         this.kingdomBlueprintStates = { ruined: null, intact: null };
         this.kingdomWeatherState = "ruined";
         this.kingdomWeatherTransition = null;
@@ -757,8 +1421,13 @@ class Craftras {
         this.kingdomWeatherClearNotifyUntil = 0;
         this.kingdomWeatherLastSync = 0;
         this.mobSpawnCounter = 0;
+        this.world2BandageNextSpawnAt = new Map();
+        this.world2SkeletonNextSpawnAt = new Map();
+        this.world2WormNextSpawnAt = new Map();
+        this.world2GiantCaveNextSpawnAt = new Map();
         this.animalSpawnCounter = 0;
         this.treeClientCount = 0;
+        this.performanceWindow = null;
         this.baseLoadRadius = 8;
         this.maxLoadRadius = 48;
         this.updateCounter = 0;
@@ -770,13 +1439,29 @@ class Craftras {
         this.challengeRoute = [];
         this.challengeRouteStartIndex = 0;
         this.challengeEscortMoving = false;
+        this.challengeQuickMode = false;
+        this.challengeQuickMultiplier = 1;
         this.challengeIntro = null;
         this.challengeRouteProtectedCells = new Set();
         this.challengeEncounter = null;
         this.challengeApproachPlayerId = null;
         this.challengeHadClients = false;
         this.challengeFailure = null;
+        this.challengeCompletion = null;
+        this.challengeStoryEightReached = false;
+        this.world2ChallengeStage = Config.craftras_world2_challenge_builder ? "waiting" : null;
+        this.world2ChallengeStartedAt = 0;
+        this.world2ChallengeSpawnAt = 0;
+        this.world2ChallengeBoss = null;
+        this.world2ChallengeDefeat = null;
+        this.world2ChallengeCompletion = null;
+        this.world2ChallengeStartLocations = [];
+        this.world2ChallengeStartLocationsRefreshAt = 0;
         this.villageBounds = null;
+        this.world2VillageBounds = null;
+        this.world2VillageSpawnCells = [];
+        this.world2WormGraves = new Set();
+        this.world2WormGravePlacements = [];
         this.villageNpcSpawns = {};
         this.villageOriginalBlocks = new Map();
         this.villageRepairJobs = new Map();
@@ -805,6 +1490,7 @@ class Craftras {
     }
 
     start() {
+        this.clearWorld2WormGraves();
         for (const actor of this.challengeActors) {
             actor?.destroy?.();
             this.mobs.delete(actor);
@@ -814,16 +1500,24 @@ class Craftras {
         this.challengeRoute = [];
         this.challengeRouteStartIndex = 0;
         this.challengeEscortMoving = false;
+        this.challengeQuickMode = false;
+        this.challengeQuickMultiplier = 1;
         this.challengeIntro = null;
         this.challengeRouteProtectedCells.clear();
         this.challengeEncounter = null;
         this.challengeApproachPlayerId = null;
         this.challengeHadClients = false;
         this.challengeFailure = null;
+        this.challengeCompletion = null;
+        this.challengeStoryEightReached = false;
         this.clearLoadedTrees();
         this.cellCache.clear();
         this.clientStates = new WeakMap();
         this.treeClientCount = 0;
+        this.world2BandageNextSpawnAt.clear();
+        this.world2SkeletonNextSpawnAt.clear();
+        this.world2WormNextSpawnAt.clear();
+        this.world2GiantCaveNextSpawnAt.clear();
         this.pendingGuardianSpawns.clear();
         this.destroyerQueue = [];
         this.destroyerQueueIndex = 0;
@@ -843,6 +1537,10 @@ class Craftras {
         this.weatherLastUpdate = Date.now();
         this.weatherLastSync = 0;
         this.scheduledWeatherChange = null;
+        this.whiteInfernoState = "clear";
+        this.whiteInfernoElapsed = 0;
+        this.whiteInfernoChance = WHITE_INFERNO_INITIAL_CHANCE;
+        this.whiteInfernoAftermathUntil = 0;
         this.kingdomBlueprintStates = { ruined: null, intact: null };
         this.kingdomWeatherState = "ruined";
         this.kingdomWeatherTransition = null;
@@ -851,9 +1549,13 @@ class Craftras {
         this.kingdomWeatherClearNotifyUntil = 0;
         this.kingdomWeatherLastSync = 0;
         this.villageBounds = null;
+        this.world2VillageBounds = null;
+        this.world2VillageSpawnCells = [];
+        this.world2WormGravePlacements = [];
         this.villageOriginalBlocks.clear();
         this.brokenKingdomBlueprintClearedKeys.clear();
         this.caveBlueprintClearedKeys.clear();
+        this.world2VillageBlueprintClearedKeys.clear();
         this.permanentBlockDamageStages.clear();
         this.villageRepairJobs.clear();
         this.villageDemolitionJobs.clear();
@@ -870,6 +1572,7 @@ class Craftras {
         this.popeStaffJudgments.clear();
         this.popeStaffPendingJudgments = [];
         this.popeStaffBeamStates = [];
+        this.laserTestBeams = [];
         for (const projectile of this.guardianSlashProjectiles) projectile?.destroy?.();
         this.guardianSlashProjectiles.clear();
         for (const entity of this.challengeMagicEntities) entity?.destroy?.();
@@ -879,10 +1582,16 @@ class Craftras {
         this.theGreatCompanions.clear();
         for (const warning of this.theGreatWarnings) warning?.destroy?.();
         this.theGreatWarnings.clear();
+        for (const entity of this.janeSkillEntities) entity?.destroy?.();
+        this.janeSkillEntities.clear();
         for (const rocket of this.rocketProjectiles) rocket?.destroy?.();
         this.rocketProjectiles.clear();
         for (const bomb of this.boneBombProjectiles) bomb?.destroy?.();
         this.boneBombProjectiles.clear();
+        for (const projectile of this.zombieWizardStaffProjectiles) projectile?.destroy?.();
+        this.zombieWizardStaffProjectiles.clear();
+        for (const projectile of this.phoenixProjectiles) projectile?.destroy?.();
+        this.phoenixProjectiles.clear();
         this.arenaBuildJobs.clear();
         this.nextArenaBuildAt = Date.now() + ARENA_BUILD_INTERVAL;
         this.arenaBuildActive = false;
@@ -893,11 +1602,33 @@ class Craftras {
         if (this.nuclearArenaBuildTimeout) clearTimeout(this.nuclearArenaBuildTimeout);
         this.nuclearArenaBuildTimeout = null;
         this.loadVillageNpcSpawns();
-        this.worldSize = Config.craftras_village_builder
-            ? (Config.craftras_village_world_size || WORLD_SIZE)
-            : WORLD_SIZE;
-        this.gameManager.updateBounds(this.worldSize, this.worldSize);
-        if (Config.craftras_village_builder && !Config.craftras_broken_kingdom_builder && !Config.craftras_intact_kingdom_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_cave_builder) {
+        this.worldSize = Config.craftras_world2_challenge_builder
+            ? (Config.craftras_world2_challenge_world_size || WORLD_SIZE * 3)
+            : Config.craftras_village_builder
+                ? (Config.craftras_village_world_size || WORLD_SIZE)
+                : WORLD_SIZE;
+        this.worldWidth = Config.craftras_world2 && !Config.craftras_world2_challenge_builder
+            ? WORLD_SIZE * 3
+            : this.worldSize;
+        this.gameManager.updateBounds(this.worldWidth, this.worldSize);
+        if (Config.craftras_world2_challenge_builder) {
+            this.destroyedWallKeys.clear();
+            this.placedBlocks.clear();
+            this.placedFloors.clear();
+            this.placedBlockDirections.clear();
+            this.furnaces.clear();
+            this.chests.clear();
+            this.damagedWallHealth.clear();
+            this.damagedWallLastHitAt.clear();
+            this.damagedFloorHealth.clear();
+            this.spawnPool = [];
+            this.spawnPoint = {
+                x: -this.worldSize * 0.42,
+                y: 0,
+            };
+            global.craftrasSpawnProvider = () => ({ ...this.spawnPoint });
+            console.log("[Craftras World 2 Challenge] Loaded 6000x6000 desert race arena.");
+        } else if (Config.craftras_village_builder && !Config.craftras_broken_kingdom_builder && !Config.craftras_intact_kingdom_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_cave_builder && !Config.craftras_world2_village_builder) {
             this.destroyedWallKeys.clear();
             this.placedBlocks.clear();
             this.placedFloors.clear();
@@ -937,6 +1668,10 @@ class Craftras {
             }
             const caveExcavation = this.loadCaveExcavation();
             if (caveExcavation) console.log(`[Craftras] Loaded ${caveExcavation} permanent cave excavation cell(s).`);
+            const world2Village = this.loadWorld2VillageBlueprint();
+            if (world2Village.blocks || world2Village.floors || world2Village.cleared || world2Village.graves) {
+                console.log(`[Craftras] Loaded World 2 village blueprint: ${world2Village.blocks} walls, ${world2Village.floors} floors, ${world2Village.cleared} cleared cells, ${world2Village.graves || 0} Worm grave(s).`);
+            }
             const steelTorches = this.loadSteelTorchMap();
             if (steelTorches) console.log(`[Craftras] Loaded ${steelTorches} steel torch map marker(s).`);
             if (Config.craftras_world1_challenge_builder) {
@@ -953,16 +1688,22 @@ class Craftras {
                 this.spawnPoint = this.getNextChallengeSpawn(false);
                 global.craftrasSpawnProvider = () => this.getNextChallengeSpawn();
                 this.spawnChallengeInitialCast();
-            } else if (Config.craftras_broken_kingdom_builder || Config.craftras_intact_kingdom_builder || Config.craftras_cave_builder) {
+            } else if (Config.craftras_broken_kingdom_builder || Config.craftras_intact_kingdom_builder || Config.craftras_cave_builder || Config.craftras_world2_village_builder) {
                 this.spawnPool = [];
-                this.spawnPoint = blockToWorld(-300, -310);
+                const configuredBuilderSpawn = Config.craftras_builder_spawn;
+                const builderSpawnX = Number.isFinite(configuredBuilderSpawn?.x) ? configuredBuilderSpawn.x : -300;
+                const builderSpawnY = Number.isFinite(configuredBuilderSpawn?.y) ? configuredBuilderSpawn.y : -310;
+                this.spawnPoint = blockToWorld(builderSpawnX, builderSpawnY);
                 global.craftrasSpawnProvider = () => ({ ...this.spawnPoint });
             } else {
                 this.spawnPool = this.buildOutsideSpawnPool();
                 this.spawnPoint = this.getRandomOutsideSpawn({ avoidBrokenKingdom: true });
                 global.craftrasSpawnProvider = () => this.getRandomOutsideSpawn({ avoidBrokenKingdom: true });
             }
-            if (!Config.craftras_steel_torch_builder && !Config.craftras_broken_kingdom_builder && !Config.craftras_intact_kingdom_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_cave_builder) this.spawnVillageNpcs();
+            if (!Config.craftras_steel_torch_builder && !Config.craftras_broken_kingdom_builder && !Config.craftras_intact_kingdom_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_cave_builder && !Config.craftras_world2_village_builder) {
+                this.spawnVillageNpcs();
+                this.maintainWorld2VillageGuards(true);
+            }
         }
         global.spawnPoint = undefined;
         console.log(`[Craftras] Numeric block world enabled. Arena=${this.worldSize}x${this.worldSize}, wall=${WALL_SIZE}, step=${BLOCK_SIZE}, chunk=${CHUNK_SIZE}.`);
@@ -1002,6 +1743,8 @@ class Craftras {
         this.rocketProjectiles.clear();
         for (const bomb of this.boneBombProjectiles) bomb?.destroy?.();
         this.boneBombProjectiles.clear();
+        for (const projectile of this.zombieWizardStaffProjectiles) projectile?.destroy?.();
+        this.zombieWizardStaffProjectiles.clear();
         this.spawnPoint = null;
         this.spawnPool.length = 0;
         this.scheduledWeatherChange = null;
@@ -1024,11 +1767,22 @@ class Craftras {
             && y <= bounds.maxY + radius;
     }
 
-    isInsideVillageGuardZone(entityOrX, y = null) {
+    getVillageCombatBounds(entity = null) {
+        return entity?.craftrasWorld2VillageGuard || entity?.craftrasMobType === "world2_guard"
+            ? this.world2VillageBounds
+            : this.villageBounds;
+    }
+
+    isInsideVillageGuardZone(entityOrX, y = null, bounds = null) {
         const block = typeof entityOrX === "object"
             ? worldToBlock(entityOrX.x, entityOrX.y)
             : { x: entityOrX, y };
-        return this.isInsideVillageNatureClearZone(block.x, block.y, VILLAGE_GUARD_ZONE_PADDING);
+        bounds ||= typeof entityOrX === "object" ? this.getVillageCombatBounds(entityOrX) : this.villageBounds;
+        if (!bounds) return false;
+        return block.x >= bounds.minX - VILLAGE_GUARD_ZONE_PADDING
+            && block.x <= bounds.maxX + VILLAGE_GUARD_ZONE_PADDING
+            && block.y >= bounds.minY - VILLAGE_GUARD_ZONE_PADDING
+            && block.y <= bounds.maxY + VILLAGE_GUARD_ZONE_PADDING;
     }
 
     loadVillageBlueprint(options = {}) {
@@ -1535,8 +2289,250 @@ class Craftras {
         return { cleared: cleared.length, file: CAVE_EXCAVATION_FILE };
     }
 
+    clearWorld2WormGraves() {
+        for (const grave of this.world2WormGraves || []) {
+            for (const segment of grave?.craftrasWormSegments || []) segment?.destroy?.();
+            if (grave) this.mobs.delete(grave);
+            grave?.destroy?.();
+        }
+        this.world2WormGraves?.clear?.();
+    }
+
+    buildWorld2WormGraveTrail(location, angle) {
+        const count = 60;
+        const spacing = 48 * 1.4 * 3 * 0.92;
+        const forwardX = Math.cos(angle);
+        const forwardY = Math.sin(angle);
+        const sideX = -forwardY;
+        const sideY = forwardX;
+        return Array.from({ length: count + 5 }, (_, index) => {
+            const distance = spacing * index;
+            const curve = Math.sin(index / 7) * spacing * 1.15;
+            return {
+                x: location.x - forwardX * distance + sideX * curve,
+                y: location.y - forwardY * distance + sideY * curve,
+            };
+        });
+    }
+
+    captureWorld2WormGrave(grave) {
+        if (!grave || grave.isDead?.()) return null;
+        const worldX = Number(grave.x);
+        const worldY = Number(grave.y);
+        if (!Number.isFinite(worldX) || !Number.isFinite(worldY)) return null;
+        const cell = worldToBlock(worldX, worldY);
+        if (!isInsideWorld2(cell.x, cell.y)) return null;
+        const round = value => Math.round(Number(value) * 1_000) / 1_000;
+        const count = 60;
+        const segments = [];
+        for (let index = 0; index < count; index++) {
+            const entity = grave.craftrasWormSegments?.[index];
+            const target = entity && !entity.isDead?.()
+                ? entity
+                : grave.craftrasWormSegmentTargets?.[index];
+            if (!target || !Number.isFinite(Number(target.x)) || !Number.isFinite(Number(target.y))) continue;
+            segments.push({
+                index,
+                dx: round(Number(target.x) - worldX),
+                dy: round(Number(target.y) - worldY),
+                facing: round(Number.isFinite(Number(target.facing)) ? Number(target.facing) : Number(grave.facing) || 0),
+            });
+        }
+        return {
+            x: cell.x,
+            y: cell.y,
+            worldX: round(worldX),
+            worldY: round(worldY),
+            angle: round(Number(grave.facing) || 0),
+            segments,
+        };
+    }
+
+    spawnWorld2WormGrave(entry, { record = true } = {}) {
+        const blockX = Math.trunc(Number(entry?.x));
+        const blockY = Math.trunc(Number(entry?.y));
+        if (!Number.isFinite(blockX) || !Number.isFinite(blockY) || !isInsideWorld2(blockX, blockY)) return null;
+        const angle = Number.isFinite(Number(entry?.angle)) ? Number(entry.angle) : 0;
+        const exactX = Number(entry?.worldX);
+        const exactY = Number(entry?.worldY);
+        const location = Number.isFinite(exactX) && Number.isFinite(exactY)
+            ? { x: exactX, y: exactY }
+            : blockToWorld(blockX, blockY);
+        const exactCell = worldToBlock(location.x, location.y);
+        if (!isInsideWorld2(exactCell.x, exactCell.y)) return null;
+        const grave = this.spawnMobAt(location, "the_worm_grave", { fixed: true, facing: angle });
+        if (!grave) return null;
+        const savedSegments = Array.isArray(entry?.segments) ? entry.segments : [];
+        const savedPose = Array(60).fill(null);
+        for (const segment of savedSegments) {
+            const index = Math.trunc(Number(segment?.index));
+            const dx = Number(segment?.dx);
+            const dy = Number(segment?.dy);
+            if (index < 0 || index >= savedPose.length || !Number.isFinite(dx) || !Number.isFinite(dy)) continue;
+            savedPose[index] = {
+                x: location.x + dx,
+                y: location.y + dy,
+                facing: Number.isFinite(Number(segment?.facing)) ? Number(segment.facing) : angle,
+            };
+        }
+        if (savedPose.every(Boolean)) {
+            grave.craftrasWormGravePose = savedPose;
+            grave.craftrasWormSegmentTargets = savedPose;
+            grave.craftrasWormTrail = [{ x: location.x, y: location.y }];
+        } else {
+            grave.craftrasWormTrail = this.buildWorld2WormGraveTrail(location, angle);
+            grave.craftrasWormSegmentTargets = null;
+        }
+        grave.craftrasWormGravePlacement = { x: exactCell.x, y: exactCell.y, angle };
+        this.world2WormGraves.add(grave);
+        if (record) this.world2WormGravePlacements = [{ x: exactCell.x, y: exactCell.y, angle }];
+        return grave;
+    }
+
+    setWorld2WormGrave(location, angle = 0) {
+        const cell = worldToBlock(location?.x, location?.y);
+        if (!Number.isFinite(cell.x) || !Number.isFinite(cell.y) || !isInsideWorld2(cell.x, cell.y)) {
+            throw new Error("The Worm's Grave must be placed inside World 2.");
+        }
+        this.clearWorld2WormGraves();
+        this.world2WormGravePlacements = [];
+        const grave = this.spawnWorld2WormGrave({ x: cell.x, y: cell.y, angle });
+        if (!grave) throw new Error("The Worm's Grave could not be placed.");
+        return grave.craftrasWormGravePlacement;
+    }
+
+    loadWorld2VillageBlueprint() {
+        this.clearWorld2WormGraves();
+        this.world2WormGravePlacements = [];
+        if (!fs.existsSync(WORLD2_VILLAGE_BLUEPRINT_FILE)) return { blocks: 0, floors: 0, cleared: 0, graves: 0 };
+        try {
+            const data = JSON.parse(fs.readFileSync(WORLD2_VILLAGE_BLUEPRINT_FILE, "utf8"));
+            const validBlocks = new Set(Object.values(BLOCKS));
+            let blocks = 0;
+            let floors = 0;
+            let cleared = 0;
+            let graves = 0;
+            let minX = Infinity;
+            let minY = Infinity;
+            let maxX = -Infinity;
+            let maxY = -Infinity;
+            const spawnCells = [];
+            const noteBounds = (x, y) => {
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+            };
+            for (const entry of Array.isArray(data.cleared) ? data.cleared : []) {
+                const x = Math.trunc(Number(entry?.x));
+                const y = Math.trunc(Number(entry?.y));
+                if (!Number.isFinite(x) || !Number.isFinite(y) || !isInsideWorld2(x, y)) continue;
+                const key = this.wallKey(x, y);
+                this.destroyedWallKeys.add(key);
+                this.world2VillageBlueprintClearedKeys.add(key);
+                this.damagedWallHealth.delete(key);
+                this.damagedWallLastHitAt.delete(key);
+                noteBounds(x, y);
+                cleared++;
+            }
+            for (const entry of Array.isArray(data.blocks) ? data.blocks : []) {
+                const x = Math.trunc(Number(entry?.x));
+                const y = Math.trunc(Number(entry?.y));
+                if (!Number.isFinite(x) || !Number.isFinite(y) || !isInsideWorld2(x, y) || !validBlocks.has(entry?.type) || entry.type === BLOCKS.AIR) continue;
+                const key = this.wallKey(x, y);
+                const direction = Math.max(0, Math.min(3, Math.trunc(Number(entry.direction) || 0)));
+                this.destroyedWallKeys.delete(key);
+                this.world2VillageBlueprintClearedKeys.delete(key);
+                this.placedBlocks.set(key, entry.type);
+                this.placedBlockDirections.set(key, direction);
+                if (entry.type === BLOCKS.FURNACE) this.furnaces.set(key, { slots: [null, null, null], active: false, finishAt: 0 });
+                if (entry.type === BLOCKS.CHEST) this.chests.set(key, { slots: Array(27).fill(null) });
+                noteBounds(x, y);
+                blocks++;
+            }
+            for (const entry of Array.isArray(data.floors) ? data.floors : []) {
+                const x = Math.trunc(Number(entry?.x));
+                const y = Math.trunc(Number(entry?.y));
+                if (!Number.isFinite(x) || !Number.isFinite(y) || !isInsideWorld2(x, y) || !validBlocks.has(entry?.type) || entry.type === BLOCKS.AIR) continue;
+                this.placedFloors.set(this.wallKey(x, y), entry.type);
+                spawnCells.push({ x, y });
+                noteBounds(x, y);
+                floors++;
+            }
+            for (const entry of Array.isArray(data.wormGraves) ? data.wormGraves.slice(0, 1) : []) {
+                const grave = this.spawnWorld2WormGrave(entry, { record: false });
+                if (!grave) continue;
+                this.world2WormGravePlacements.push({ ...grave.craftrasWormGravePlacement });
+                noteBounds(grave.craftrasWormGravePlacement.x, grave.craftrasWormGravePlacement.y);
+                graves++;
+            }
+            this.world2VillageBounds = Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
+            this.world2VillageSpawnCells = spawnCells;
+            return { blocks, floors, cleared, graves };
+        } catch (error) {
+            console.error(`[Craftras World 2 Village] Could not load blueprint: ${error.message}`);
+            return { blocks: 0, floors: 0, cleared: 0, graves: 0 };
+        }
+    }
+
+    saveWorld2VillageBlueprint() {
+        if (!Config.craftras_world2_village_builder && !Config.craftras_cave_builder) {
+            throw new Error("World 2 village blueprints can only be saved in a World 2 builder server.");
+        }
+        const parseKey = key => key.split(",").map(Number);
+        const inWorld2 = key => {
+            const [x, y] = parseKey(key);
+            return Number.isInteger(x) && Number.isInteger(y) && isInsideWorld2(x, y);
+        };
+        const blocks = [...this.placedBlocks]
+            .filter(([key]) => inWorld2(key))
+            .map(([key, type]) => {
+                const [x, y] = parseKey(key);
+                return { x, y, type, direction: this.placedBlockDirections.get(key) ?? 0 };
+            })
+            .sort((a, b) => a.y - b.y || a.x - b.x);
+        const floors = [...this.placedFloors]
+            .filter(([key]) => inWorld2(key))
+            .map(([key, type]) => {
+                const [x, y] = parseKey(key);
+                return { x, y, type };
+            })
+            .sort((a, b) => a.y - b.y || a.x - b.x);
+        const cleared = [...this.destroyedWallKeys]
+            .filter(key => inWorld2(key)
+                && !this.placedBlocks.has(key)
+                && !this.caveBlueprintClearedKeys.has(key)
+                && !this.brokenKingdomBlueprintClearedKeys.has(key))
+            .map(key => {
+                const [x, y] = parseKey(key);
+                return { x, y };
+            })
+            .sort((a, b) => a.y - b.y || a.x - b.x);
+        const wormGraves = [...this.world2WormGraves]
+            .slice(0, 1)
+            .map(grave => this.captureWorld2WormGrave(grave))
+            .filter(Boolean);
+        const data = {
+            version: 3,
+            blockSize: BLOCK_SIZE,
+            savedAt: new Date().toISOString(),
+            blocks,
+            floors,
+            cleared,
+            wormGraves,
+        };
+        fs.mkdirSync(path.dirname(WORLD2_VILLAGE_BLUEPRINT_FILE), { recursive: true });
+        const temporaryFile = `${WORLD2_VILLAGE_BLUEPRINT_FILE}.tmp`;
+        fs.writeFileSync(temporaryFile, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+        fs.renameSync(temporaryFile, WORLD2_VILLAGE_BLUEPRINT_FILE);
+        this.world2VillageBlueprintClearedKeys = new Set(cleared.map(entry => this.wallKey(entry.x, entry.y)));
+        return { blocks: blocks.length, floors: floors.length, cleared: cleared.length, graves: wormGraves.length, file: WORLD2_VILLAGE_BLUEPRINT_FILE };
+    }
+
     isPermanentBlueprintClear(key) {
-        return this.brokenKingdomBlueprintClearedKeys.has(key) || this.caveBlueprintClearedKeys.has(key);
+        return this.brokenKingdomBlueprintClearedKeys.has(key)
+            || this.caveBlueprintClearedKeys.has(key)
+            || this.world2VillageBlueprintClearedKeys.has(key);
     }
 
     saveSteelTorchMap() {
@@ -1590,7 +2586,13 @@ class Craftras {
     updateDayCycle(now = Date.now()) {
         const elapsed = Math.max(0, now - this.dayCycleLastUpdate);
         this.dayCycleLastUpdate = now;
-        this.dayCycleTime = (this.dayCycleTime + elapsed * this.dayCycleSpeed) % DAY_CYCLE_DURATION;
+        const previousTime = this.dayCycleTime;
+        const advance = elapsed * this.dayCycleSpeed;
+        this.dayCycleTime = (previousTime + advance) % DAY_CYCLE_DURATION;
+        if (
+            !Config.craftras_world1_challenge_builder &&
+            Math.floor((previousTime + advance) / DAY_CYCLE_DURATION) > 0
+        ) this.considerWhiteInferno();
         if (now - this.dayCycleLastSync >= 1000) this.syncDayCycle();
     }
 
@@ -1660,6 +2662,88 @@ class Craftras {
             : Math.max(0, WEATHER_CHECK_INTERVAL - this.weatherCheckElapsed);
     }
 
+    getWhiteInfernoRemaining() {
+        if (this.whiteInfernoState === "warning") {
+            return Math.max(0, WHITE_INFERNO_WARNING_DURATION - this.whiteInfernoElapsed);
+        }
+        if (this.whiteInfernoState === "active") {
+            return Math.max(0, WHITE_INFERNO_DURATION - this.whiteInfernoElapsed);
+        }
+        return 0;
+    }
+
+    notifyWorld2Players(message, duration = 7_000, color = null) {
+        for (const socket of this.gameManager.clients) {
+            const body = socket?.player?.body;
+            if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+            const block = worldToBlock(body.x, body.y);
+            if (!isInsideWorld2(block.x, block.y)) continue;
+            if (color) socket.talk("BM", duration, message, color);
+            else socket.talk("BM", duration, message);
+        }
+    }
+
+    considerWhiteInferno() {
+        if (!this.isWeatherEnabled() || !Config.craftras_world2 || this.whiteInfernoState !== "clear") return false;
+        if (Math.random() >= this.whiteInfernoChance) {
+            this.whiteInfernoChance = Math.min(1, this.whiteInfernoChance + WHITE_INFERNO_CHANCE_STEP);
+            this.syncWeather(true);
+            return false;
+        }
+        this.whiteInfernoChance = WHITE_INFERNO_INITIAL_CHANCE;
+        this.whiteInfernoState = "warning";
+        this.whiteInfernoElapsed = 0;
+        this.notifyWorld2Players("The desert is beginning to heat up...", 8_000, "#ffb347");
+        this.syncWeather(true);
+        return true;
+    }
+
+    startWhiteInferno({ forced = false } = {}) {
+        if (!this.isWeatherEnabled() || !Config.craftras_world2) return { ok: false, reason: "server" };
+        if (this.getDayPhase() === "night") return { ok: false, reason: "night" };
+        this.whiteInfernoState = "active";
+        this.whiteInfernoElapsed = 0;
+        this.whiteInfernoChance = WHITE_INFERNO_INITIAL_CHANCE;
+        this.whiteInfernoAftermathUntil = 0;
+        this.replaceWorld2SurfaceMobsForInferno();
+        const now = Date.now();
+        for (const playerId of this.world2BandageNextSpawnAt.keys()) this.world2BandageNextSpawnAt.set(playerId, now);
+        for (const playerId of this.world2WormNextSpawnAt.keys()) this.world2WormNextSpawnAt.set(playerId, now);
+        this.notifyWorld2Players("WHITE INFERNO", 6_000, "#fff2a8");
+        this.syncWeather(true);
+        return { ok: true, type: "white_inferno", forced, duration: WHITE_INFERNO_DURATION };
+    }
+
+    stopWhiteInferno({ forced = false } = {}) {
+        const previousState = this.whiteInfernoState;
+        const wasActive = previousState !== "clear";
+        this.whiteInfernoState = "clear";
+        this.whiteInfernoElapsed = 0;
+        if (previousState === "active") {
+            this.whiteInfernoAftermathUntil = Date.now() + WHITE_INFERNO_AFTERMATH_DURATION;
+        }
+        if (forced) this.whiteInfernoChance = WHITE_INFERNO_INITIAL_CHANCE;
+        if (wasActive) this.syncWeather(true);
+        return { ok: true, type: "clear", forced, duration: 0 };
+    }
+
+    updateWhiteInferno(elapsed) {
+        if (this.whiteInfernoState === "clear") return;
+        if (this.getDayPhase() === "night") {
+            this.stopWhiteInferno();
+            return;
+        }
+        this.whiteInfernoElapsed += elapsed;
+        if (this.whiteInfernoState === "warning") {
+            if (this.whiteInfernoElapsed < WHITE_INFERNO_WARNING_DURATION) return;
+            this.startWhiteInferno({ forced: false });
+            return;
+        }
+        if (this.whiteInfernoElapsed < WHITE_INFERNO_DURATION) return;
+        this.stopWhiteInferno();
+        this.notifyWorld2Players("The WHITE INFERNO has ended.", 7_000, "#f2f2f2");
+    }
+
     syncWeather(force = false) {
         const now = Date.now();
         if (!force && now - this.weatherLastSync < 1000) return;
@@ -1667,16 +2751,27 @@ class Craftras {
         const type = this.isWeatherEnabled() ? this.weatherType : "clear";
         const remaining = type === "rain" ? this.getWeatherRemaining() : Math.max(0, WEATHER_CHECK_INTERVAL - this.weatherCheckElapsed);
         for (const socket of this.gameManager.clients) {
-            socket?.talk?.("WE", type, Math.round(remaining), Number(this.weatherRainChance.toFixed(2)));
+            socket?.talk?.(
+                "WE",
+                type,
+                Math.round(remaining),
+                Number(this.weatherRainChance.toFixed(2)),
+                this.challengeStoryEightReached ? 1 : 0,
+                this.whiteInfernoState,
+                Math.round(this.getWhiteInfernoRemaining()),
+                Number(this.whiteInfernoChance.toFixed(2)),
+            );
         }
         this.notifyKingdomFogPlayers();
         this.syncKingdomWeatherTransition(force);
     }
 
     setWeather(type, { forced = true } = {}) {
-        const normalized = String(type || "").trim().toLowerCase();
+        const normalized = String(type || "").trim().toLowerCase().replace(/\s+/g, "_");
         if (!this.isWeatherEnabled()) return { ok: false, reason: "server" };
+        if (normalized === "inferno" || normalized === "white_inferno") return this.startWhiteInferno({ forced });
         if (normalized !== "rain" && normalized !== "clear") return { ok: false, reason: "type" };
+        if (normalized === "clear" && forced) this.stopWhiteInferno({ forced: true });
         if (Config.craftras_world1_challenge_builder) {
             if (normalized !== "rain" && this.challengeStage !== "completed") return { ok: false, reason: "locked" };
             this.weatherType = normalized;
@@ -1714,10 +2809,11 @@ class Craftras {
     }
 
     scheduleWeather(type, delaySeconds = 0) {
-        const normalized = String(type || "").trim().toLowerCase();
+        const normalizedType = String(type || "").trim().toLowerCase().replace(/\s+/g, "_");
+        const normalized = normalizedType === "inferno" ? "white_inferno" : normalizedType;
         const seconds = Number(delaySeconds);
         if (!this.isWeatherEnabled()) return { ok: false, reason: "server" };
-        if (normalized !== "rain" && normalized !== "clear") return { ok: false, reason: "type" };
+        if (normalized !== "rain" && normalized !== "clear" && normalized !== "white_inferno") return { ok: false, reason: "type" };
         if (!Number.isFinite(seconds) || seconds < 0 || seconds > 604_800) return { ok: false, reason: "delay" };
         if (Config.craftras_world1_challenge_builder) {
             if (normalized !== "rain" || seconds !== 0) return { ok: false, reason: "locked" };
@@ -1742,7 +2838,7 @@ class Craftras {
         }
         if (Config.craftras_world1_challenge_builder) {
             this.weatherLastUpdate = now;
-            this.weatherType = this.challengeStage === "completed" ? "clear" : "rain";
+            this.weatherType = this.challengeStage === "completed" || this.challengeStoryEightReached ? "clear" : "rain";
             this.weatherRainElapsed = 0;
             this.weatherCheckElapsed = 0;
             this.scheduledWeatherChange = null;
@@ -1759,12 +2855,15 @@ class Craftras {
                 this.scheduledWeatherChange = null;
                 const result = this.setWeather(scheduledType);
                 if (result.ok) {
-                    const message = scheduledType === "rain" ? "Rain is beginning." : "The sky is clearing.";
+                    const message = scheduledType === "rain"
+                        ? "Rain is beginning."
+                        : scheduledType === "white_inferno" ? "WHITE INFERNO" : "The sky is clearing.";
                     for (const socket of this.gameManager.clients) socket?.talk?.("BM", Config.popup_message_duration, message);
                 }
                 return;
             }
         }
+        this.updateWhiteInferno(elapsed);
         if (this.weatherType === "rain") {
             this.weatherRainElapsed += elapsed;
             if (this.weatherRainElapsed >= WEATHER_RAIN_DURATION) {
@@ -1946,24 +3045,64 @@ class Craftras {
         const key = this.wallKey(x, y);
         let cell = this.cellCache.get(key);
         if (!cell) {
-            cell = generateCell(x, y, this.seed);
+            cell = Config.craftras_world2_challenge_builder
+                ? this.generateWorld2ChallengeCell(x, y)
+                : generateCell(x, y, this.seed);
             this.cellCache.set(key, cell);
         }
         return cell;
+    }
+
+    generateWorld2ChallengeCell(x, y) {
+        const challengeBlocks = Math.ceil(this.worldSize / BLOCK_SIZE);
+        const halfBlocksX = Math.floor(challengeBlocks / 2);
+        const halfBlocksY = Math.floor(challengeBlocks / 2);
+        if (x < -halfBlocksX || y < -halfBlocksY || x >= halfBlocksX || y >= halfBlocksY) {
+            return { region: "surface", floor: FLOORS.SAND, block: BLOCKS.AIR };
+        }
+
+        const spawnCell = worldToBlock(-this.worldSize * 0.42, 0);
+        if (Math.hypot(x - spawnCell.x, y - spawnCell.y) < 12) {
+            return { region: "surface", floor: FLOORS.SAND, block: BLOCKS.AIR };
+        }
+
+        const sectorSize = 28;
+        const sectorX = Math.floor(x / sectorSize);
+        const sectorY = Math.floor(y / sectorSize);
+        let rock = false;
+        for (let offsetY = -1; offsetY <= 1 && !rock; offsetY++) {
+            for (let offsetX = -1; offsetX <= 1 && !rock; offsetX++) {
+                const sx = sectorX + offsetX;
+                const sy = sectorY + offsetY;
+                if (craftrasChallenge2Hash(sx, sy, this.seed + 9100) > 0.38) continue;
+                const centerX = sx * sectorSize + 5 + Math.floor(craftrasChallenge2Hash(sx, sy, this.seed + 9101) * (sectorSize - 10));
+                const centerY = sy * sectorSize + 5 + Math.floor(craftrasChallenge2Hash(sx, sy, this.seed + 9102) * (sectorSize - 10));
+                const radiusX = 2.2 + craftrasChallenge2Hash(sx, sy, this.seed + 9103) * 3.8;
+                const radiusY = 2.2 + craftrasChallenge2Hash(sx, sy, this.seed + 9104) * 3.8;
+                const dx = (x - centerX) / radiusX;
+                const dy = (y - centerY) / radiusY;
+                const edgeNoise = (craftrasChallenge2Hash(x, y, this.seed + 9105) - 0.5) * 0.42;
+                rock = dx * dx + dy * dy <= 1 + edgeNoise;
+            }
+        }
+        return { region: "surface", floor: FLOORS.SAND, block: rock ? BLOCKS.ROCK : BLOCKS.AIR };
     }
 
     getBlock(x, y) {
         const key = this.wallKey(x, y);
         if (this.placedBlocks.has(key)) return this.placedBlocks.get(key);
         if (this.destroyedWallKeys.has(key)) return BLOCKS.AIR;
-        if (Config.craftras_village_builder && !Config.craftras_broken_kingdom_builder && !Config.craftras_intact_kingdom_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_cave_builder) return BLOCKS.AIR;
+        if (Config.craftras_village_builder && !Config.craftras_broken_kingdom_builder && !Config.craftras_intact_kingdom_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_cave_builder && !Config.craftras_world2_village_builder) return BLOCKS.AIR;
         const generatedBlock = this.getCell(x, y)?.block ?? BLOCKS.AIR;
         if (generatedBlock === BLOCKS.TREE && this.isInsideVillageNatureClearZone(x, y)) return BLOCKS.AIR;
         return generatedBlock;
     }
 
     getFloor(x, y) {
-        return this.placedFloors.get(this.wallKey(x, y)) ?? BLOCKS.AIR;
+        const placed = this.placedFloors.get(this.wallKey(x, y));
+        if (placed != null) return placed;
+        if (Config.craftras_world2_challenge_builder) return this.getCell(x, y)?.floor ?? FLOORS.SAND;
+        return BLOCKS.AIR;
     }
 
     getBlockCode(x, y) {
@@ -1991,7 +3130,7 @@ class Craftras {
 
     getBlockDamageStage(x, y, block = this.getBlock(x, y)) {
         const permanentStage = this.permanentBlockDamageStages.get(this.wallKey(x, y)) ?? 0;
-        const maxHealth = BLOCK_HEALTH[block];
+        const maxHealth = this.getBlockMaxHealth(x, y, block);
         const health = this.damagedWallHealth.get(this.wallKey(x, y));
         if (!maxHealth || health == null) return permanentStage;
         const damageRatio = 1 - health / maxHealth;
@@ -2016,7 +3155,7 @@ class Craftras {
         for (const [key, health] of [...this.damagedWallHealth]) {
             const [x, y] = key.split(",").map(Number);
             const block = Number.isFinite(x) && Number.isFinite(y) ? this.getBlock(x, y) : BLOCKS.AIR;
-            const maxHealth = BLOCK_HEALTH[block];
+            const maxHealth = this.getBlockMaxHealth(x, y, block);
             if (!maxHealth || block === BLOCKS.AIR) {
                 this.damagedWallHealth.delete(key);
                 this.damagedWallLastHitAt.delete(key);
@@ -2060,7 +3199,9 @@ class Craftras {
 
     getFloorRenderCode(x, y) {
         const block = this.getFloor(x, y);
-        let code = BLOCK_CODES[block] ?? 0;
+        let code = isInsideWorld2(x, y) && block === FLOORS.STONE
+            ? WORLD2_STONE_FLOOR_CODE
+            : BLOCK_CODES[block] ?? 0;
         const maxHealth = BLOCK_HEALTH[block];
         const health = this.damagedFloorHealth.get(this.wallKey(x, y));
         if (maxHealth && health != null) {
@@ -2166,7 +3307,15 @@ class Craftras {
     }
 
     spawnItemDrop(block, location) {
-        const item = BLOCK_DROPS[block];
+        const cell = worldToBlock(location.x, location.y);
+        const world2Item = isInsideWorld2(cell.x, cell.y)
+            ? block === BLOCKS.IRON_ORE
+                ? ITEMS.sapphire
+                : block === BLOCKS.CRYSTAL_ORE
+                    ? ITEMS.ruby
+                    : null
+            : null;
+        const item = world2Item || BLOCK_DROPS[block];
         if (!item) return null;
         const count = block === BLOCKS.TREE ? 1 + Math.floor(Math.random() * 2) : 1;
         return this.spawnItemEntity(item, location, { count, pickupDelay: 150 });
@@ -2174,6 +3323,7 @@ class Craftras {
 
     spawnItemEntity(item, location, options = {}) {
         const now = Date.now();
+        const persistenceSource = options.source || options.owner || location;
         const drop = new Entity({ x: location.x, y: location.y });
         drop.define("craftrasItemDrop");
         drop.settings.no_collisions = true;
@@ -2189,6 +3339,7 @@ class Craftras {
         drop.craftrasExpiresAt = now + 60_000;
         drop.craftrasDropOwner = options.owner || null;
         drop.craftrasOwnerBlockedUntil = now + Math.max(0, options.ownerBlockDuration || 0);
+        drop.craftrasPersistenceTainted = !!options.persistenceTainted || !!persistenceSource?.craftrasPersistenceBlocked;
         drop.damp = 0.025;
         drop.maxSpeed = 32;
         drop.velocity.x = options.velocityX || 0;
@@ -2216,10 +3367,35 @@ class Craftras {
         if (!mob || mob.craftrasLootDropped || mob.craftrasChallengeNoLoot) return;
         mob.craftrasLootDropped = true;
         const rollDrop = (chance, itemId, min = 1, max = min) => {
-            if (Math.random() >= chance) return;
+            if (!ITEMS[itemId]?.equipmentRecipe && Math.random() >= chance) return;
             const count = min + Math.floor(Math.random() * (max - min + 1));
             this.spawnMobLoot(mob, itemId, count);
         };
+
+        if (mobType === "iron_armored_giant_zombie") {
+            this.spawnMobLoot(mob, "iron_ingot", 7);
+            this.spawnMobLoot(mob, "rotten_flesh", 2);
+            return;
+        }
+        if (mobType === "diamond_armored_giant_zombie") {
+            this.spawnMobLoot(mob, "diamond", 6);
+            this.spawnMobLoot(mob, "rotten_flesh", 2);
+            return;
+        }
+        if (mobType === "artillery_giant_zombie") {
+            this.spawnMobLoot(mob, "gold_ingot", 8);
+            return;
+        }
+        if (mobType === "elite_giant_zombie") {
+            this.spawnMobLoot(mob, "diamond_block", 4);
+            this.spawnMobLoot(mob, "sapphire", 7);
+            return;
+        }
+        if (mobType === "world2_magical_zombie") {
+            this.spawnMobLoot(mob, "zombie_wizard_staff_recipe");
+            this.spawnMobLoot(mob, "magic_crystal");
+            return;
+        }
 
         if (mobType === "king_zombie") {
             rollDrop(0.05, "zombie_crown_recipe");
@@ -2230,6 +3406,51 @@ class Craftras {
             rollDrop(0.2, "royal_key");
             rollDrop(1, "knight_shield_recipe");
             rollDrop(0.1, "knight_shield_fragment");
+            return;
+        }
+        if (mobType === "phoenix_skeleton") {
+            this.spawnMobLoot(mob, "fire_soul");
+            return;
+        }
+        if (mobType === "burning_skeleton") {
+            rollDrop(0.5, "burnt_bone");
+            return;
+        }
+        if (mobType === "sniper_burning_skeleton") {
+            this.spawnMobLoot(mob, "burnt_bone");
+            return;
+        }
+        if (mobType === "fire_zombie" || mobType === "fire_worm") {
+            rollDrop(0.5, "fire_orb");
+            return;
+        }
+        if (mobType === "giant_bandage_zombie") {
+            this.spawnMobLoot(mob, "bandage", Math.random() < 0.5 ? 2 : 1);
+            this.spawnMobLoot(mob, "rotten_flesh");
+            return;
+        }
+        if (["bandage_zombie", "armored_bandage_zombie", "elite_bandage_zombie"].includes(mobType)) {
+            rollDrop(0.5, "bandage");
+            rollDrop(0.5, "rotten_flesh");
+            return;
+        }
+        if (mobType === "large_worm") {
+            this.spawnMobLoot(mob, "worm_shell", Math.random() < 0.5 ? 2 : 1);
+            return;
+        }
+        if (mobType === "giant_worm") {
+            this.spawnMobLoot(mob, "worm_shell", 2);
+            this.spawnMobLoot(mob, "sturdy_helmet_recipe");
+            rollDrop(0.1, "ancient_key");
+            return;
+        }
+        if (mobType === "worm") {
+            rollDrop(0.5, "worm_shell");
+            return;
+        }
+        if (mobType === "spiker") {
+            this.spawnMobLoot(mob, "horn");
+            this.spawnMobLoot(mob, "horn_sword_recipe");
             return;
         }
         if (mob.craftrasMobFamily === "skeleton") {
@@ -2339,6 +3560,7 @@ class Craftras {
                             const donor = receiver === target ? drop : target;
                             const moved = Math.min(64 - receiver.craftrasItemCount, donor.craftrasItemCount);
                             if (moved > 0) {
+                                receiver.craftrasPersistenceTainted = !!receiver.craftrasPersistenceTainted || !!donor.craftrasPersistenceTainted;
                                 receiver.craftrasItemCount += moved;
                                 donor.craftrasItemCount -= moved;
                                 receiver.craftrasExpiresAt = Math.min(
@@ -2551,6 +3773,7 @@ class Craftras {
                 velocityY: Math.sin(angle) * speed,
                 pickupDelay: 700,
                 magnetDelay: 700,
+                persistenceTainted: !!socket.craftrasPersistenceBlocked,
             });
         });
         return true;
@@ -2590,6 +3813,18 @@ class Craftras {
 
                 const pickupRadius = bodyRadius * 1.15 + Math.max(5, drop.realSize || drop.size || 5);
                 if (ownerBlocked || now < drop.craftrasPickupAt || distanceSquared > pickupRadius * pickupRadius) continue;
+                if (drop.craftrasPersistenceTainted) {
+                    this.gameManager.socketManager.initializeCraftrasInventory(socket);
+                    const canAccept = socket.craftrasInventory.slots.some(stack =>
+                        !stack || (stack.id === drop.craftrasItem.id && stack.count < 64)
+                    );
+                    if (!canAccept) continue;
+                    this.gameManager.socketManager.markCraftrasPersistenceBlocked(
+                        socket,
+                        "admin-or-creative-item",
+                        true,
+                    );
+                }
                 const accepted = this.gameManager.socketManager.addCraftrasItem(socket, drop.craftrasItem, drop.craftrasItemCount);
                 if (!accepted) continue;
                 drop.craftrasItemCount -= accepted;
@@ -2622,7 +3857,7 @@ class Craftras {
             stack,
             block,
             floorOnly: stack.id === "dirt_path",
-            blockOnly: stack.id === "torch" || stack.id === "steel_torch" || stack.id === "challenge_start_block" || stack.id === "challenge_spawn_block" || stack.id === "transparent_block" || stack.id === "route_marker_block",
+            blockOnly: stack.id === "torch" || stack.id === "steel_torch" || stack.id === "challenge_start_block" || stack.id === "world2_challenge_block" || stack.id === "challenge_spawn_block" || stack.id === "transparent_block" || stack.id === "route_marker_block",
         } : null;
     }
 
@@ -2720,11 +3955,13 @@ class Craftras {
     }
 
     clampWorldEditCell(cell) {
-        const halfX = Math.ceil(BLOCKS_X / 2);
-        const halfY = Math.ceil(BLOCKS_Y / 2);
+        const minX = -Math.floor(BLOCKS_X / 2);
+        const minY = -Math.floor(BLOCKS_Y / 2);
+        const maxX = minX + BLOCKS_X * 2 - 1;
+        const maxY = minY + BLOCKS_Y - 1;
         return {
-            x: Math.max(-halfX, Math.min(halfX, Math.trunc(Number(cell?.x) || 0))),
-            y: Math.max(-halfY, Math.min(halfY, Math.trunc(Number(cell?.y) || 0))),
+            x: Math.max(minX, Math.min(maxX, Math.trunc(Number(cell?.x) || 0))),
+            y: Math.max(minY, Math.min(maxY, Math.trunc(Number(cell?.y) || 0))),
         };
     }
 
@@ -2827,6 +4064,9 @@ class Craftras {
             routemarker: "route_marker_block",
             mapmarker: "route_marker_block",
             challengestart: "challenge_start_block",
+            world2challenge: "world2_challenge_block",
+            world2challengestart: "world2_challenge_block",
+            wormchallenge: "world2_challenge_block",
         };
         const aliased = aliases[requested] || requested;
         if (aliased === "diamond_ore") return { block: BLOCKS.CRYSTAL_ORE, itemId: "diamond_ore", name: "Diamond Ore" };
@@ -2988,7 +4228,7 @@ class Craftras {
     placeSelectedBlock(socket) {
         const state = this.getPlacementState(socket);
         if (!state.active || !state.valid) return false;
-        if ((state.block === BLOCKS.BEDROCK || state.block === BLOCKS.STEEL_TORCH || state.block === BLOCKS.CHALLENGE_START || state.block === BLOCKS.CHALLENGE_SPAWN || state.block === BLOCKS.TRANSPARENT_BLOCK || state.block === BLOCKS.ROUTE_MARKER) && !socket.permissions?.admin) return false;
+        if ((state.block === BLOCKS.BEDROCK || state.block === BLOCKS.STEEL_TORCH || state.block === BLOCKS.CHALLENGE_START || state.block === BLOCKS.WORLD2_CHALLENGE_START || state.block === BLOCKS.CHALLENGE_SPAWN || state.block === BLOCKS.TRANSPARENT_BLOCK || state.block === BLOCKS.ROUTE_MARKER) && !socket.permissions?.admin) return false;
         if (!this.gameManager.socketManager.consumeCraftrasSelectedItem(socket, 1)) return false;
         const key = this.wallKey(state.x, state.y);
         if (state.mode === "floor") {
@@ -3185,9 +4425,12 @@ class Craftras {
     getPlayerLoadRadius(body) {
         const equippedBonus = body?.craftrasHeldItem === "pope_staff" ? 2 * CHUNK_SIZE : 0;
         const chunkRadiusOverride = Math.floor(Number(body.craftrasLoadChunkRadiusOverride));
-        if (Number.isFinite(chunkRadiusOverride) && chunkRadiusOverride > 0) return chunkRadiusOverride * CHUNK_SIZE + equippedBonus;
+        const challengeMultiplier = Config.craftras_world2_challenge_builder ? 4.5 : 1;
+        if (Number.isFinite(chunkRadiusOverride) && chunkRadiusOverride > 0) {
+            return (chunkRadiusOverride * CHUNK_SIZE + equippedBonus) * challengeMultiplier;
+        }
         const manualBonus = Math.max(0, Math.floor(body.craftrasLoadRadiusBonus || 0));
-        return Math.min(this.maxLoadRadius + equippedBonus, this.baseLoadRadius + manualBonus + equippedBonus);
+        return Math.min(this.maxLoadRadius + equippedBonus, this.baseLoadRadius + manualBonus + equippedBonus) * challengeMultiplier;
     }
 
     setPlayerChunkLoadRadius(body, chunkRadius) {
@@ -3286,6 +4529,7 @@ class Craftras {
         this.challengeIntro = {
             lineIndex: 0,
             nextLineAt: Date.now(),
+            speedMultiplier: 1,
         };
         for (const actor of this.challengeActors) {
             actor.craftrasChallengeWaiting = true;
@@ -3312,15 +4556,48 @@ class Craftras {
         console.log("[Craftras World 1 Challenge] The escort began moving during the intro.");
     }
 
+    setChallengeQuickMode(enabled) {
+        return this.setChallengeQuickMultiplier(enabled ? 5 : 1);
+    }
+
+    setChallengeQuickMultiplier(multiplier) {
+        if (!Config.craftras_world1_challenge_builder) return { ok: false, enabled: false, multiplier: 1 };
+        const value = Number(multiplier);
+        if (!Number.isFinite(value) || value < 0.1 || value > 100) {
+            return { ok: false, invalidMultiplier: true, enabled: this.challengeQuickMode, multiplier: this.challengeQuickMultiplier || 1 };
+        }
+        this.challengeQuickMultiplier = value;
+        this.challengeQuickMode = value !== 1;
+        for (const actor of this.challengeActors) {
+            actor.craftrasChallengeFollowVelocity = { x: 0, y: 0 };
+        }
+        return { ok: true, enabled: this.challengeQuickMode, multiplier: value };
+    }
+
+    toggleChallengeQuickMode() {
+        return this.setChallengeQuickMultiplier(this.challengeQuickMode ? 1 : 5);
+    }
+
+    getChallengeEscortStep() {
+        return CRAFTRAS_CHALLENGE_ESCORT_STEP * (this.challengeQuickMultiplier || 1);
+    }
+
     updateChallengeIntro(now = Date.now()) {
         const intro = this.challengeIntro;
         if (this.challengeStage !== "intro" || !intro || now < intro.nextLineAt) return;
         if (intro.lineIndex < CRAFTRAS_CHALLENGE_INTRO_LINES.length) {
             const line = CRAFTRAS_CHALLENGE_INTRO_LINES[intro.lineIndex++];
+            const duration = this.getDialogueDuration(intro, line.duration);
             const captain = [...this.challengeActors].find(actor => actor?.craftrasChallengeRole === "captain" && !actor.isDead?.());
-            captain?.say?.(line.text, line.duration);
+            captain?.say?.(line.text, duration);
             for (const socket of this.gameManager.clients) {
-                socket?.talk?.("BM", line.duration, `Knight Captain: ${line.text}`, "#f2f2f2");
+                socket?.talk?.(
+                    "BM",
+                    duration,
+                    `Knight Captain: ${line.text}`,
+                    "#f2f2f2",
+                    "challenge",
+                );
                 if (line.cameraShake) socket?.talk?.("SH", JSON.stringify({
                     type: "camera",
                     duration: line.cameraShake.duration,
@@ -3329,7 +4606,7 @@ class Craftras {
                 }));
             }
             if (line.startEscort) this.beginChallengeEscort();
-            intro.nextLineAt = now + line.duration;
+            intro.nextLineAt = now + duration;
             return;
         }
         this.challengeStage = "active";
@@ -3521,7 +4798,7 @@ class Craftras {
             return this.updateChallengeActorRoute(mob);
         }
         const distance = Math.hypot(dx, dy) || 1;
-        const step = Math.min(distance, CRAFTRAS_CHALLENGE_ESCORT_STEP);
+        const step = Math.min(distance, this.getChallengeEscortStep());
         mob.x += dx / distance * step;
         mob.y += dy / distance * step;
         mob.velocity.x = 0;
@@ -3557,7 +4834,8 @@ class Craftras {
         const dx = goal.x - actor.x;
         const dy = goal.y - actor.y;
         const distance = Math.hypot(dx, dy) || 1;
-        const catchUp = Math.min(CRAFTRAS_CHALLENGE_ESCORT_STEP * speedMultiplier, CRAFTRAS_CHALLENGE_ESCORT_STEP + Math.max(0, distance - BLOCK_SIZE * 2) * 0.08);
+        const escortStep = this.getChallengeEscortStep();
+        const catchUp = Math.min(escortStep * speedMultiplier, escortStep + Math.max(0, distance - BLOCK_SIZE * 2) * 0.08);
         const arrivalScale = Math.min(1, distance / (BLOCK_SIZE * 0.65));
         const speed = Math.min(distance, catchUp * arrivalScale);
         const desiredX = dx / distance * speed;
@@ -3626,7 +4904,8 @@ class Craftras {
         let nearest = null;
         let nearestDistance = maxRange;
         for (const target of this.getChallengeHostiles()) {
-            if (target.craftrasChallengeKingAssassin || target.craftrasMobType === "magical_zombie") continue;
+            if (target.craftrasChallengeKingAssassin) continue;
+            if (target.craftrasMobType === "magical_zombie" && !target.craftrasMagicVulnerable) continue;
             const distance = Math.hypot(target.x - actor.x, target.y - actor.y);
             if (distance >= nearestDistance) continue;
             nearest = target;
@@ -3674,6 +4953,90 @@ class Craftras {
         return false;
     }
 
+    updateChallengeActorFleeing(actor, boss, index, now = Date.now()) {
+        if (!actor || actor.isDead?.() || actor.craftrasChallengeInjured) return;
+        let goal = actor.craftrasMagicFleeGoal;
+        if (!goal || now >= (actor.craftrasMagicFleeGoalUntil || 0) || Math.hypot(goal.x - actor.x, goal.y - actor.y) < BLOCK_SIZE * 0.6) {
+            let threat = boss;
+            let threatDistance = Infinity;
+            for (const entity of this.challengeMagicEntities) {
+                if (!entity || entity.isDead?.()) continue;
+                const distance = Math.hypot(entity.x - actor.x, entity.y - actor.y);
+                if (distance >= threatDistance) continue;
+                threat = entity;
+                threatDistance = distance;
+            }
+            const away = threat ? Math.atan2(actor.y - threat.y, actor.x - threat.x) : Math.random() * Math.PI * 2;
+            const angle = away + (Math.random() - 0.5) * 1.4 + index * 0.11;
+            const distance = BLOCK_SIZE * (3 + Math.random() * 3);
+            goal = {
+                x: actor.x + Math.cos(angle) * distance,
+                y: actor.y + Math.sin(angle) * distance,
+            };
+            actor.craftrasMagicFleeGoal = goal;
+            actor.craftrasMagicFleeGoalUntil = now + 1_500 + Math.random() * 1_500;
+        }
+        const dx = goal.x - actor.x;
+        const dy = goal.y - actor.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const step = Math.min(distance, this.getChallengeEscortStep() * 1.8);
+        const next = worldToBlock(actor.x + dx / distance * step, actor.y + dy / distance * step);
+        if (this.isMovementBlockingBlock(this.getBlock(next.x, next.y))) {
+            actor.craftrasMagicFleeGoal = null;
+            actor.craftrasMagicFleeGoalUntil = 0;
+            this.freezeChallengeActor(actor);
+            return;
+        }
+        actor.x += dx / distance * step;
+        actor.y += dy / distance * step;
+        actor.velocity.x = 0;
+        actor.velocity.y = 0;
+        actor.facing = Math.atan2(dy, dx);
+        actor.vfacing = actor.facing;
+        actor.craftrasControl = {
+            goal: { x: actor.x, y: actor.y },
+            target: { x: dx, y: dy },
+            fire: false,
+            power: 0,
+        };
+    }
+
+    updateChallengeBossActors(captain, king, guardian, knights, now = Date.now()) {
+        const encounter = this.challengeEncounter;
+        const boss = this.getChallengeHostiles().find(mob => mob.craftrasMagicBoss && !mob.isDead?.());
+        if (!encounter?.magicalBossActive || !boss) return false;
+        const actors = [king, captain, guardian, ...knights].filter(actor => actor && !actor.isDead?.());
+        if (boss.craftrasMagicMode === "intro") {
+            for (const actor of actors) this.freezeChallengeActor(actor);
+            this.faceChallengeActorsAt(boss, true);
+            return true;
+        }
+        if (boss.craftrasMagicMode === "skill" || boss.craftrasMagicMode === "phase_entry") {
+            for (let index = 0; index < actors.length; index++) {
+                this.updateChallengeActorFleeing(actors[index], boss, index, now);
+            }
+            return true;
+        }
+        this.updateChallengeActorFleeing(king, boss, 0, now);
+        const fighters = [captain, guardian, ...knights].filter(actor => actor && !actor.isDead?.());
+        for (const actor of fighters) {
+            const dx = boss.x - actor.x;
+            const dy = boss.y - actor.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            if (distance > VILLAGE_GUARD_ATTACK_RANGE * 1.2) {
+                const step = Math.min(distance - VILLAGE_GUARD_ATTACK_RANGE, this.getChallengeEscortStep() * 1.4);
+                const next = worldToBlock(actor.x + dx / distance * step, actor.y + dy / distance * step);
+                if (!this.isMovementBlockingBlock(this.getBlock(next.x, next.y))) {
+                    actor.x += dx / distance * step;
+                    actor.y += dy / distance * step;
+                }
+            }
+            this.updateChallengeKnightCombat(actor, now);
+            this.faceChallengeActorAtCombatTarget(actor);
+        }
+        return true;
+    }
+
     faceChallengeActorAtCombatTarget(actor) {
         if (!actor || actor.isDead?.() || !actor.craftrasGuardSlash) return;
         const target = actor.craftrasGuardSlash.target;
@@ -3711,6 +5074,8 @@ class Craftras {
         this.challengeRoute = [];
         this.challengeRouteStartIndex = 0;
         this.challengeEscortMoving = false;
+        this.challengeQuickMode = false;
+        this.challengeQuickMultiplier = 1;
         this.challengeIntro = null;
         this.challengeRouteProtectedCells.clear();
         this.challengeEncounter = null;
@@ -3718,6 +5083,8 @@ class Craftras {
         this.challengeAiDiagnostics = null;
         this.challengeHadClients = false;
         this.challengeFailure = null;
+        this.challengeCompletion = null;
+        this.challengeStoryEightReached = false;
         this.challengeSpawnCursor = 0;
         this.weatherType = "rain";
         this.weatherRainElapsed = 0;
@@ -3725,6 +5092,41 @@ class Craftras {
         this.spawnChallengeInitialCast();
         this.syncWeather(true);
         console.log("[Craftras World 1 Challenge] Empty session reset. Combat simulation is idle.");
+    }
+
+    updateChallengeGuardianLastStand(guardian, now = Date.now()) {
+        if (!guardian?.craftrasChallengeGuardianLastStand || guardian.isDead?.()) return false;
+        guardian.invuln = true;
+        guardian.damageReceived = 0;
+        guardian.craftrasBaseColor = "#ff3030";
+        guardian.color.base = "#ff3030";
+        this.freezeChallengeActor(guardian);
+        this.updateVillageGuardSlash(guardian, now);
+        const target = this.getChallengeHostiles()
+            .filter(mob => mob && !mob.isDead?.() && !mob.craftrasMagicBoss)
+            .sort((a, b) =>
+                Math.hypot(a.x - guardian.x, a.y - guardian.y)
+                - Math.hypot(b.x - guardian.x, b.y - guardian.y)
+            )[0];
+        if (!target || now < (guardian.craftrasNextGuardianLastStandSlashAt || 0)) return true;
+        guardian.craftrasNextGuardianLastStandSlashAt = now + CRAFTRAS_CHALLENGE_GUARDIAN_LAST_STAND_SLASH_INTERVAL;
+        const dx = target.x - guardian.x;
+        const dy = target.y - guardian.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        guardian.facing = Math.atan2(dy, dx);
+        guardian.vfacing = guardian.facing;
+        if (!guardian.craftrasGuardSlash) {
+            guardian.craftrasGuardSlash = { target, startedAt: now, hitDone: true, visualOnly: true };
+        }
+        this.spawnGuardianSlashProjectile(guardian, target, {
+            friendly: true,
+            damage: 200,
+            knockback: 1,
+            speedMultiplier: 1.5,
+            life: CRAFTRAS_GUARDIAN_SLASH_LIFE * 3,
+            direction: { x: dx / distance, y: dy / distance },
+        });
+        return true;
     }
 
     updateChallengeActors(now = Date.now()) {
@@ -3752,6 +5154,13 @@ class Craftras {
         }
         this.updateChallengeIntro(now);
         const frozen = !this.challengeEscortMoving;
+        const bossDefeatSceneStage = this.challengeEncounter?.bossDefeatScene?.stage;
+        const bossDefeatSceneActive = [
+            "fade_out",
+            "fade_in",
+            "dialogue",
+            "countdown",
+        ].includes(bossDefeatSceneStage);
         for (const actor of this.challengeActors) {
             if (!actor || actor.isDead?.()) {
                 this.challengeActors.delete(actor);
@@ -3759,26 +5168,71 @@ class Craftras {
                 continue;
             }
             if (this.challengeStage !== "active") actor.damageReceived = 0;
+            if (actor.craftrasMagicBossFightImmune) {
+                actor.invuln = !!actor.craftrasMagicBossFightPreviousInvuln;
+                actor.craftrasMagicBossFightImmune = false;
+                delete actor.craftrasMagicBossFightPreviousInvuln;
+            }
+            if (bossDefeatSceneActive) {
+                if (!actor.craftrasBossDefeatSceneProtected) {
+                    actor.craftrasBossDefeatScenePreviousInvuln = !!actor.invuln;
+                    actor.craftrasBossDefeatSceneProtected = true;
+                }
+                actor.invuln = true;
+                actor.damageReceived = 0;
+            } else if (actor.craftrasBossDefeatSceneProtected) {
+                actor.invuln = !!actor.craftrasBossDefeatScenePreviousInvuln;
+                actor.craftrasBossDefeatSceneProtected = false;
+                delete actor.craftrasBossDefeatScenePreviousInvuln;
+            }
+            if (actor.craftrasChallengePermanentStand) {
+                if (actor.craftrasChallengeRole === "king" && actor.health) {
+                    actor.health.amount = 1;
+                    actor.craftrasChallengeTrackedHealth = 1;
+                    actor.craftrasNextChallengeRegenAt = Infinity;
+                }
+                actor.invuln = true;
+                actor.damageReceived = 0;
+                this.freezeChallengeActor(actor);
+                continue;
+            }
+            if (actor.health) {
+                const trackedHealth = Number(actor.craftrasChallengeTrackedHealth);
+                if (Number.isFinite(trackedHealth) && actor.health.amount > trackedHealth) {
+                    actor.health.amount = trackedHealth;
+                } else if (!Number.isFinite(trackedHealth) || actor.health.amount < trackedHealth) {
+                    actor.craftrasChallengeTrackedHealth = actor.health.amount;
+                }
+            }
             if (actor.health && !actor.craftrasChallengeInjured && now >= (actor.craftrasNextChallengeRegenAt || 0)) {
-                actor.craftrasNextChallengeRegenAt = now + CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL;
+                const regenInterval = actor.craftrasChallengeRole === "captain"
+                    ? CRAFTRAS_CHALLENGE_CAPTAIN_REGEN_INTERVAL
+                    : CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL;
+                actor.craftrasNextChallengeRegenAt = now + regenInterval;
                 actor.health.amount = Math.min(actor.health.max, actor.health.amount + CRAFTRAS_CHALLENGE_NPC_REGEN_AMOUNT);
+                actor.craftrasChallengeTrackedHealth = actor.health.amount;
             }
             if (frozen) {
-                this.freezeChallengeActor(actor, this.challengeStage !== "completed" && !actor.craftrasChallengeInjured);
+                this.freezeChallengeActor(actor);
             }
         }
+        this.updateChallengeGuardianLastStand(guardian, now);
+        if (this.updateChallengeBossActors(captain, king, guardian, knights, now)) return;
         if (frozen) return;
         if (!this.updateChallengeKnightCombat(captain, now)) this.updateChallengeActorRoute(captain);
         const captainIndex = Math.floor(captain?.craftrasChallengeRouteIndex || this.challengeRouteStartIndex);
-        if (king?.craftrasChallengeInjured) this.freezeChallengeActor(king);
+        if (king?.craftrasChallengeInjured || king?.craftrasChallengePermanentStand) this.freezeChallengeActor(king);
         else this.updateChallengeRouteFollower(king, captainIndex - 5, 0, 1.8);
         const kingIndex = Math.floor(king?.craftrasChallengeRouteIndex || Math.max(this.challengeRouteStartIndex, captainIndex - 5));
-        if (king?.craftrasChallengeInjured) this.freezeChallengeActor(guardian);
+        if (guardian?.craftrasChallengePermanentStand) this.updateChallengeGuardianLastStand(guardian, now);
+        else if (king?.craftrasChallengeInjured) this.freezeChallengeActor(guardian);
         else if (!this.updateChallengeKnightCombat(guardian, now)) this.updateChallengeRouteFollower(guardian, kingIndex - 1, 0.85, 1.8);
         // Two knights screen the King from the front while four protect the rear.
         const formationOffsets = [3, 3, -2, -2, -4, -4];
         for (let index = 0; index < knights.length; index++) {
-            const anchorIndex = king?.craftrasChallengeInjured ? captainIndex - (Math.floor(index / 2) + 1) * 2 : kingIndex + formationOffsets[index];
+            const anchorIndex = king?.craftrasChallengeInjured || king?.craftrasChallengePermanentStand
+                ? captainIndex - (Math.floor(index / 2) + 1) * 2
+                : kingIndex + formationOffsets[index];
             if (!this.updateChallengeKnightCombat(knights[index], now)) {
                 this.updateChallengeRouteFollower(knights[index], anchorIndex, index % 2 === 0 ? -1 : 1, 2.5);
             }
@@ -3798,6 +5252,10 @@ class Craftras {
             kingInjuryAt: 0,
             kingAssassinSpawned: false,
             kingInjured: false,
+            magicalBossSpawnAt: 0,
+            magicalBossActive: false,
+            magicalBossDefeated: false,
+            bossDefeatScene: null,
             dialogue: null,
             dialogueQueue: [],
             completed: false,
@@ -3888,9 +5346,11 @@ class Craftras {
         if (mob.craftrasMobType === "runner_zombie") {
             mob.craftrasNoAttackKnockback = true;
             mob.craftrasContactDamage = 20;
+        } else if (mob.craftrasMobType === "giant_zombie") {
+            mob.craftrasNoKnockback = false;
         } else if (mob.craftrasMobType === "titan_zombie") {
             mob.craftrasContactDamage = 80;
-            mob.craftrasNextTitanDashAt = Date.now() + 1200;
+            mob.craftrasNextTitanDashAt = Date.now() + CRAFTRAS_CHALLENGE_TITAN_DASH_INTERVAL;
             mob.craftrasTitanDash = null;
             mob.craftrasNoKnockback = false;
         } else if (mob.craftrasMobType === "magical_zombie") {
@@ -3916,8 +5376,21 @@ class Craftras {
         if (!location) return null;
         const mob = this.spawnChallengeHostile(type, location, { special: type, noLoot: type === "magical_zombie" });
         if (mob && type === "magical_zombie") mob.craftrasMagicOrbitPhase = Math.random() * Math.PI * 2;
-        if (mob && type === "titan_zombie") mob.craftrasNextTitanDashAt = now + 1500;
+        if (mob && type === "titan_zombie") mob.craftrasNextTitanDashAt = now + CRAFTRAS_CHALLENGE_TITAN_DASH_INTERVAL;
         return mob;
+    }
+
+    finishChallengeGuardianLastStand() {
+        for (const actor of [...this.challengeActors]) {
+            if (!actor || actor.isDead?.() || !["king", "guardian"].includes(actor.craftrasChallengeRole)) continue;
+            actor.craftrasChallengeNoLoot = true;
+            actor.invuln = false;
+            actor.damageReceived = 0;
+            if (actor.health) actor.health.amount = 0;
+            this.challengeActors.delete(actor);
+            this.mobs.delete(actor);
+            actor.kill?.();
+        }
     }
 
     triggerChallengeStoryMarker(index, players, now = Date.now()) {
@@ -3928,17 +5401,9 @@ class Craftras {
         const captain = [...this.challengeActors].find(actor => actor?.craftrasChallengeRole === "captain" && !actor.isDead?.());
         const king = [...this.challengeActors].find(actor => actor?.craftrasChallengeRole === "king" && !actor.isDead?.());
         const guardian = [...this.challengeActors].find(actor => actor?.craftrasChallengeRole === "guardian" && !actor.isDead?.());
-        const knight = [...this.challengeActors].find(actor => actor?.craftrasChallengeRole === "knight" && !actor.isDead?.());
-        const citizen = index === 1 ? this.ensureChallengeDialogueCitizen(players) : null;
-        const magicalZombie = index >= 4
-            ? this.getChallengeHostiles().find(mob => mob?.craftrasMobType === "magical_zombie" && !mob.isDead?.())
-                || this.ensureChallengeSpecial("magical_zombie", players, now)
-            : null;
+        const magicalZombie = this.getChallengeHostiles()
+            .find(mob => mob?.craftrasMobType === "magical_zombie" && !mob.isDead?.()) || null;
         const storyLines = {
-            1: [
-                { speaker: citizen, name: "Citizen", text: "Help us!", duration: 2_500 },
-                { speaker: knight, name: "Knight", text: "Everyone, gather here! Move, now!", duration: 3_500 },
-            ],
             2: [
                 { speaker: captain, name: "Knight Captain", text: "The fog makes it terribly dark...", duration: 4_000 },
                 { speaker: captain, name: "Knight Captain", text: "Place a torch.", duration: 3_000 },
@@ -3949,25 +5414,53 @@ class Craftras {
             ],
             4: [
                 { speaker: king, name: "King", text: "This cave is...", duration: 3_000 },
-                { speaker: captain, name: "Knight Captain", text: "Damn it.", duration: 2_000 },
-                { speaker: captain, name: "Knight Captain", text: "To think this is our only path...", duration: 4_000 },
-                { speaker: magicalZombie, name: "Magical Zombie", text: "WHERE ARE YOU GOING?", duration: 4_000, color: "#ff3030" },
+                { speaker: captain, name: "Knight Captain", text: "Yes...", duration: 3_000 },
+                { speaker: captain, name: "Knight Captain", text: "We all know...", duration: 4_000 },
+                { speaker: guardian, name: "Royal Guardian", text: "I hate this place...", duration: 4_000 },
+                { speaker: guardian, name: "Royal Guardian", text: "This cave is cursed!", duration: 4_000 },
             ],
             5: [
-                { speaker: captain, name: "Knight Captain", text: "We get out of here as fast as possible.", duration: 5_000 },
+                { speaker: captain, name: "Knight Captain", text: "There's something here...", duration: 3_000 },
+                { speaker: magicalZombie, name: "Magical Zombie", text: "How truly foolish...", duration: 4_000, color: "#ff3030", glitch: true },
+                { speaker: magicalZombie, name: "Magical Zombie", text: "To walk willingly to your own deaths...", duration: 4_000, color: "#ff3030", glitch: true },
+                { speaker: guardian, name: "Royal Guardian", text: "A zombie with a mind of its own?", duration: 4_000 },
             ],
             6: [
-                { speaker: guardian, name: "Royal Guardian", text: "I'll protect the king, so go on ahead!", duration: 4_000 },
-                { speaker: magicalZombie, name: "Magical Zombie", text: "DON'T RUN!!!!", duration: 4_000, color: "#ff3030" },
+                { speaker: magicalZombie, name: "Magical Zombie", text: "I'll show you that your sacrifice means nothing...", duration: 5_000, color: "#ff3030", glitch: true },
             ],
             7: [
-                { speaker: magicalZombie, name: "Magical Zombie", text: "KILL ALL", duration: 4_000, color: "#ff3030" },
+                { speaker: captain, name: "Knight Captain", text: "Wait... What's that sound...?", duration: 4_000 },
+                { speaker: captain, name: "Knight Captain", text: "What the hell!!", duration: 3_000 },
+                { speaker: captain, name: "Knight Captain", text: "What is that enormous thing?!!!", duration: 4_000 },
+            ],
+            8: [
+                { speaker: captain, name: "Knight Captain", text: "From now on, run as fast as you can!", duration: 3_000 },
+                { speaker: captain, name: "Knight Captain", text: "We're almost there!!", duration: 3_000 },
             ],
         }[index];
-        if (storyLines) this.queueChallengeDialogue(storyLines, now);
-        if (index === 5) {
-            encounter.kingInjuryAt = now + 20_000;
+        if (index === 8) {
+            this.challengeStoryEightReached = true;
+            this.weatherType = "clear";
+            this.weatherRainElapsed = 0;
+            this.weatherCheckElapsed = 0;
+            this.weatherLastUpdate = now;
+            this.scheduledWeatherChange = null;
+            this.syncWeather(true);
+            for (const socket of this.gameManager.clients) {
+                socket?.talk?.("CSE", CRAFTRAS_CHALLENGE_STORY_EIGHT_WHITEOUT_DURATION, CRAFTRAS_CHALLENGE_STORY_EIGHT_FOG_DURATION);
+            }
         }
+        if (index === 5 && !encounter.magicalBossActive && !encounter.magicalBossDefeated) {
+            encounter.magicalBossSpawnAt = now + CRAFTRAS_CHALLENGE_MAGIC_BOSS_DELAY;
+        }
+        if (index === 6 && encounter.magicalBossDefeated) {
+            this.finishChallengeGuardianLastStand();
+            if (encounter.bossDefeatScene) encounter.bossDefeatScene.stage = "done";
+        }
+        if (storyLines) this.queueChallengeDialogue(
+            storyLines,
+            index === 8 ? now + CRAFTRAS_CHALLENGE_STORY_EIGHT_DIALOGUE_DELAY : now,
+        );
         console.log(`[Craftras World 1 Challenge] text_story_${index} triggered.`);
     }
 
@@ -3975,36 +5468,10 @@ class Craftras {
         const encounter = this.challengeEncounter;
         if (!encounter || !Array.isArray(lines) || !lines.length) return false;
         encounter.dialogueQueue ||= [];
-        const dialogue = { index: 0, nextAt: now, lines };
+        const dialogue = { index: 0, nextAt: now, lines, speedMultiplier: 1 };
         if (encounter.dialogue) encounter.dialogueQueue.push(dialogue);
         else encounter.dialogue = dialogue;
         return true;
-    }
-
-    ensureChallengeDialogueCitizen(players = []) {
-        const existing = [...this.challengeActors].find(actor => actor?.craftrasChallengeRole === "citizen" && !actor.isDead?.());
-        if (existing) return existing;
-        const anchor = players.find(entry => entry?.body && !entry.body.isDead?.())?.body
-            || [...this.challengeActors].find(actor => actor && !actor.isDead?.());
-        if (!anchor) return null;
-        let location = { x: anchor.x + BLOCK_SIZE * 1.5, y: anchor.y };
-        for (let index = 0; index < 16; index++) {
-            const angle = index * Math.PI / 8;
-            const candidate = {
-                x: anchor.x + Math.cos(angle) * BLOCK_SIZE * 1.5,
-                y: anchor.y + Math.sin(angle) * BLOCK_SIZE * 1.5,
-            };
-            const block = worldToBlock(candidate.x, candidate.y);
-            if (this.getBlock(block.x, block.y) === BLOCKS.AIR) {
-                location = candidate;
-                break;
-            }
-        }
-        const citizen = this.configureChallengeActor(this.spawnMobAt(location, "villager"), "citizen", 0, location);
-        if (!citizen) return null;
-        citizen.craftrasChallengeWaiting = false;
-        citizen.craftrasChallengeRouteIndex = this.findNearestChallengeRouteIndex(citizen, this.challengeRouteStartIndex, this.challengeRoute.length - 1);
-        return citizen;
     }
 
     resolveChallengeDialogueSpeaker(line) {
@@ -4037,6 +5504,375 @@ class Craftras {
         }
     }
 
+    faceChallengeActorsAt(target, reveal = false) {
+        if (!target || target.isDead?.()) return;
+        for (const actor of this.challengeActors) {
+            if (!actor || actor.isDead?.()) continue;
+            const dx = target.x - actor.x;
+            const dy = target.y - actor.y;
+            if (Math.hypot(dx, dy) < 0.001) continue;
+            actor.facing = Math.atan2(dy, dx);
+            actor.vfacing = actor.facing;
+            actor.craftrasControl = {
+                goal: { x: actor.x, y: actor.y },
+                target: { x: dx, y: dy },
+                fire: false,
+                power: 0,
+            };
+            if (!reveal) continue;
+            actor.alpha = 1;
+            actor.craftrasInvisible = false;
+            actor.invisible = [0, 0];
+            if (actor.settings) actor.settings.fullyInvisible = false;
+            for (const turret of actor.turrets?.values?.() || []) {
+                turret.alpha = 1;
+                if (turret.settings) turret.settings.fullyInvisible = false;
+            }
+        }
+    }
+
+    ensureChallengeDefeatActors(boss) {
+        let king = [...this.challengeActors].find(actor =>
+            actor?.craftrasChallengeRole === "king" && !actor.isDead?.()
+        );
+        let guardian = [...this.challengeActors].find(actor =>
+            actor?.craftrasChallengeRole === "guardian" && !actor.isDead?.()
+        );
+        if (!boss || boss.isDead?.()) return { king, guardian };
+        if (!king) {
+            const location = { x: boss.x + BLOCK_SIZE * 2.7, y: boss.y };
+            king = this.spawnMobAt(location, "challenge_king");
+            if (king) {
+                this.configureChallengeActor(king, "king", 0, location);
+                king.craftrasChallengeWaiting = true;
+            }
+        }
+        if (!guardian) {
+            const location = { x: boss.x - BLOCK_SIZE * 2.7, y: boss.y };
+            guardian = this.spawnMobAt(location, "royal_guardian");
+            if (guardian) {
+                this.configureChallengeActor(guardian, "guardian", 0, location);
+                guardian.craftrasChallengeWaiting = true;
+            }
+        }
+        return { king, guardian };
+    }
+
+    placeChallengeActorsAroundDefeatedBoss(boss) {
+        if (!boss || boss.isDead?.()) return false;
+        this.ensureChallengeDefeatActors(boss);
+        const roleOrder = { captain: 0, king: 1, guardian: 2, knight: 3, citizen: 4 };
+        const actors = [...this.challengeActors]
+            .filter(actor => actor && !actor.isDead?.())
+            .sort((a, b) => (roleOrder[a.craftrasChallengeRole] ?? 9) - (roleOrder[b.craftrasChallengeRole] ?? 9)
+                || (a.craftrasChallengeActorIndex || 0) - (b.craftrasChallengeActorIndex || 0));
+        if (!actors.length) return false;
+        const baseAngle = boss.facing || 0;
+        for (let index = 0; index < actors.length; index++) {
+            const actor = actors[index];
+            const ring = Math.floor(index / 6);
+            const radius = BLOCK_SIZE * (2.7 + ring * 1.5);
+            const angle = baseAngle + index * Math.PI * 2 / Math.min(6, actors.length);
+            let location = null;
+            for (let attempt = 0; attempt < 16; attempt++) {
+                const attemptAngle = angle + (attempt % 2 ? 1 : -1) * Math.ceil(attempt / 2) * 0.16;
+                const x = boss.x + Math.cos(attemptAngle) * radius;
+                const y = boss.y + Math.sin(attemptAngle) * radius;
+                const cell = worldToBlock(x, y);
+                if (this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) continue;
+                location = { x, y };
+                break;
+            }
+            location ||= {
+                x: boss.x + Math.cos(angle) * radius,
+                y: boss.y + Math.sin(angle) * radius,
+            };
+            actor.x = location.x;
+            actor.y = location.y;
+            actor.velocity.x = 0;
+            actor.velocity.y = 0;
+            if (actor.accel) {
+                actor.accel.x = 0;
+                actor.accel.y = 0;
+            }
+            actor.craftrasChallengeFollowVelocity = { x: 0, y: 0 };
+            actor.craftrasMagicFleeGoal = null;
+            actor.craftrasMagicFleeGoalUntil = 0;
+            this.resolveEntityOutOfWall(actor, 12);
+        }
+        this.faceChallengeActorsAt(boss, true);
+        return true;
+    }
+
+    startChallengeMagicalBossDefeatScene(mob, now = Date.now()) {
+        const encounter = this.challengeEncounter;
+        if (!encounter || encounter.bossDefeatScene) return false;
+        this.challengeEscortMoving = false;
+        encounter.bossDefeatScene = {
+            stage: "fade_out",
+            boss: mob,
+            nextAt: now + CRAFTRAS_CHALLENGE_BOSS_DEFEAT_FADE_DURATION,
+            countdownAt: 0,
+            impactAt: 0,
+            countdownShakeIndex: 0,
+            nextCountdownShakeAt: 0,
+            resumeAt: 0,
+            nextWaveAt: 0,
+            waveShakeStarted: false,
+        };
+        for (const socket of this.gameManager.clients) {
+            socket?.talk?.("CTR", 1, CRAFTRAS_CHALLENGE_BOSS_DEFEAT_FADE_DURATION);
+        }
+        return true;
+    }
+
+    getChallengeBossDefeatZombieType() {
+        if (Math.random() < 0.1) return "giant_zombie";
+        return {
+            type: "zombie",
+            scoreType: "zombie",
+            label: "Armored Zombie",
+            health: 200,
+            helmet: "iron",
+            sword: "iron",
+            swordDamage: 40,
+            contactDamage: 20,
+            scoreMultiplier: 1.5,
+        };
+    }
+
+    spawnChallengeBossDefeatWave(players, now = Date.now()) {
+        const activeWaveMobs = this.getChallengeHostiles().filter(mob =>
+            !mob.craftrasMagicBoss && mob.craftrasChallengeSpecial === "boss_defeat_wave"
+        );
+        if (activeWaveMobs.length >= CRAFTRAS_CHALLENGE_BOSS_DEFEAT_WAVE_CAP) return null;
+        const anchors = [
+            ...(players || []),
+            ...[...this.challengeActors]
+                .filter(actor => actor && !actor.isDead?.() && !actor.craftrasChallengePermanentStand)
+                .map(body => ({ body })),
+        ];
+        const location = this.findChallengeHostileSpawn(anchors, {
+            minDistance: 7,
+            maxDistance: 13,
+            ignoreRoute: false,
+        });
+        return location
+            ? this.spawnChallengeHostile(this.getChallengeBossDefeatZombieType(), location, {
+                special: "boss_defeat_wave",
+                noLoot: true,
+            })
+            : null;
+    }
+
+    findChallengeStoryRouteIndex(storyIndex, fallback) {
+        const markers = [...this.textStoryMarkers]
+            .filter(([, index]) => index === storyIndex)
+            .map(([key]) => {
+                const [x, y] = key.split(",").map(Number);
+                return blockToWorld(x, y);
+            });
+        if (!markers.length) return this.findNearestChallengeRouteIndex(fallback);
+        const marker = markers.reduce((best, candidate) => {
+            if (!best) return candidate;
+            return Math.hypot(candidate.x - fallback.x, candidate.y - fallback.y)
+                < Math.hypot(best.x - fallback.x, best.y - fallback.y) ? candidate : best;
+        }, null);
+        return this.findNearestChallengeRouteIndex(marker);
+    }
+
+    applyChallengeBossDefeatBlueAttack(players, scene, now = Date.now()) {
+        for (const socket of this.gameManager.clients) {
+            socket?.talk?.("SH", JSON.stringify({
+                type: "camera",
+                duration: CRAFTRAS_CHALLENGE_BOSS_DEFEAT_BLUE_FLASH_DURATION,
+                amount: 140,
+                keepShake: false,
+            }));
+        }
+        for (const { body } of players || []) {
+            if (!body || body.isDead?.() || body.craftrasSpectator || !body.health) continue;
+            body.damageReceived = 0;
+            body.health.amount = 1;
+        }
+        let king = null;
+        let guardian = null;
+        for (const actor of this.challengeActors) {
+            if (!actor || actor.isDead?.() || !actor.health) continue;
+            if (actor.craftrasChallengeRole === "guardian") {
+                guardian = actor;
+                continue;
+            }
+            actor.damageReceived = 0;
+            actor.health.amount = 1;
+            actor.craftrasChallengeTrackedHealth = 1;
+            actor.craftrasNextChallengeRegenAt = now + CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL;
+            if (actor.craftrasChallengeRole === "king") king = actor;
+        }
+        if (king) {
+            king.craftrasChallengeInjured = true;
+            king.craftrasChallengePermanentStand = true;
+            this.freezeChallengeActor(king);
+        }
+        if (guardian) {
+            guardian.craftrasChallengePermanentStand = true;
+            guardian.craftrasChallengeGuardianLastStand = true;
+            guardian.craftrasNextGuardianLastStandSlashAt = now;
+            guardian.craftrasBaseColor = "#ff3030";
+            guardian.color.base = "#ff3030";
+            guardian.damageReceived = 0;
+            guardian.invuln = true;
+            this.freezeChallengeActor(guardian);
+            const guardianSize = Math.max(18, guardian.realSize || guardian.size || guardian.SIZE || 28);
+            this.spawnExplosionEffect(guardian, {
+                duration: 1_000,
+                startSize: guardianSize,
+                endSize: guardianSize * 5,
+                color: "#1f8dff",
+                alpha: 0.78,
+                fade: true,
+            });
+        }
+        const knightVictims = [...this.challengeActors]
+            .filter(actor => actor?.craftrasChallengeRole === "knight" && !actor.isDead?.())
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 3);
+        for (const knight of knightVictims) {
+            knight.craftrasChallengeNoLoot = true;
+            knight.invuln = false;
+            knight.damageReceived = 0;
+            if (knight.health) knight.health.amount = 0;
+            this.challengeActors.delete(knight);
+            this.mobs.delete(knight);
+            knight.kill?.();
+        }
+        if (scene.boss && !scene.boss.isDead?.()) {
+            scene.boss.craftrasChallengeNoLoot = true;
+            scene.boss.destroy?.();
+            this.mobs.delete(scene.boss);
+        }
+        scene.nextWaveAt = now + CRAFTRAS_CHALLENGE_BOSS_DEFEAT_BLUE_FLASH_DURATION;
+        scene.resumeAt = now + 10_000;
+        scene.stage = "aftermath";
+        this.queueChallengeDialogue([
+            { name: "Knight Captain", text: "What is this....", duration: 4_000 },
+            { speaker: guardian, name: "Royal Guardian", text: "I'll protect the King, so run ahead!", duration: 4_000 },
+            { name: "Knight Captain", text: "Everyone, move!!", duration: 3_000 },
+            { name: "Knight Captain", text: "Don't waste the chance the Royal Guardian gave us!!", duration: 5_000 },
+        ], now);
+    }
+
+    resumeChallengeEscortAfterBossDefeat(scene) {
+        const captain = [...this.challengeActors].find(actor =>
+            actor?.craftrasChallengeRole === "captain" && !actor.isDead?.()
+        );
+        const routeAnchor = captain || scene.boss;
+        const storySixRouteIndex = this.findChallengeStoryRouteIndex(6, routeAnchor);
+        this.challengeEscortMoving = true;
+        for (const actor of this.challengeActors) {
+            if (!actor || actor.isDead?.() || actor.craftrasChallengePermanentStand) continue;
+            actor.craftrasChallengeWaiting = false;
+            actor.craftrasChallengeRouteFinished = false;
+            const nearestRouteIndex = this.findNearestChallengeRouteIndex(actor);
+            actor.craftrasChallengeRouteIndex = Math.min(storySixRouteIndex, nearestRouteIndex);
+            actor.craftrasChallengeFollowVelocity = { x: 0, y: 0 };
+        }
+    }
+
+    updateChallengeMagicalBossDefeatScene(players, now = Date.now()) {
+        const encounter = this.challengeEncounter;
+        const scene = encounter?.bossDefeatScene;
+        if (!scene || scene.stage === "done") return false;
+        if (["fade_out", "fade_in", "dialogue", "countdown"].includes(scene.stage)) {
+            this.faceChallengeActorsAt(scene.boss, true);
+        }
+        if (scene.stage === "fade_out" && now >= scene.nextAt) {
+            this.placeChallengeActorsAroundDefeatedBoss(scene.boss);
+            for (const socket of this.gameManager.clients) {
+                socket?.talk?.("CTR", 0, CRAFTRAS_CHALLENGE_BOSS_DEFEAT_FADE_DURATION);
+            }
+            scene.stage = "fade_in";
+            scene.nextAt = now + CRAFTRAS_CHALLENGE_BOSS_DEFEAT_FADE_DURATION;
+            return true;
+        }
+        if (scene.stage === "fade_in" && now >= scene.nextAt) {
+            scene.stage = "dialogue";
+            scene.countdownAt = now + 12_000;
+            this.queueChallengeDialogue([
+                { name: "Knight Captain", text: "You lost, you little brat.", duration: 4_000 },
+                { speaker: scene.boss, name: "Magical Zombie", text: "How truly foolish....", duration: 4_000, color: "#ff3030", glitch: true },
+                { speaker: scene.boss, name: "Magical Zombie", text: "Who exactly has lost?", duration: 4_000, color: "#ff3030", glitch: true },
+            ], now);
+            return true;
+        }
+        if (scene.stage === "dialogue" && now >= scene.countdownAt) {
+            scene.stage = "countdown";
+            scene.countdownShakeIndex = 1;
+            scene.nextCountdownShakeAt = now + CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_NUMBER_DURATION;
+            scene.impactAt = now
+                + CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_NUMBER_DURATION * 3
+                + CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_BANG_DURATION;
+            for (const socket of this.gameManager.clients) {
+                socket?.talk?.("SH", JSON.stringify({
+                    type: "camera",
+                    duration: 420,
+                    amount: 14,
+                    keepShake: false,
+                }));
+                socket?.talk?.(
+                    "CBP",
+                    CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_NUMBER_DURATION,
+                    CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_BANG_DURATION,
+                    CRAFTRAS_CHALLENGE_BOSS_DEFEAT_BLUE_FLASH_DURATION,
+                );
+            }
+            return true;
+        }
+        if (scene.stage === "countdown" && scene.countdownShakeIndex < 3 && now >= scene.nextCountdownShakeAt) {
+            const shakeAmounts = [14, 34, 68];
+            const shakeIndex = scene.countdownShakeIndex;
+            for (const socket of this.gameManager.clients) {
+                socket?.talk?.("SH", JSON.stringify({
+                    type: "camera",
+                    duration: 420,
+                    amount: shakeAmounts[shakeIndex],
+                    keepShake: false,
+                }));
+            }
+            scene.countdownShakeIndex++;
+            scene.nextCountdownShakeAt += CRAFTRAS_CHALLENGE_BOSS_DEFEAT_COUNTDOWN_NUMBER_DURATION;
+        }
+        if (scene.stage === "countdown" && now >= scene.impactAt) {
+            this.applyChallengeBossDefeatBlueAttack(players, scene, now);
+            return true;
+        }
+        if (["aftermath", "retreat"].includes(scene.stage) && now >= scene.nextWaveAt) {
+            if (!scene.waveShakeStarted) {
+                scene.waveShakeStarted = true;
+                for (const socket of this.gameManager.clients) {
+                    socket?.talk?.("SH", JSON.stringify({
+                        type: "camera",
+                        duration: 5_000,
+                        amount: 34,
+                        keepShake: false,
+                    }));
+                }
+            }
+            scene.nextWaveAt = now + CRAFTRAS_CHALLENGE_BOSS_DEFEAT_WAVE_INTERVAL;
+            this.spawnChallengeBossDefeatWave(players, now);
+        }
+        if (scene.stage === "aftermath" && now >= scene.resumeAt) {
+            scene.stage = "retreat";
+            this.resumeChallengeEscortAfterBossDefeat(scene);
+            return true;
+        }
+        if (scene.stage === "retreat" && encounter.triggeredMarkers.has(6)) {
+            scene.stage = "done";
+            return true;
+        }
+        return true;
+    }
+
     spawnChallengeKingAssassin(players, now = Date.now()) {
         const encounter = this.challengeEncounter;
         const king = [...this.challengeActors].find(actor => actor?.craftrasChallengeRole === "king" && !actor.isDead?.());
@@ -4066,14 +5902,29 @@ class Craftras {
         encounter.kingInjured = true;
         king.craftrasChallengeInjured = true;
         king.health.amount = 1;
-        guardian.craftrasChallengeGuardingKing = true;
-        assassin.craftrasChallengeNoLoot = true;
-        assassin.destroy?.();
-        this.mobs.delete(assassin);
+        if (guardian) guardian.craftrasChallengeGuardingKing = true;
+        if (assassin) {
+            assassin.craftrasChallengeNoLoot = true;
+            assassin.destroy?.();
+            this.mobs.delete(assassin);
+        }
+        const scene = encounter.bossDefeatScene;
+        if (scene && ["opening", "runner"].includes(scene.stage)) {
+            scene.stage = "king_hit";
+            scene.giantsSpawnAt = now + 3_000;
+            this.queueChallengeDialogue([
+                { speaker: guardian, name: "Royal Guardian", text: "KING!!!!!!!!!!", duration: 3_000 },
+            ], now);
+            console.log("[Craftras World 1 Challenge] The scripted Runner Zombie struck the King.");
+            return;
+        }
         this.queueChallengeDialogue([
-            { speaker: king, name: "King", text: "Huff... huff....", duration: 3_000 },
-            { speaker: guardian, name: "Royal Guardian", text: "No......", duration: 2_000 },
-            { speaker: guardian, name: "Royal Guardian", text: "I'll protect the king, so go on ahead!", duration: 4_000 },
+            { speaker: king, name: "King", text: "Agh!", duration: 2_000 },
+            { speaker: guardian, name: "Royal Guardian", text: "King!!", duration: 3_000 },
+            { speaker: guardian, name: "Royal Guardian", text: "Hurry and run! I'll hold them off here!", duration: 5_000 },
+            { name: "Knight Captain", text: "We'll help you too-", duration: 4_000 },
+            { speaker: guardian, name: "Royal Guardian", text: "We can't protect the king and fight that damned magician at the same time!", duration: 5_000 },
+            { speaker: guardian, name: "Royal Guardian", text: "At least you must escape!", duration: 4_000 },
         ], now);
         console.log("[Craftras World 1 Challenge] The King was struck and left at 1 HP.");
     }
@@ -4087,9 +5938,19 @@ class Craftras {
         }
         const line = dialogue.lines[dialogue.index++];
         const speaker = this.resolveChallengeDialogueSpeaker(line);
-        speaker?.say?.(line.text, line.duration);
-        for (const socket of this.gameManager.clients) socket?.talk?.("BM", line.duration, `${line.name}: ${line.text}`, line.color || "#f2f2f2");
-        dialogue.nextAt = now + line.duration;
+        const text = line.glitch ? makeChallengeGlitchText(line.text) : line.text;
+        const duration = this.getDialogueDuration(dialogue, line.duration);
+        speaker?.say?.(text, duration);
+        for (const socket of this.gameManager.clients) {
+            socket?.talk?.(
+                "BM",
+                duration,
+                `${line.name}: ${text}`,
+                line.color || "#f2f2f2",
+                "challenge",
+            );
+        }
+        dialogue.nextAt = now + duration;
     }
 
     updateChallengeEncounter(players, now = Date.now()) {
@@ -4106,10 +5967,16 @@ class Craftras {
         if (this.challengeStage !== "active") return;
         this.detectChallengeStoryMarkers(players, now);
         const encounter = this.challengeEncounter;
+        this.updateChallengeMagicalBossDefeatScene(players, now);
+        if (encounter.bossDefeatScene && encounter.bossDefeatScene.stage !== "done") return;
         const spawningEnabled = now >= (encounter.spawnEnabledAt || 0);
-        if (spawningEnabled && encounter.stage >= 5) this.ensureChallengeSpecial("magical_zombie", players, now);
+        if (
+            encounter.magicalBossSpawnAt && now >= encounter.magicalBossSpawnAt &&
+            !encounter.magicalBossActive && !encounter.magicalBossDefeated
+        ) this.spawnChallengeMagicalBoss(players, now);
         if (spawningEnabled && encounter.stage >= 7) this.ensureChallengeSpecial("titan_zombie", players, now);
         if (encounter.kingInjuryAt && now >= encounter.kingInjuryAt && !encounter.kingAssassinSpawned) this.spawnChallengeKingAssassin(players, now);
+        if (encounter.magicalBossActive) return;
         const config = CRAFTRAS_CHALLENGE_SPAWN_STAGES[encounter.stage];
         if (!config || now < encounter.nextSpawnAt) return;
         encounter.nextSpawnAt = now + config.interval;
@@ -4162,25 +6029,205 @@ class Craftras {
         entity.craftrasChallengeMagicOwner = options.owner || null;
         entity.craftrasChallengeMagicTarget = options.target || null;
         entity.craftrasChallengeMagicDamage = options.damage || 0;
+        entity.craftrasMagicBypassParry = !!options.bypassParry;
         entity.craftrasVelocity = options.velocity || { x: 0, y: 0 };
         entity.craftrasExpiresAt = options.expiresAt || Date.now() + 8_000;
         entity.craftrasHitIds = new Set();
         if (Number.isFinite(options.alpha)) entity.alpha = options.alpha;
+        if (Number.isFinite(options.size)) {
+            entity.SIZE = options.size;
+            entity.coreSize = options.size;
+            entity.refreshBodyAttributes?.();
+        }
+        if (options.color) entity.color.base = options.color;
+        entity.craftrasMagicSkillToken = options.skillToken || null;
         entity.on("dead", () => this.challengeMagicEntities.delete(entity));
         this.challengeMagicEntities.add(entity);
         return entity;
     }
 
     spawnChallengeMagicBullet(location, angle, speed, owner, options = {}) {
+        const requestedDamage = options.damage ?? CRAFTRAS_CHALLENGE_MAGIC_DAMAGE;
+        const world2DamageType = options.world2DamageType
+            || (Number(options.size) >= 40 ? "large" : "small");
+        const damage = owner?.craftrasWorld2MagicBoss && requestedDamage > 0
+            ? world2DamageType === "large"
+                ? CRAFTRAS_WORLD2_MAGIC_LARGE_DAMAGE
+                : world2DamageType === "homing"
+                    ? CRAFTRAS_WORLD2_MAGIC_HOMING_DAMAGE
+                    : CRAFTRAS_WORLD2_MAGIC_SMALL_DAMAGE
+            : requestedDamage;
+        const bypassParry = options.bypassParry ?? (
+            !!owner?.craftrasWorld2MagicBoss && requestedDamage > 0 && world2DamageType !== "homing"
+        );
+        const difficulty = owner?.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1;
+        const adjustedSpeed = speed * difficulty;
         return this.spawnChallengeMagicEntity("craftrasChallengeMagicBullet", location, {
             kind: options.kind || "linear",
             owner,
             target: options.target || null,
-            damage: options.damage || CRAFTRAS_CHALLENGE_MAGIC_DAMAGE,
-            velocity: { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed },
+            damage,
+            bypassParry,
+            velocity: { x: Math.cos(angle) * adjustedSpeed, y: Math.sin(angle) * adjustedSpeed },
             expiresAt: options.expiresAt || Date.now() + 6_000,
-            alpha: 0.9,
+            alpha: Number.isFinite(options.alpha) ? options.alpha : 0.9,
+            size: options.size,
+            color: options.color,
+            skillToken: options.skillToken,
         });
+    }
+
+    placeChallengeMagicalBossNearPlayer(mob, players) {
+        const living = (players || []).filter(entry => entry?.body && !entry.body.isDead?.() && !entry.body.craftrasSpectator);
+        if (!living.length) return false;
+        const location = this.findChallengeHostileSpawn(living, { minDistance: 3, maxDistance: 6, ignoreRoute: true });
+        if (location) {
+            mob.x = location.x;
+            mob.y = location.y;
+            return true;
+        }
+        const target = living[Math.floor(Math.random() * living.length)].body;
+        const angle = Math.random() * Math.PI * 2;
+        mob.x = target.x + Math.cos(angle) * BLOCK_SIZE * 4.5;
+        mob.y = target.y + Math.sin(angle) * BLOCK_SIZE * 4.5;
+        return true;
+    }
+
+    placeChallengeBossFightersNearBoss(boss) {
+        if (!boss || boss.isDead?.()) return false;
+        const fighters = [...this.challengeActors]
+            .filter(actor => actor && !actor.isDead?.() && ["captain", "guardian", "knight"].includes(actor.craftrasChallengeRole))
+            .sort((a, b) => (a.craftrasChallengeActorIndex || 0) - (b.craftrasChallengeActorIndex || 0));
+        if (!fighters.length) return false;
+        const baseAngle = Math.random() * Math.PI * 2;
+        const radius = BLOCK_SIZE * (50 / 3);
+        for (let index = 0; index < fighters.length; index++) {
+            const actor = fighters[index];
+            const angle = baseAngle + index * Math.PI * 2 / fighters.length;
+            let location = null;
+            for (let attempt = 0; attempt < 24; attempt++) {
+                const attemptAngle = angle + (attempt % 2 ? 1 : -1) * Math.ceil(attempt / 2) * 0.18;
+                const attemptRadius = radius + (attempt % 5 - 2) * BLOCK_SIZE * 0.75;
+                const x = boss.x + Math.cos(attemptAngle) * attemptRadius;
+                const y = boss.y + Math.sin(attemptAngle) * attemptRadius;
+                const cell = worldToBlock(x, y);
+                if (this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) continue;
+                location = { x, y };
+                break;
+            }
+            if (!location) {
+                location = {
+                    x: boss.x + Math.cos(angle) * radius,
+                    y: boss.y + Math.sin(angle) * radius,
+                };
+            }
+            actor.x = location.x;
+            actor.y = location.y;
+            this.resolveEntityOutOfWall(actor, 12);
+            actor.velocity.x = 0;
+            actor.velocity.y = 0;
+            if (actor.accel) {
+                actor.accel.x = 0;
+                actor.accel.y = 0;
+            }
+            actor.craftrasMagicFleeGoal = null;
+            actor.craftrasMagicFleeGoalUntil = 0;
+            actor.craftrasChallengeFollowVelocity = { x: 0, y: 0 };
+            actor.facing = Math.atan2(boss.y - actor.y, boss.x - actor.x);
+            actor.vfacing = actor.facing;
+        }
+        return true;
+    }
+
+    spawnChallengeMagicalBoss(players, now = Date.now()) {
+        const encounter = this.challengeEncounter;
+        if (!encounter || encounter.magicalBossActive || encounter.magicalBossDefeated) return null;
+        const living = (players || []).filter(entry => entry?.body && !entry.body.isDead?.() && !entry.body.craftrasSpectator);
+        const location = this.findChallengeHostileSpawn(living, { minDistance: 3, maxDistance: 6, ignoreRoute: true });
+        if (!location) return null;
+        const mob = this.spawnChallengeHostile("magical_zombie", location, { special: "magical_boss", noLoot: true });
+        if (!mob) return null;
+        for (const hostile of this.getChallengeHostiles()) {
+            if (hostile === mob) continue;
+            hostile.craftrasChallengeNoLoot = true;
+            hostile.destroy?.();
+            this.mobs.delete(hostile);
+        }
+        mob.health.set(CRAFTRAS_CHALLENGE_MAGIC_BOSS_HEALTH);
+        mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_BOSS_HEALTH;
+        mob.craftrasMagicBoss = true;
+        mob.craftrasMagicPhase = 1;
+        mob.craftrasMagicMode = "intro";
+        mob.craftrasMagicVulnerable = false;
+        mob.craftrasMagicSkillIndex = 1;
+        mob.craftrasMagicCombatStartsAt = now + 4_000;
+        mob.craftrasMagicNextSkillAt = mob.craftrasMagicCombatStartsAt;
+        mob.invuln = true;
+        mob.alpha = 0.95;
+        mob.on?.("damage", () => {
+            if (!mob.craftrasMagicBoss || this.challengeEncounter?.magicalBossDefeated) return;
+            const received = Math.max(0, Number(mob.damageReceived) || 0);
+            if (!mob.craftrasMagicVulnerable) {
+                mob.damageReceived = 0;
+                return;
+            }
+            if (
+                mob.craftrasMagicPhase === 1 &&
+                (mob.health?.amount ?? 0) - received <= CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_HEALTH
+            ) {
+                mob.damageReceived = 0;
+                mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_HEALTH;
+                this.startChallengeMagicalBossPhaseTwo(mob, this.getLivingPlayers(), Date.now());
+                return;
+            }
+            if (
+                mob.craftrasMagicPhase === 2 &&
+                (mob.health?.amount ?? 0) - received <= CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_HEALTH
+            ) {
+                mob.damageReceived = 0;
+                mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_HEALTH;
+                this.startChallengeMagicalBossPhaseThree(mob, this.getLivingPlayers(), Date.now());
+                return;
+            }
+            if ((mob.health?.amount ?? 0) - received > 0 && (mob.health?.amount ?? 0) > 0) return;
+            mob.damageReceived = 0;
+            mob.health.amount = 1;
+            this.finishChallengeMagicalBoss(mob, Date.now());
+        });
+        encounter.magicalBossSpawnAt = 0;
+        encounter.magicalBossActive = true;
+        this.challengeEscortMoving = false;
+        this.faceChallengeActorsAt(mob, true);
+        const line = makeChallengeGlitchText("Now, the killing begins.");
+        mob.say?.(line, 4_000);
+        for (const socket of this.gameManager.clients) socket?.talk?.("BM", 4_000, `Magical Zombie: ${line}`, "#ff3030");
+        console.log(`[Craftras World 1 Challenge] Magical Zombie introduction started with ${CRAFTRAS_CHALLENGE_MAGIC_BOSS_HEALTH} HP.`);
+        return mob;
+    }
+
+    finishChallengeMagicalBoss(mob, now = Date.now()) {
+        const encounter = this.challengeEncounter;
+        if (!mob?.craftrasMagicBoss || !encounter || encounter.magicalBossDefeated) return false;
+        if (mob.craftrasMagicPhase === 1 && encounter.magicalBossActive) {
+            mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_HEALTH;
+            return this.startChallengeMagicalBossPhaseTwo(mob, this.getLivingPlayers(), now);
+        }
+        if (mob.craftrasMagicPhase === 2 && encounter.magicalBossActive) {
+            mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_HEALTH;
+            return this.startChallengeMagicalBossPhaseThree(mob, this.getLivingPlayers(), now);
+        }
+        encounter.magicalBossDefeated = true;
+        encounter.magicalBossActive = false;
+        this.clearChallengeMagicEntities(mob);
+        mob.health.amount = 1;
+        mob.craftrasMagicMode = "story";
+        mob.craftrasMagicVulnerable = false;
+        mob.invuln = true;
+        mob.alpha = 0.95;
+        this.setChallengeMagicalBossHidden(mob, false);
+        this.startChallengeMagicalBossDefeatScene(mob, now);
+        console.log(`[Craftras World 1 Challenge] Magical Zombie phase ${mob.craftrasMagicPhase || 1} defeated.`);
+        return true;
     }
 
     clearChallengeMagicEntities(owner = null) {
@@ -4191,117 +6238,767 @@ class Craftras {
         }
     }
 
-    finishChallengeMagicalZombieSkill(mob, state, now = Date.now()) {
-        if (state?.circle) {
-            state.circle.destroy?.();
-            this.challengeMagicEntities.delete(state.circle);
+    setChallengeMagicalBossHidden(mob, hidden) {
+        if (!mob) return;
+        mob.craftrasMagicFade = null;
+        mob.craftrasInvisible = !!hidden;
+        mob.invisible = [0, 0];
+        mob.alpha = hidden ? 0 : 0.95;
+        if (mob.settings) mob.settings.fullyInvisible = !!hidden;
+        for (const turret of mob.turrets?.values?.() || []) {
+            turret.alpha = hidden ? 0 : 1;
+            if (turret.settings) turret.settings.fullyInvisible = !!hidden;
         }
-        mob.craftrasMagicFadeOutAt = now;
-        mob.craftrasMagicFadeOutAlpha = Math.max(0, Math.min(0.95, mob.alpha ?? 0.95));
+    }
+
+    beginChallengeMagicalBossFade(mob, hidden, now = Date.now()) {
+        if (!mob) return;
+        if (mob.craftrasMagicFade?.hidden === !!hidden) return;
+        const targetAlpha = hidden ? 0 : 0.95;
+        const startAlpha = Math.max(0, Math.min(0.95, Number(mob.alpha) || 0));
+        mob.craftrasInvisible = false;
+        mob.invisible = [0, 0];
+        if (mob.settings) mob.settings.fullyInvisible = false;
+        for (const turret of mob.turrets?.values?.() || []) {
+            if (turret.settings) turret.settings.fullyInvisible = false;
+        }
+        if (Math.abs(startAlpha - targetAlpha) < 0.001) {
+            this.setChallengeMagicalBossHidden(mob, hidden);
+            return;
+        }
+        mob.craftrasMagicFade = {
+            hidden: !!hidden,
+            startedAt: now,
+            endsAt: now + CRAFTRAS_CHALLENGE_MAGIC_FADE_DURATION,
+            startAlpha,
+            targetAlpha,
+        };
+    }
+
+    updateChallengeMagicalBossFade(mob, hidden, now = Date.now()) {
+        if (!mob) return;
+        if (!mob.craftrasMagicFade || mob.craftrasMagicFade.hidden !== !!hidden) {
+            this.beginChallengeMagicalBossFade(mob, hidden, now);
+        }
+        const fade = mob.craftrasMagicFade;
+        if (!fade) return;
+        const progress = Math.max(0, Math.min(1, (now - fade.startedAt) / Math.max(1, fade.endsAt - fade.startedAt)));
+        const alpha = fade.startAlpha + (fade.targetAlpha - fade.startAlpha) * progress;
+        mob.alpha = alpha;
+        const turretAlpha = alpha / 0.95;
+        for (const turret of mob.turrets?.values?.() || []) turret.alpha = turretAlpha;
+        if (progress >= 1) this.setChallengeMagicalBossHidden(mob, hidden);
+    }
+
+    startChallengeMagicalBossPhaseTwo(mob, players, now = Date.now()) {
+        const encounter = this.challengeEncounter;
+        if (!mob?.craftrasMagicBoss || !encounter?.magicalBossActive || mob.craftrasMagicPhase >= 2) return false;
+        this.clearChallengeMagicEntities(mob);
+        mob.craftrasMagicPhase = 2;
+        mob.craftrasMagicSkillIndex = 1;
+        mob.craftrasMagicMode = "phase_entry";
+        mob.craftrasMagicVulnerable = false;
+        mob.invuln = true;
+        mob.damageReceived = 0;
+        mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_HEALTH;
+        const attackStartsAt = now + CRAFTRAS_CHALLENGE_MAGIC_PHASE_DIALOGUE_DURATION;
+        const token = `${mob.id}:${now}:phase2-entry`;
+        mob.craftrasMagicCast = {
+            phaseEntry: 2,
+            token,
+            startedAt: now,
+            attackStartsAt,
+            attackStarted: false,
+            emissionEndsAt: attackStartsAt + CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_ENTRY_DURATION,
+            endsAt: attackStartsAt + CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_ENTRY_DURATION,
+            nextVolleyAt: attackStartsAt,
+            nextZombieAt: attackStartsAt + 2_000,
+            nextEquippedZombieAt: attackStartsAt + 10_000,
+            volley: 0,
+        };
+        this.challengeEscortMoving = false;
+        const line = makeChallengeGlitchText("Annoying pests.......");
+        mob.say?.(line, 4_000);
+        for (const socket of this.gameManager.clients) socket?.talk?.("BM", 4_000, `Magical Zombie: ${line}`, "#ff3030");
+        console.log("[Craftras World 1 Challenge] Magical Zombie phase 2 entry started.");
+        return true;
+    }
+
+    finishChallengeMagicalBossPhaseTwoEntry(mob, players, now = Date.now()) {
+        const state = mob?.craftrasMagicCast;
+        if (!mob || state?.phaseEntry !== 2) return false;
+        for (const entity of [...this.challengeMagicEntities]) {
+            if (entity.craftrasMagicSkillToken !== state.token) continue;
+            entity.destroy?.();
+            this.challengeMagicEntities.delete(entity);
+        }
+        mob.craftrasMagicCast = null;
+        mob.craftrasMagicMode = "cooldown";
+        mob.craftrasMagicVulnerable = true;
+        mob.invuln = false;
+        mob.damageReceived = 0;
+        mob.craftrasMagicSkillIndex = 1;
+        this.beginChallengeMagicalBossFade(mob, false, now);
+        this.placeChallengeMagicalBossNearPlayer(mob, players);
+        this.placeChallengeBossFightersNearBoss(mob);
+        mob.craftrasMagicNextSkillAt = now + CRAFTRAS_CHALLENGE_MAGIC_SKILL_COOLDOWN;
+        console.log("[Craftras World 1 Challenge] Magical Zombie phase 2 combat ready.");
+        return true;
+    }
+
+    startChallengeMagicalBossPhaseThree(mob, players, now = Date.now()) {
+        const encounter = this.challengeEncounter;
+        if (!mob?.craftrasMagicBoss || !encounter?.magicalBossActive || mob.craftrasMagicPhase >= 3) return false;
+        this.clearChallengeMagicEntities(mob);
+        mob.craftrasMagicPhase = 3;
+        mob.craftrasMagicMode = "phase_entry";
+        mob.craftrasMagicVulnerable = false;
+        mob.invuln = true;
+        mob.damageReceived = 0;
+        mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_HEALTH;
+        const attackStartsAt = now + CRAFTRAS_CHALLENGE_MAGIC_PHASE_DIALOGUE_DURATION;
+        const token = `${mob.id}:${now}:phase3-entry`;
+        mob.craftrasMagicCast = {
+            phaseEntry: 3,
+            token,
+            startedAt: now,
+            attackStartsAt,
+            attackStarted: false,
+            emissionEndsAt: attackStartsAt + CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_ENTRY_DURATION,
+            endsAt: attackStartsAt + CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_ENTRY_DURATION,
+            nextVolleyAt: attackStartsAt,
+            volley: 0,
+        };
+        this.challengeEscortMoving = false;
+        const line = makeChallengeGlitchText("Just die!!!");
+        mob.say?.(line, 4_000);
+        for (const socket of this.gameManager.clients) socket?.talk?.("BM", 4_000, `Magical Zombie: ${line}`, "#ff3030");
+        console.log("[Craftras World 1 Challenge] Magical Zombie phase 3 entry started.");
+        return true;
+    }
+
+    updateChallengeMagicalBossPhaseThreeEntry(mob, players, state, now = Date.now()) {
+        if (now < (state.attackStartsAt || 0)) return;
+        if (!state.attackStarted) {
+            state.attackStarted = true;
+            this.beginChallengeMagicalBossFade(mob, true, now);
+        }
+        const living = (players || [])
+            .map(entry => entry?.body)
+            .filter(body => body && !body.isDead?.() && !body.craftrasSpectator);
+        for (const body of living) {
+            const dx = mob.x - body.x;
+            const dy = mob.y - body.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const pull = Math.min(0.22, distance / Math.max(BLOCK_SIZE * 70, 1));
+            const nextX = body.x + dx / distance * pull;
+            const nextY = body.y + dy / distance * pull;
+            const cell = worldToBlock(nextX, nextY);
+            if (!this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) {
+                body.x = nextX;
+                body.y = nextY;
+            }
+        }
+        if (now >= state.nextVolleyAt && now < state.emissionEndsAt) {
+            const activeEntryBullets = [...this.challengeMagicEntities].filter(entity =>
+                entity?.craftrasMagicSkillToken === state.token && !entity.isDead?.()
+            ).length;
+            if (activeEntryBullets >= CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_ENTRY_CAP) {
+                state.nextVolleyAt = now + CRAFTRAS_CHALLENGE_MAGIC_ENTRY_VOLLEY_INTERVAL;
+                return;
+            }
+            const volley = state.volley;
+            const rotation = volley * 0.24;
+            const speed = 16.4;
+            const direction = volley % 2 ? -1 : 1;
+            const base = direction * rotation + (volley % 2) * Math.PI / 12;
+            for (let index = 0; index < 12; index++) {
+                const angle = base + index * Math.PI / 6;
+                const bullet = this.spawnChallengeMagicBullet(mob, angle, speed, mob, {
+                    kind: "phase3_entry_petals",
+                    damage: 20,
+                    expiresAt: now + 10_000,
+                    size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                    color: index % 2 ? "#ef1748" : "#6b0018",
+                    skillToken: state.token,
+                });
+                bullet.craftrasMagicCurveDirection = direction;
+                // Half the angular bend doubles the petal arc radius without adding more bullets.
+                bullet.craftrasMagicCurveRate = 0.017;
+                bullet.craftrasMagicTrailsEnabled = index % 3 === 0;
+                bullet.craftrasNextTrailAt = now;
+            }
+            if ((volley + 1) % 5 === 0 && living.length) {
+                const target = living.reduce((nearest, body) => {
+                    if (!nearest) return body;
+                    return Math.hypot(body.x - mob.x, body.y - mob.y)
+                        < Math.hypot(nearest.x - mob.x, nearest.y - mob.y) ? body : nearest;
+                }, null);
+                const aim = Math.atan2(target.y - mob.y, target.x - mob.x);
+                for (let index = -1; index <= 1; index++) {
+                    this.spawnChallengeMagicBullet(mob, aim + index * 0.16, 24, mob, {
+                        damage: 30,
+                        expiresAt: now + 10_000,
+                        size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                        color: "#ff2448",
+                        skillToken: state.token,
+                    });
+                }
+            }
+            state.volley++;
+            state.nextVolleyAt += CRAFTRAS_CHALLENGE_MAGIC_ENTRY_VOLLEY_INTERVAL;
+        }
+        if (now >= state.endsAt) this.startChallengeMagicalBossBlackHole(mob, players, now);
+    }
+
+    startChallengeMagicalBossBlackHole(mob, players, now = Date.now()) {
+        if (!mob?.craftrasMagicBoss || mob.craftrasMagicPhase !== 3 || !this.challengeEncounter?.magicalBossActive) return false;
+        this.clearChallengeMagicEntities(mob);
+        this.placeChallengeMagicalBossNearPlayer(mob, players);
+        mob.craftrasMagicMode = "black_hole_charge";
+        mob.craftrasMagicVulnerable = true;
+        mob.invuln = false;
+        mob.damageReceived = 0;
+        mob.health.amount = Math.min(mob.health.amount, CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_HEALTH);
+        this.beginChallengeMagicalBossFade(mob, false, now);
+        const token = `${mob.id}:${now}:black-hole`;
+        const blackHole = this.spawnChallengeMagicEntity("craftrasChallengeMagicPulseSphere", mob, {
+            kind: "phase3_black_hole",
+            owner: mob,
+            damage: 100,
+            expiresAt: now + CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_CHARGE_DURATION + 60_000,
+            alpha: 1,
+            size: 14,
+            color: "#000000",
+            skillToken: token,
+        });
+        mob.craftrasMagicCast = {
+            phase: 3,
+            blackHole: true,
+            token,
+            startedAt: now,
+            chargeEndsAt: now + CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_CHARGE_DURATION,
+            nextTrailAt: now,
+            nextDamageAt: now,
+            lastExpandAt: now,
+            blackHoleEntity: blackHole,
+            expanding: false,
+        };
+        this.placeChallengeBossFightersNearBoss(mob);
+        const warning = makeChallengeGlitchText("BLACK HOLE");
+        mob.say?.(warning, 3_000);
+        for (const socket of this.gameManager.clients) socket?.talk?.("BM", 3_000, `Magical Zombie: ${warning}`, "#ff1838");
+        console.log("[Craftras World 1 Challenge] Magical Zombie BLACK HOLE charging for 30 seconds.");
+        return true;
+    }
+
+    updateChallengeMagicalBossBlackHole(mob, players, state, now = Date.now()) {
+        const blackHole = state.blackHoleEntity;
+        if (!blackHole || blackHole.isDead?.()) return false;
+        blackHole.x = mob.x;
+        blackHole.y = mob.y;
+        blackHole.color.base = "#000000";
+        blackHole.alpha = 1;
+        const living = (players || [])
+            .map(entry => entry?.body)
+            .filter(body => body && !body.isDead?.() && !body.craftrasSpectator);
+        if (!state.expanding) {
+            const progress = Math.max(0, Math.min(1, (now - state.startedAt) / CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_CHARGE_DURATION));
+            const size = 14 + progress * 56;
+            blackHole.SIZE = size;
+            blackHole.coreSize = size;
+            blackHole.sizeMultiplier = 1;
+            for (const body of living) {
+                const dx = body.x - mob.x;
+                const dy = body.y - mob.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                const push = CRAFTRAS_CHALLENGE_MAGIC_BLACK_HOLE_PUSH;
+                const nextX = body.x + dx / distance * push;
+                const nextY = body.y + dy / distance * push;
+                const cell = worldToBlock(nextX, nextY);
+                if (!this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) {
+                    body.x = nextX;
+                    body.y = nextY;
+                }
+            }
+            if (now >= state.nextTrailAt) {
+                const bossSize = Math.max(12, mob.realSize || mob.size || 48);
+                this.spawnExplosionEffect(mob, {
+                    duration: 700,
+                    startSize: bossSize,
+                    endSize: bossSize * 2.4,
+                    color: "#000000",
+                    alpha: 0.42,
+                    fade: true,
+                });
+                state.nextTrailAt += 100;
+            }
+            if (now < state.chargeEndsAt) return true;
+            state.expanding = true;
+            state.lastExpandAt = now;
+            state.nextDamageAt = now;
+            mob.craftrasMagicMode = "black_hole_expanding";
+            mob.craftrasMagicVulnerable = false;
+            mob.invuln = true;
+            this.beginChallengeMagicalBossFade(mob, true, now);
+        }
+        const elapsed = Math.max(1, now - state.lastExpandAt);
+        state.lastExpandAt = now;
+        const nextSize = Math.max(70, blackHole.SIZE || 70) + elapsed;
+        blackHole.SIZE = nextSize;
+        blackHole.coreSize = nextSize;
+        blackHole.sizeMultiplier = 1;
+        if (now >= state.nextTrailAt) {
+            this.spawnExplosionEffect(blackHole, {
+                duration: 500,
+                startSize: nextSize,
+                endSize: nextSize * 1.25,
+                color: "#000000",
+                alpha: 0.55,
+                fade: true,
+            });
+            state.nextTrailAt += 100;
+        }
+        if (now < state.nextDamageAt) return true;
+        state.nextDamageAt += 100;
+        for (const body of living) {
+            const radius = nextSize + Math.max(8, body.realSize || body.size || 12);
+            if ((body.x - mob.x) ** 2 + (body.y - mob.y) ** 2 > radius ** 2) continue;
+            this.applyPlayerDamage(body, 100, mob);
+        }
+        return true;
+    }
+
+    finishChallengeMagicalZombieSkill(mob, state, players, now = Date.now()) {
+        for (const entity of [...this.challengeMagicEntities]) {
+            if (entity.craftrasMagicSkillToken !== state?.token) continue;
+            entity.destroy?.();
+            this.challengeMagicEntities.delete(entity);
+        }
         mob.craftrasMagicCast = null;
         mob.craftrasMagicSkillIndex = (state?.skill || mob.craftrasMagicSkillIndex || 1) % 3 + 1;
-        mob.craftrasMagicNextSkillAt = now + CRAFTRAS_CHALLENGE_MAGIC_SKILL_COOLDOWN;
+        mob.craftrasMagicMode = "cooldown";
+        mob.craftrasMagicVulnerable = true;
+        mob.invuln = false;
+        this.beginChallengeMagicalBossFade(mob, false, now);
+        mob.damageReceived = 0;
+        if (mob.craftrasWorld2MagicBoss) {
+            const location = this.findWorld2GiantCaveSpawn(players || []);
+            if (location) {
+                mob.x = location.x;
+                mob.y = location.y;
+            }
+        } else {
+            this.placeChallengeMagicalBossNearPlayer(mob, players);
+            this.placeChallengeBossFightersNearBoss(mob);
+        }
+        const difficulty = mob.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1;
+        mob.craftrasMagicNextSkillAt = now + CRAFTRAS_CHALLENGE_MAGIC_SKILL_COOLDOWN / difficulty;
     }
 
     startChallengeMagicalZombieSkill(mob, players, now = Date.now()) {
         const living = (players || []).map(entry => entry?.body).filter(body => body && !body.isDead?.() && !body.craftrasSpectator);
         if (!living.length) return false;
         const skill = Math.min(3, Math.max(1, mob.craftrasMagicSkillIndex || 1));
-        const state = mob.craftrasMagicCast = { skill, startedAt: now };
-        mob.craftrasMagicFadeInAt = now;
-        mob.craftrasMagicFadeOutAt = 0;
-        mob.craftrasMagicFadeOutAlpha = 0;
-        if (skill === 1) {
-            state.spawned = 0;
-            state.endsAt = now + 15_000;
-            state.nextCurseAt = now;
+        const token = `${mob.id}:${now}:${skill}`;
+        const phase = Math.max(1, mob.craftrasMagicPhase || 1);
+        const state = mob.craftrasMagicCast = { phase, skill, token, startedAt: now };
+        if (mob.craftrasWorld2MagicBoss) {
+            state.world2MagicBoss = true;
+            state.screenImpactAt = now + CRAFTRAS_WORLD2_MAGIC_WARNING_STEP * 3;
+            state.screenImpactDone = false;
+            state.homingSpawned = false;
+            for (const entry of players || []) {
+                if (!entry?.body || entry.body.isDead?.() || entry.body.craftrasSpectator) continue;
+                (entry.socket || this.getSocketForBody(entry.body))?.talk?.(
+                    "MZW",
+                    CRAFTRAS_WORLD2_MAGIC_WARNING_STEP,
+                    500,
+                );
+            }
+        }
+        mob.craftrasMagicMode = "skill";
+        mob.craftrasMagicVulnerable = false;
+        mob.invuln = true;
+        this.beginChallengeMagicalBossFade(mob, true, now);
+        mob.damageReceived = 0;
+        mob.craftrasPoisonUntil = 0;
+        mob.craftrasPoisonDamage = 0;
+        mob.craftrasPoisonOwner = null;
+        if (phase === 2 && skill === 1) {
+            state.emissionEndsAt = now + 24_000;
+            state.endsAt = now + 31_000;
+            const sphere = this.spawnChallengeMagicEntity("craftrasChallengeMagicPulseSphere", mob, {
+                kind: "phase2_pulse_sphere",
+                owner: mob,
+                damage: mob.craftrasWorld2MagicBoss ? CRAFTRAS_WORLD2_MAGIC_LARGE_DAMAGE : 5,
+                bypassParry: !!mob.craftrasWorld2MagicBoss,
+                expiresAt: state.endsAt,
+                alpha: 0.92,
+                size: 48,
+                color: "#b00020",
+                skillToken: token,
+            });
+            sphere.craftrasMagicPulseStartedAt = now;
+            sphere.craftrasMagicPulseNextDamageAt = now;
+            sphere.craftrasMagicPulseNextVolleyAt = now + 15_000;
+            sphere.craftrasMagicPulseVolley = 0;
+            sphere.craftrasMagicLastHitAt = new Map();
+            sphere.craftrasNextTrailAt = now;
+        } else if (phase === 2 && skill === 2) {
+            state.emissionEndsAt = now + 20_000;
+            state.endsAt = now + 27_000;
+            state.nextShotAt = now;
+            state.shotCount = 0;
+        } else if (phase === 2) {
+            state.emissionEndsAt = now + CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_CHARGE_DURATION;
+            state.endsAt = state.emissionEndsAt + 10_000;
+            const target = living[Math.floor(Math.random() * living.length)];
+            const aim = Math.atan2(target.y - mob.y, target.x - mob.x);
+            const absorber = this.spawnChallengeMagicBullet(mob, aim, 7, mob, {
+                kind: "phase2_absorber",
+                target,
+                damage: 0,
+                expiresAt: state.endsAt,
+                size: 12,
+                color: "#100008",
+                skillToken: token,
+            });
+            absorber.craftrasMagicAbsorbStartedAt = now;
+            absorber.craftrasMagicAbsorbEndsAt = now + CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_CHARGE_DURATION;
+            absorber.craftrasMagicNextFeedAt = now;
+            absorber.craftrasMagicNextVolleyAt = absorber.craftrasMagicAbsorbEndsAt;
+            absorber.craftrasMagicVolleyIndex = 0;
+            absorber.craftrasNextTrailAt = now;
+        } else if (skill === 1) {
+            state.emissionEndsAt = now + 6_000;
+            state.endsAt = now + 18_000;
+            state.nextShotAt = now;
+            state.shotCount = 0;
         } else if (skill === 2) {
-            state.spawned = 0;
-            state.nextCubeAt = now;
-            state.endsAt = now + 4_300;
-        } else {
-            state.launchIndex = 0;
-            state.nextLaunchAt = now + 2_000;
+            state.emissionEndsAt = now + 13_000;
+            state.endsAt = now + 20_000;
+            state.nextBurstAt = now + 2_000;
+            state.burstGroup = 0;
             state.orbits = [];
             for (const target of living) {
-                for (let index = 0; index < 6; index++) {
-                    const angle = index * Math.PI / 3;
-                    const bullet = this.spawnChallengeMagicBullet(target, angle, 0, mob, {
+                for (let index = 0; index < 24; index++) {
+                    const bullet = this.spawnChallengeMagicBullet(target, 0, 0, mob, {
                         kind: "orbit",
                         target,
-                        expiresAt: now + 18_000,
+                        damage: 20,
+                        expiresAt: state.endsAt,
+                        color: "#6d1028",
+                        skillToken: token,
                     });
                     bullet.craftrasMagicOrbitIndex = index;
+                    bullet.craftrasMagicOrbitCount = 24;
                     bullet.craftrasMagicOrbitStartedAt = now;
+                    bullet.craftrasMagicOrbitRadius = BLOCK_SIZE * 3.3;
                     state.orbits.push(bullet);
                 }
             }
+        } else {
+            state.emissionEndsAt = now + 12_000;
+            state.endsAt = now + 21_000;
+            state.nextCircleAt = now;
+            state.circleCount = 0;
         }
-        console.log(`[Craftras World 1 Challenge] Magical Zombie started skill ${skill}.`);
+        const sourceLabel = mob.craftrasWorld2MagicBoss ? "World 2" : "World 1 Challenge";
+        console.log(`[Craftras ${sourceLabel}] Magical Zombie phase ${phase} skill ${skill} started.`);
         return true;
+    }
+
+    updateChallengeMagicalBossPhaseTwoEntry(mob, players, state, now = Date.now()) {
+        if (now < (state.attackStartsAt || 0)) return;
+        if (!state.attackStarted) {
+            state.attackStarted = true;
+            this.beginChallengeMagicalBossFade(mob, true, now);
+        }
+        const livingEntries = (players || []).filter(entry => entry?.body && !entry.body.isDead?.() && !entry.body.craftrasSpectator);
+        const living = livingEntries.map(entry => entry.body);
+        for (const body of living) {
+            const dx = mob.x - body.x;
+            const dy = mob.y - body.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const pull = Math.min(0.16, distance / Math.max(BLOCK_SIZE * 80, 1));
+            body.x += dx / distance * pull;
+            body.y += dy / distance * pull;
+        }
+        if (now >= state.nextVolleyAt && now < state.emissionEndsAt) {
+            const activeEntryBullets = [...this.challengeMagicEntities].filter(entity =>
+                entity?.craftrasMagicSkillToken === state.token && !entity.isDead?.()
+            ).length;
+            if (activeEntryBullets >= CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_ENTRY_CAP) {
+                state.nextVolleyAt = now + CRAFTRAS_CHALLENGE_MAGIC_ENTRY_VOLLEY_INTERVAL;
+                return;
+            }
+            const base = state.volley * 0.22;
+            const farthestPlayerDistance = living.reduce(
+                (distance, body) => Math.max(distance, Math.hypot(body.x - mob.x, body.y - mob.y)),
+                BLOCK_SIZE * 6,
+            );
+            const spreadRadius = Math.max(BLOCK_SIZE * 24, farthestPlayerDistance * 4);
+            const bulletSpeed = 12.6;
+            for (let index = 0; index < 6; index++) {
+                const angle = base + index * Math.PI * 2 / 6;
+                const bullet = this.spawnChallengeMagicBullet(mob, angle, bulletSpeed, mob, {
+                    kind: "phase2_entry_petals",
+                    damage: 20,
+                    expiresAt: now + 12_000,
+                    size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                    color: index % 2 ? "#9b1740" : "#d00030",
+                    skillToken: state.token,
+                });
+                bullet.craftrasMagicCurveDirection = (index + state.volley) % 2 ? 1 : -1;
+                bullet.craftrasMagicCurveRate = bulletSpeed / spreadRadius * (0.9 + index % 3 * 0.08) * 4;
+                bullet.craftrasMagicTrailsEnabled = index % 3 === 0;
+                bullet.craftrasNextTrailAt = now;
+            }
+            state.volley++;
+            state.nextVolleyAt += CRAFTRAS_CHALLENGE_MAGIC_ENTRY_VOLLEY_INTERVAL;
+        }
+        if (now >= state.nextZombieAt && now < state.emissionEndsAt) {
+            const location = this.findChallengeHostileSpawn(livingEntries, { minDistance: 7, maxDistance: 12, ignoreRoute: true });
+            if (location) this.spawnChallengeHostile("zombie", location, { special: "phase2_entry_zombie", noLoot: true });
+            state.nextZombieAt += 2_000;
+        }
+        if (now >= state.nextEquippedZombieAt && now < state.emissionEndsAt) {
+            const location = this.findChallengeHostileSpawn(livingEntries, { minDistance: 7, maxDistance: 12, ignoreRoute: true });
+            if (location) {
+                const type = Math.random() < 0.5 ? "iron_helmet_zombie" : "iron_sword_zombie";
+                this.spawnChallengeHostile(type, location, { special: "phase2_entry_equipped_zombie", noLoot: true });
+            }
+            state.nextEquippedZombieAt += 10_000;
+        }
+        if (now >= state.endsAt) this.finishChallengeMagicalBossPhaseTwoEntry(mob, players, now);
     }
 
     updateChallengeMagicalZombieCombat(mob, players, now = Date.now()) {
         const encounter = this.challengeEncounter;
-        if (!encounter || encounter.stage < 7 || now < (encounter.spawnEnabledAt || 0)) return;
+        if (!mob.craftrasWorld2MagicBoss && (!encounter?.magicalBossActive || !mob.craftrasMagicBoss)) return;
+        if (mob.craftrasMagicMode === "intro") {
+            this.faceChallengeActorsAt(mob, true);
+            if (now < (mob.craftrasMagicCombatStartsAt || 0)) return;
+            mob.craftrasMagicMode = "cooldown";
+            mob.craftrasMagicVulnerable = true;
+            mob.invuln = false;
+            mob.damageReceived = 0;
+            mob.craftrasMagicNextSkillAt = now;
+        }
         let state = mob.craftrasMagicCast;
+        if (state?.phaseEntry === 2) {
+            this.updateChallengeMagicalBossPhaseTwoEntry(mob, players, state, now);
+            return;
+        }
+        if (state?.phaseEntry === 3) {
+            this.updateChallengeMagicalBossPhaseThreeEntry(mob, players, state, now);
+            return;
+        }
+        if (state?.blackHole) {
+            this.updateChallengeMagicalBossBlackHole(mob, players, state, now);
+            return;
+        }
         if (!state) {
             if (now < (mob.craftrasMagicNextSkillAt || 0)) return;
-            if (!this.startChallengeMagicalZombieSkill(mob, players, now)) return;
-            state = mob.craftrasMagicCast;
-        }
-        if (state.skill === 1) {
-            if (state.spawned < CRAFTRAS_CHALLENGE_CURSE_COUNT && now >= state.nextCurseAt && now < state.endsAt) {
-                const living = (players || []).map(entry => entry?.body).filter(body => body && !body.isDead?.() && !body.craftrasSpectator);
-                if (living.length) this.spawnChallengeCursedZombie(mob, living[state.spawned % living.length], now);
-                state.spawned++;
-                state.nextCurseAt += CRAFTRAS_CHALLENGE_CURSE_SPAWN_INTERVAL;
-            }
-            if (now >= state.endsAt) this.finishChallengeMagicalZombieSkill(mob, state, now);
+            this.startChallengeMagicalZombieSkill(mob, players, now);
             return;
         }
-        if (state.skill === 2) {
-            if (state.spawned < 10 && now >= state.nextCubeAt) {
-                const living = (players || []).map(entry => entry?.body).filter(body => body && !body.isDead?.() && !body.craftrasSpectator);
-                if (living.length) {
-                    const target = living[state.spawned % living.length];
-                    const angle = Math.random() * Math.PI * 2;
-                    const radius = BLOCK_SIZE * (2.5 + Math.random() * 3.5);
-                    const cube = this.spawnChallengeMagicEntity("craftrasChallengeMagicCube", {
-                        x: target.x + Math.cos(angle) * radius,
-                        y: target.y + Math.sin(angle) * radius,
-                    }, {
-                        kind: "cube",
-                        owner: mob,
-                        expiresAt: now + 2_000,
-                        alpha: 0.88,
+        const living = (players || []).map(entry => entry?.body).filter(body => body && !body.isDead?.() && !body.craftrasSpectator);
+        if (state.world2MagicBoss && !state.screenImpactDone && now >= state.screenImpactAt) {
+            state.screenImpactDone = true;
+            for (const body of living) {
+                this.applyPlayerDamage(body, CRAFTRAS_WORLD2_MAGIC_SCREEN_DAMAGE, mob, { noKnockback: true });
+            }
+        }
+        if (state.world2MagicBoss && !state.homingSpawned && now >= state.screenImpactAt) {
+            state.homingSpawned = true;
+            const target = living[Math.floor(Math.random() * living.length)];
+            if (target) {
+                const aim = Math.atan2(target.y - mob.y, target.x - mob.x);
+                const bullet = this.spawnChallengeMagicBullet(mob, aim, 13, mob, {
+                    kind: "world2_homing",
+                    target,
+                    damage: CRAFTRAS_WORLD2_MAGIC_HOMING_DAMAGE,
+                    world2DamageType: "homing",
+                    bypassParry: false,
+                    expiresAt: now + 12_000,
+                    size: 30,
+                    color: "#ff205c",
+                    skillToken: state.token,
+                });
+                bullet.craftrasMagicHomingSpeed = 13 * (mob.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1);
+                bullet.craftrasMagicHomingTurn = 0.055;
+                bullet.craftrasNextTrailAt = now;
+            }
+        }
+        if (state.phase === 2 && state.skill === 2 && now < state.emissionEndsAt && now >= state.nextShotAt) {
+            const target = living[Math.floor(Math.random() * living.length)];
+            if (target) {
+                let location = null;
+                for (let attempt = 0; attempt < 12; attempt++) {
+                    const incomingAngle = Math.random() * Math.PI * 2;
+                    const incomingRadius = BLOCK_SIZE * (7 + Math.random() * 4);
+                    const candidate = {
+                        x: target.x + Math.cos(incomingAngle) * incomingRadius,
+                        y: target.y + Math.sin(incomingAngle) * incomingRadius,
+                    };
+                    const cell = worldToBlock(candidate.x, candidate.y);
+                    if (this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) continue;
+                    location = candidate;
+                    break;
+                }
+                location ||= { x: mob.x, y: mob.y };
+                const angle = Math.atan2(target.y - location.y, target.x - location.x);
+                const bullet = this.spawnChallengeMagicBullet(location, angle, CRAFTRAS_CHALLENGE_SKELETON_BULLET_SPEED * 6, mob, {
+                    kind: "phase2_sniper_emitter",
+                    damage: 30,
+                    expiresAt: now + 5_000,
+                    size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                    color: "#ff1838",
+                    skillToken: state.token,
+                });
+                bullet.craftrasMagicNextCrossShotAt = now;
+                bullet.craftrasNextTrailAt = now;
+                const cursed = mob.craftrasWorld2MagicBoss ? null : this.spawnChallengeCursedZombie(mob, target, now);
+                if (cursed) {
+                    cursed.craftrasCurseStraightLine = true;
+                    cursed.craftrasChallengeNoLoot = true;
+                    cursed.craftrasCurseExpiresAt = Math.min(cursed.craftrasCurseExpiresAt || state.endsAt, state.endsAt);
+                    if (cursed.settings) {
+                        cursed.settings.goThruObstacle = true;
+                        cursed.settings.no_collisions = true;
+                    }
+                }
+            }
+            state.shotCount++;
+            state.nextShotAt += 2_000 / (mob.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1);
+        } else if (state.phase === 2 && state.skill === 3 && state.volleyCount < 3 && now >= state.nextVolleyAt) {
+            const target = living[Math.floor(Math.random() * living.length)];
+            if (target) {
+                const aim = Math.atan2(target.y - mob.y, target.x - mob.x);
+                for (let index = -2; index <= 2; index++) {
+                    this.spawnChallengeMagicBullet(mob, aim + index * 0.22, 12, mob, {
+                        damage: 10,
+                        expiresAt: now + 8_000,
+                        size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                        color: "#d00030",
+                        skillToken: state.token,
                     });
-                    cube.craftrasMagicBurstAt = now + 1_000;
-                    cube.craftrasMagicBurstAngle = Math.random() * Math.PI * 2;
                 }
-                state.spawned++;
-                state.nextCubeAt += 300;
             }
-            if (state.spawned >= 10 && now >= state.endsAt) this.finishChallengeMagicalZombieSkill(mob, state, now);
-            return;
+            state.volleyCount++;
+            state.nextVolleyAt += 300 / (mob.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1);
+        } else if (state.phase === 2 && state.skill === 3 && state.volleyCount >= 3 && !state.giantSpawned && now >= state.nextVolleyAt) {
+            const target = living[Math.floor(Math.random() * living.length)];
+            if (target) {
+                const destination = { x: target.x, y: target.y };
+                const aim = Math.atan2(destination.y - mob.y, destination.x - mob.x);
+                const bullet = this.spawnChallengeMagicBullet(mob, aim, 16, mob, {
+                    kind: "phase2_giant_pass",
+                    damage: 20,
+                    expiresAt: now + 10_000,
+                    size: 48,
+                    color: "#700018",
+                    skillToken: state.token,
+                });
+                bullet.craftrasMagicDestination = destination;
+                bullet.craftrasMagicPassDirection = { x: Math.cos(aim), y: Math.sin(aim) };
+                bullet.craftrasMagicPassSpeed = 16 * (mob.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1);
+                bullet.craftrasMagicPassSpeed = 16;
+            }
+            state.giantSpawned = true;
+        } else if (state.phase === 1 && state.skill === 1 && state.shotCount < 30 && now >= state.nextShotAt) {
+            const target = living[Math.floor(Math.random() * living.length)];
+            if (target) {
+                const shotNumber = state.shotCount + 1;
+                const firstAngle = Math.random() * Math.PI * 2;
+                const incomingAngles = [
+                    firstAngle,
+                    firstAngle + Math.PI + (Math.random() - 0.5) * 0.7,
+                ];
+                for (const incomingAngle of incomingAngles) {
+                    const incomingRadius = BLOCK_SIZE * (7 + Math.random() * 3);
+                    const location = {
+                        x: target.x + Math.cos(incomingAngle) * incomingRadius,
+                        y: target.y + Math.sin(incomingAngle) * incomingRadius,
+                    };
+                    const aim = Math.atan2(target.y - location.y, target.x - location.x);
+                    if (shotNumber % 5 === 0) {
+                        const bullet = this.spawnChallengeMagicBullet(location, aim, 5, mob, {
+                            kind: "incoming_large",
+                            target,
+                            damage: 30,
+                            expiresAt: now + 12_000,
+                            size: 48,
+                            color: "#b00020",
+                            skillToken: state.token,
+                        });
+                        bullet.craftrasMagicDestination = { x: target.x, y: target.y };
+                        bullet.craftrasMagicTravelSpeed = 5;
+                    } else {
+                        this.spawnChallengeMagicBullet(location, aim, 5, mob, {
+                            damage: 10,
+                            expiresAt: now + 10_000,
+                            size: 24,
+                            color: "#b00020",
+                            skillToken: state.token,
+                        });
+                    }
+                }
+            }
+            state.shotCount++;
+            state.nextShotAt += 200;
+        } else if (state.phase === 1 && state.skill === 2 && state.burstGroup < 6 && now >= state.nextBurstAt) {
+            const firstIndex = state.burstGroup * 4;
+            for (const bullet of state.orbits) {
+                if (
+                    !bullet ||
+                    bullet.isDead?.() ||
+                    bullet.craftrasMagicOrbitIndex < firstIndex ||
+                    bullet.craftrasMagicOrbitIndex > firstIndex + 3
+                ) continue;
+                bullet.craftrasChallengeMagicKind = "orbit_burst_warning";
+                bullet.craftrasMagicBurstAt = now + 700;
+                bullet.craftrasVelocity = { x: 0, y: 0 };
+                bullet.craftrasExpiresAt = now + 1_500;
+                bullet.color.base = "#ff1028";
+            }
+            state.burstGroup++;
+            state.nextBurstAt += 2_000;
+        } else if (state.phase === 1 && state.skill === 3 && state.circleCount < 12 && now >= state.nextCircleAt) {
+            const circleNumber = state.circleCount + 1;
+            for (const target of living) {
+                const orbitAngle = Math.random() * Math.PI * 2;
+                const circleLocation = {
+                    x: target.x + Math.cos(orbitAngle) * BLOCK_SIZE * 4,
+                    y: target.y + Math.sin(orbitAngle) * BLOCK_SIZE * 4,
+                };
+                const largeCircle = circleNumber === 12;
+                const circle = this.spawnChallengeMagicEntity("craftrasChallengeMagicCircle", circleLocation, {
+                    kind: "scheduled_circle",
+                    owner: mob,
+                    target,
+                    expiresAt: now + (largeCircle ? 5_000 : 2_500),
+                    alpha: 1,
+                    size: largeCircle ? 56 : 28,
+                    skillToken: state.token,
+                });
+                circle.craftrasMagicBurstAt = now + 2_000;
+                circle.craftrasMagicCircleMode = largeCircle ? "radial_sequence" : "triple";
+                circle.craftrasMagicVolleyIndex = 0;
+                circle.craftrasMagicVolleyCount = largeCircle ? 5 : 1;
+                circle.craftrasMagicBaseAngle = Math.random() * Math.PI * 2;
+            }
+            state.circleCount++;
+            state.nextCircleAt += 1_000;
         }
-        if (state.skill === 3) {
-            if (state.launchIndex < 6 && now >= state.nextLaunchAt) {
-                for (const bullet of state.orbits) {
-                    if (!bullet || bullet.isDead?.() || bullet.craftrasMagicOrbitIndex !== state.launchIndex) continue;
-                    bullet.craftrasChallengeMagicKind = "pause";
-                    bullet.craftrasMagicPauseUntil = now + 700;
-                    bullet.craftrasVelocity = { x: 0, y: 0 };
-                    bullet.craftrasExpiresAt = now + 6_000;
-                }
-                state.launchIndex++;
-                state.nextLaunchAt += 2_000;
-                if (state.launchIndex >= 6) state.completeAt = now + 900;
-            }
-            if (state.completeAt && now >= state.completeAt) this.finishChallengeMagicalZombieSkill(mob, state, now);
+        const hasActiveEntities = [...this.challengeMagicEntities]
+            .some(entity => entity?.craftrasMagicSkillToken === state.token && !entity.isDead?.());
+        if (now >= state.endsAt || (now >= state.emissionEndsAt && !hasActiveEntities)) {
+            this.finishChallengeMagicalZombieSkill(mob, state, players, now);
         }
     }
-
     updateChallengeMagicEntities(players, now = Date.now()) {
         for (const entity of [...this.challengeMagicEntities]) {
             if (!entity || entity.isDead?.() || now >= (entity.craftrasExpiresAt || 0)) {
@@ -4316,6 +7013,592 @@ class Craftras {
                 continue;
             }
             const kind = entity.craftrasChallengeMagicKind;
+            if (kind === "world2_mini_black_hole") {
+                const elapsed = Math.max(8, Math.min(50, now - (entity.craftrasMagicLastUpdateAt || now - 16)));
+                entity.craftrasMagicLastUpdateAt = now;
+                entity.facing = (entity.facing || 0) + Math.PI * elapsed / 700;
+                entity.vfacing = entity.facing;
+                if (now >= (entity.craftrasNextTrailAt || 0)) {
+                    entity.craftrasNextTrailAt = now + 120;
+                    const size = Math.max(20, entity.SIZE || entity.size || 36);
+                    this.spawnExplosionEffect(entity, {
+                        duration: 450,
+                        startSize: size * 1.15,
+                        endSize: size * 0.4,
+                        color: "#000000",
+                        alpha: 0.5,
+                        fade: true,
+                    });
+                }
+                let consumed = false;
+                for (const entry of players || []) {
+                    const body = entry?.body;
+                    if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+                    const distance = Math.hypot(entity.x - body.x, entity.y - body.y);
+                    const contactRadius = Math.max(18, entity.realSize || entity.SIZE || 36)
+                        + Math.max(8, body.realSize || body.size || 12);
+                    if (distance <= contactRadius) {
+                        this.applyPlayerDamage(body, CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_DAMAGE, owner, {
+                            bypassParry: true,
+                            noKnockback: true,
+                        });
+                        entity.destroy?.();
+                        this.challengeMagicEntities.delete(entity);
+                        consumed = true;
+                        break;
+                    }
+                    this.pullPlayerTowardSpiker(
+                        entity,
+                        body,
+                        1,
+                        elapsed,
+                        1.2,
+                        CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_PULL_RADIUS,
+                    );
+                }
+                if (!consumed) continue;
+                continue;
+            }
+            if (kind === "world2_homing") {
+                let target = entity.craftrasChallengeMagicTarget;
+                if (!target || target.isDead?.() || target.craftrasSpectator) {
+                    target = (players || [])
+                        .map(entry => entry?.body)
+                        .filter(body => body && !body.isDead?.() && !body.craftrasSpectator)
+                        .sort((a, b) => Math.hypot(a.x - entity.x, a.y - entity.y) - Math.hypot(b.x - entity.x, b.y - entity.y))[0];
+                    entity.craftrasChallengeMagicTarget = target || null;
+                }
+                if (target) {
+                    const desired = Math.atan2(target.y - entity.y, target.x - entity.x);
+                    const current = Math.atan2(entity.craftrasVelocity?.y || 0, entity.craftrasVelocity?.x || 1);
+                    const delta = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
+                    const turn = Math.max(-entity.craftrasMagicHomingTurn, Math.min(entity.craftrasMagicHomingTurn, delta));
+                    const angle = current + turn;
+                    const speed = entity.craftrasMagicHomingSpeed || 13;
+                    entity.craftrasVelocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+                }
+                if (now >= (entity.craftrasNextTrailAt || 0)) {
+                    entity.craftrasNextTrailAt = now + 90;
+                    this.spawnExplosionEffect(entity, {
+                        duration: 320,
+                        startSize: 38,
+                        endSize: 8,
+                        color: "#ff205c",
+                        alpha: 0.34,
+                        fade: true,
+                    });
+                }
+            }
+            if (kind === "phase2_entry_petals" || kind === "phase3_entry_petals") {
+                const fallbackSpeed = kind === "phase3_entry_petals" ? 16.4 : 12.6;
+                const speed = Math.hypot(entity.craftrasVelocity?.x || 0, entity.craftrasVelocity?.y || 0) || fallbackSpeed;
+                const angle = Math.atan2(entity.craftrasVelocity?.y || 0, entity.craftrasVelocity?.x || 1)
+                    + (entity.craftrasMagicCurveDirection || 1) * (entity.craftrasMagicCurveRate || 0.013);
+                entity.craftrasVelocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
+                if (entity.craftrasMagicTrailsEnabled && now >= (entity.craftrasNextTrailAt || 0)) {
+                    entity.craftrasNextTrailAt = now + 300;
+                    const size = Math.max(8, entity.SIZE || entity.realSize || entity.size || CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE);
+                    this.spawnExplosionEffect(entity, {
+                        duration: 360,
+                        startSize: size * 1.55,
+                        endSize: size * 0.18,
+                        color: entity.color?.base || (kind === "phase3_entry_petals" ? "#ef1748" : "#d00030"),
+                        alpha: 0.28,
+                        fade: true,
+                    });
+                }
+            }
+            if (kind === "phase3_black_hole") continue;
+            if (kind === "phase2_sniper_emitter") {
+                if (now >= (entity.craftrasMagicNextCrossShotAt || 0)) {
+                    const activeCrossBullets = [...this.challengeMagicEntities].filter(other =>
+                        other?.craftrasMagicSkillToken === entity.craftrasMagicSkillToken &&
+                        other?.craftrasChallengeMagicKind === "phase2_sniper_cross" &&
+                        !other.isDead?.()
+                    ).length;
+                    if (activeCrossBullets < CRAFTRAS_CHALLENGE_MAGIC_SIDE_BULLET_CAP) {
+                        const base = Math.atan2(entity.craftrasVelocity?.y || 0, entity.craftrasVelocity?.x || 1);
+                        const crossSpeed = CRAFTRAS_CHALLENGE_SKELETON_BULLET_SPEED * 4;
+                        for (let index = 0; index < 4; index++) {
+                            this.spawnChallengeMagicBullet(entity, base + index * Math.PI / 2, crossSpeed, owner, {
+                                kind: "phase2_sniper_cross",
+                                damage: 10,
+                                expiresAt: now + 3_000,
+                                size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                                color: "#b0002c",
+                                skillToken: entity.craftrasMagicSkillToken,
+                            });
+                        }
+                    }
+                    entity.craftrasMagicNextCrossShotAt = now + 200 / (owner.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1);
+                }
+                if (now >= (entity.craftrasNextTrailAt || 0)) {
+                    entity.craftrasNextTrailAt = now + 90;
+                    const size = Math.max(8, entity.SIZE || entity.realSize || entity.size || CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE);
+                    this.spawnExplosionEffect(entity, {
+                        duration: 280,
+                        startSize: size * 1.35,
+                        endSize: size * 0.2,
+                        color: "#ff1838",
+                        alpha: 0.25,
+                        fade: true,
+                    });
+                }
+            }
+            if (kind === "phase2_absorb_feed") {
+                const absorber = entity.craftrasChallengeMagicTarget;
+                if (
+                    !absorber ||
+                    absorber.isDead?.() ||
+                    !this.challengeMagicEntities.has(absorber) ||
+                    now >= (absorber.craftrasMagicAbsorbEndsAt || 0)
+                ) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                const dx = absorber.x - entity.x;
+                const dy = absorber.y - entity.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                const speed = Math.min(6, 1.2 + distance / Math.max(BLOCK_SIZE * 8, 1));
+                if (distance <= speed * 1.35) {
+                    absorber.SIZE = Math.max(12, absorber.SIZE || 12) + 10;
+                    absorber.coreSize = absorber.SIZE;
+                    absorber.sizeMultiplier = 1;
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                entity.x += dx / distance * speed;
+                entity.y += dy / distance * speed;
+                entity.facing = Math.atan2(dy, dx);
+                entity.vfacing = entity.facing;
+                continue;
+            }
+            if (kind === "phase2_absorber") {
+                const absorbEndsAt = entity.craftrasMagicAbsorbEndsAt || 0;
+                if (now < absorbEndsAt) {
+                    entity.x += entity.craftrasVelocity?.x || 0;
+                    entity.y += entity.craftrasVelocity?.y || 0;
+                    entity.craftrasVelocity.x *= 0.965;
+                    entity.craftrasVelocity.y *= 0.965;
+                    entity.facing = (entity.facing || 0) + 0.08;
+                    entity.vfacing = entity.facing;
+                    for (const { body } of players || []) {
+                        if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+                        const dx = entity.x - body.x;
+                        const dy = entity.y - body.y;
+                        const distance = Math.hypot(dx, dy) || 1;
+                        const pull = Math.min(distance, CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_PULL);
+                        const nextX = body.x + dx / distance * pull;
+                        const nextY = body.y + dy / distance * pull;
+                        const cell = worldToBlock(nextX, nextY);
+                        if (!this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) {
+                            body.x = nextX;
+                            body.y = nextY;
+                        }
+                    }
+                    if (now >= (entity.craftrasMagicNextFeedAt || 0)) {
+                        const living = (players || [])
+                            .map(entry => entry?.body)
+                            .filter(body => body && !body.isDead?.() && !body.craftrasSpectator);
+                        const target = living[Math.floor(Math.random() * living.length)] || entity;
+                        const angle = Math.random() * Math.PI * 2;
+                        const radius = BLOCK_SIZE * (6 + Math.random() * 4);
+                        const location = {
+                            x: target.x + Math.cos(angle) * radius,
+                            y: target.y + Math.sin(angle) * radius,
+                        };
+                        const aim = Math.atan2(entity.y - location.y, entity.x - location.x);
+                        this.spawnChallengeMagicBullet(location, aim, 0, owner, {
+                            kind: "phase2_absorb_feed",
+                            target: entity,
+                            damage: 0,
+                            expiresAt: absorbEndsAt + 1_000,
+                            size: CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_FEED_SIZE,
+                            color: "#d00030",
+                            skillToken: entity.craftrasMagicSkillToken,
+                        });
+                        entity.craftrasMagicNextFeedAt = now + CRAFTRAS_CHALLENGE_MAGIC_ABSORBER_FEED_INTERVAL;
+                    }
+                    if (now >= (entity.craftrasNextTrailAt || 0)) {
+                        entity.craftrasNextTrailAt = now + 100;
+                        const size = Math.max(12, entity.SIZE || 12);
+                        this.spawnExplosionEffect(entity, {
+                            duration: 520,
+                            startSize: size * 0.8,
+                            endSize: size * 1.8,
+                            color: "#000000",
+                            alpha: 0.34,
+                            fade: true,
+                        });
+                    }
+                    continue;
+                }
+                if (!entity.craftrasMagicAbsorbExploded) {
+                    entity.craftrasMagicAbsorbExploded = true;
+                    entity.alpha = 0;
+                    entity.craftrasInvisible = true;
+                    if (entity.settings) entity.settings.fullyInvisible = true;
+                    this.spawnExplosionEffect(entity, {
+                        duration: 700,
+                        startSize: Math.max(30, entity.SIZE || 30),
+                        endSize: Math.max(130, (entity.SIZE || 30) * 1.6),
+                        color: "#b00020",
+                        alpha: 0.58,
+                        fade: true,
+                    });
+                }
+                if ((entity.craftrasMagicVolleyIndex || 0) < 18 && now >= (entity.craftrasMagicNextVolleyAt || 0)) {
+                    const volleyIndex = entity.craftrasMagicVolleyIndex || 0;
+                    const count = 3 + volleyIndex;
+                    const nearest = (players || [])
+                        .map(entry => entry?.body)
+                        .filter(body => body && !body.isDead?.() && !body.craftrasSpectator)
+                        .sort((a, b) => Math.hypot(a.x - entity.x, a.y - entity.y) - Math.hypot(b.x - entity.x, b.y - entity.y))[0];
+                    const base = nearest
+                        ? Math.atan2(nearest.y - entity.y, nearest.x - entity.x) + volleyIndex * 0.13
+                        : volleyIndex * 0.13;
+                    const speed = CRAFTRAS_CHALLENGE_SKELETON_BULLET_SPEED * 4;
+                    for (let index = 0; index < count; index++) {
+                        this.spawnChallengeMagicBullet(entity, base + index * Math.PI * 2 / count, speed, owner, {
+                            damage: 10,
+                            expiresAt: now + 7_000,
+                            size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                            color: "#d00030",
+                            skillToken: entity.craftrasMagicSkillToken,
+                        });
+                    }
+                    entity.craftrasMagicVolleyIndex = volleyIndex + 1;
+                    entity.craftrasMagicNextVolleyAt += 500 / (owner.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1);
+                }
+                if ((entity.craftrasMagicVolleyIndex || 0) >= 18) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                }
+                continue;
+            }
+            if (kind === "phase2_pulse_sphere") {
+                const elapsed = now - (entity.craftrasMagicPulseStartedAt || now);
+                const peakSize = 10 + Math.floor(5_000 / 50) * 10;
+                let size = 10;
+                if (elapsed < 5_000) size = Math.max(10, 48 - Math.floor(elapsed / 100) * 10);
+                else if (elapsed < 10_000) size = 10 + Math.floor((elapsed - 5_000) / 50) * 10;
+                else if (elapsed < 15_000) size = Math.max(10, peakSize - Math.floor((elapsed - 10_000) / 50) * 10);
+                entity.SIZE = size;
+                entity.coreSize = size;
+                entity.sizeMultiplier = 1;
+                entity.facing = (entity.facing || 0) + 0.025;
+                entity.vfacing = entity.facing;
+                entity.color.base = Math.floor(now / 200) % 2 ? "#260008" : "#b00020";
+                for (const { body } of players || []) {
+                    if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+                    const dx = entity.x - body.x;
+                    const dy = entity.y - body.y;
+                    const distance = Math.hypot(dx, dy) || 1;
+                    const pull = Math.min(2.4, 0.25 + distance / Math.max(BLOCK_SIZE * 10, 1));
+                    const nextX = body.x + dx / distance * pull;
+                    const nextY = body.y + dy / distance * pull;
+                    const cell = worldToBlock(nextX, nextY);
+                    if (!this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) {
+                        body.x = nextX;
+                        body.y = nextY;
+                    }
+                }
+                if (now >= (entity.craftrasNextTrailAt || 0)) {
+                    entity.craftrasNextTrailAt = now + 100;
+                    this.spawnExplosionEffect(entity, {
+                        duration: 520,
+                        startSize: Math.max(12, size * 0.8),
+                        endSize: Math.max(24, size * 1.65),
+                        color: "#000000",
+                        alpha: 0.34,
+                        fade: true,
+                    });
+                }
+                if (elapsed < 15_000) {
+                    for (const { body } of players || []) {
+                        if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+                        const radius = size + Math.max(8, body.realSize || body.size || 12);
+                        if ((body.x - entity.x) ** 2 + (body.y - entity.y) ** 2 > radius ** 2) continue;
+                        const lastHitAt = entity.craftrasMagicLastHitAt.get(body.id) || 0;
+                        if (now - lastHitAt < 100) continue;
+                        entity.craftrasMagicLastHitAt.set(body.id, now);
+                        if (owner.craftrasWorld2MagicBoss) {
+                            if (entity.craftrasHitIds.has(body.id)) continue;
+                            entity.craftrasHitIds.add(body.id);
+                            this.applyPlayerDamage(body, CRAFTRAS_WORLD2_MAGIC_LARGE_DAMAGE, owner, { bypassParry: true });
+                        } else {
+                            this.applyPlayerDamage(body, 5, owner);
+                        }
+                    }
+                    continue;
+                }
+                if (!entity.craftrasMagicPulseExploded) {
+                    entity.craftrasMagicPulseExploded = true;
+                    entity.alpha = 0;
+                    entity.craftrasInvisible = true;
+                    if (entity.settings) entity.settings.fullyInvisible = true;
+                    this.spawnExplosionEffect(entity, {
+                        duration: 650,
+                        startSize: 32,
+                        endSize: 120,
+                        color: "#d00030",
+                        alpha: 0.52,
+                        fade: true,
+                    });
+                }
+                if (entity.craftrasMagicPulseVolley < 15 && now >= entity.craftrasMagicPulseNextVolleyAt) {
+                    const nearest = (players || [])
+                        .map(entry => entry?.body)
+                        .filter(body => body && !body.isDead?.() && !body.craftrasSpectator)
+                        .sort((a, b) => Math.hypot(a.x - entity.x, a.y - entity.y) - Math.hypot(b.x - entity.x, b.y - entity.y))[0];
+                    const count = 12;
+                    const base = nearest
+                        ? Math.atan2(nearest.y - entity.y, nearest.x - entity.x) + entity.craftrasMagicPulseVolley * 75 * Math.PI / 180
+                        : (entity.facing || 0) + entity.craftrasMagicPulseVolley * 75 * Math.PI / 180;
+                    for (let index = 0; index < count; index++) {
+                        this.spawnChallengeMagicBullet(entity, base + index * Math.PI * 2 / count, 12, owner, {
+                            damage: 10,
+                            expiresAt: now + 7_000,
+                            size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                            color: "#d00030",
+                            skillToken: entity.craftrasMagicSkillToken,
+                        });
+                    }
+                    entity.craftrasMagicPulseVolley++;
+                    entity.craftrasMagicPulseNextVolleyAt += 500 / (owner.craftrasWorld2MagicEnraged ? CRAFTRAS_WORLD2_MAGIC_ENRAGED_DIFFICULTY : 1);
+                }
+                if (entity.craftrasMagicPulseVolley >= 15) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                }
+                continue;
+            }
+            if (kind === "phase2_giant_pass") {
+                const destination = entity.craftrasMagicDestination;
+                const direction = entity.craftrasMagicPassDirection;
+                if (!destination || !direction) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                entity.x += direction.x * (entity.craftrasMagicPassSpeed || 16);
+                entity.y += direction.y * (entity.craftrasMagicPassSpeed || 16);
+                entity.facing = Math.atan2(direction.y, direction.x);
+                entity.vfacing = entity.facing;
+                for (const { body } of players || []) {
+                    if (!body || body.isDead?.() || body.craftrasSpectator || entity.craftrasHitIds.has(body.id)) continue;
+                    const radius = 48 + Math.max(8, body.realSize || body.size || 12);
+                    if ((body.x - entity.x) ** 2 + (body.y - entity.y) ** 2 > radius ** 2) continue;
+                    entity.craftrasHitIds.add(body.id);
+                    this.applyPlayerDamage(
+                        body,
+                        owner.craftrasWorld2MagicBoss ? CRAFTRAS_WORLD2_MAGIC_LARGE_DAMAGE : 20,
+                        owner,
+                        { bypassParry: !!owner.craftrasWorld2MagicBoss },
+                    );
+                }
+                if (!entity.craftrasMagicPassedDestination) {
+                    const remainingX = destination.x - entity.x;
+                    const remainingY = destination.y - entity.y;
+                    if (remainingX * direction.x + remainingY * direction.y <= 0) {
+                        entity.craftrasMagicPassedDestination = true;
+                        entity.craftrasMagicBurstAt = now + 500;
+                    }
+                }
+                if (!entity.craftrasMagicPassedDestination || now < entity.craftrasMagicBurstAt) continue;
+                const base = Math.random() * Math.PI * 2;
+                for (let index = 0; index < 24; index++) {
+                    this.spawnChallengeMagicBullet(entity, base + index * Math.PI / 12, 12, owner, {
+                        damage: 10,
+                        expiresAt: now + 8_000,
+                        size: CRAFTRAS_CHALLENGE_MAGIC_BULLET_SIZE,
+                        color: "#d00030",
+                        skillToken: entity.craftrasMagicSkillToken,
+                    });
+                }
+                this.spawnExplosionEffect(entity, { duration: 520, startSize: 28, endSize: 90, color: "#d00030", alpha: 0.5, fade: true });
+                entity.destroy?.();
+                this.challengeMagicEntities.delete(entity);
+                continue;
+            }
+            if (kind === "visual_circle") {
+                entity.facing = (entity.facing || 0) + 0.035;
+                entity.vfacing = entity.facing;
+                continue;
+            }
+            if (kind === "scheduled_circle") {
+                entity.facing = (entity.facing || 0) + 0.035;
+                entity.vfacing = entity.facing;
+                if (now < (entity.craftrasMagicBurstAt || Infinity)) continue;
+                const target = entity.craftrasChallengeMagicTarget;
+                if (!target || target.isDead?.() || target.craftrasSpectator) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                if (entity.craftrasMagicCircleMode === "triple") {
+                    const aim = Math.atan2(target.y - entity.y, target.x - entity.x);
+                    for (let offset = -1; offset <= 1; offset++) {
+                        this.spawnChallengeMagicBullet(entity, aim + offset * 0.3, 14.4, owner, {
+                            damage: 10,
+                            expiresAt: now + 7_000,
+                            color: "#d00030",
+                            skillToken: entity.craftrasMagicSkillToken,
+                        });
+                    }
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                const volleyIndex = entity.craftrasMagicVolleyIndex || 0;
+                const volleyAngle = (entity.craftrasMagicBaseAngle || 0) + volleyIndex * Math.PI / 6;
+                for (let index = 0; index < 6; index++) {
+                    this.spawnChallengeMagicBullet(entity, volleyAngle + index * Math.PI / 3, 14.4, owner, {
+                        damage: 10,
+                        expiresAt: now + 7_000,
+                        color: "#d00030",
+                        skillToken: entity.craftrasMagicSkillToken,
+                    });
+                }
+                entity.craftrasMagicVolleyIndex = volleyIndex + 1;
+                if (entity.craftrasMagicVolleyIndex >= (entity.craftrasMagicVolleyCount || 5)) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                entity.craftrasMagicBurstAt += 500;
+                continue;
+            }
+            if (kind === "incoming_large") {
+                entity.color.base = Math.floor(now / 200) % 2 ? "#2a0008" : "#d00024";
+                if (!entity.craftrasMagicArrived) {
+                    const target = entity.craftrasChallengeMagicTarget;
+                    const destination = target && !target.isDead?.() && !target.craftrasSpectator
+                        ? { x: target.x, y: target.y }
+                        : entity.craftrasMagicDestination;
+                    if (!destination) {
+                        entity.destroy?.();
+                        this.challengeMagicEntities.delete(entity);
+                        continue;
+                    }
+                    entity.craftrasMagicDestination = destination;
+                    const dx = destination.x - entity.x;
+                    const dy = destination.y - entity.y;
+                    const distance = Math.hypot(dx, dy) || 1;
+                    const speed = entity.craftrasMagicTravelSpeed || 5;
+                    if (distance <= speed * 1.25) {
+                        entity.x = destination.x;
+                        entity.y = destination.y;
+                        entity.craftrasVelocity = { x: 0, y: 0 };
+                        entity.craftrasMagicArrived = true;
+                        entity.craftrasMagicBurstAt = now + 5_000;
+                    } else {
+                        entity.x += dx / distance * speed;
+                        entity.y += dy / distance * speed;
+                        entity.facing = Math.atan2(dy, dx);
+                        entity.vfacing = entity.facing;
+                    }
+                    continue;
+                }
+                entity.facing = (entity.facing || 0) + 0.025;
+                entity.vfacing = entity.facing;
+                if (now < (entity.craftrasMagicBurstAt || Infinity)) continue;
+                const nearest = (players || [])
+                    .map(entry => entry?.body)
+                    .filter(body => body && !body.isDead?.() && !body.craftrasSpectator)
+                    .sort((a, b) => Math.hypot(a.x - entity.x, a.y - entity.y) - Math.hypot(b.x - entity.x, b.y - entity.y))[0];
+                const base = nearest
+                    ? Math.atan2(nearest.y - entity.y, nearest.x - entity.x)
+                    : entity.facing || 0;
+                for (let index = 0; index < 5; index++) {
+                    this.spawnChallengeMagicBullet(entity, base + index * Math.PI * 2 / 5, 6, owner, {
+                        damage: 10,
+                        expiresAt: now + 7_000,
+                        color: "#d00024",
+                        skillToken: entity.craftrasMagicSkillToken,
+                    });
+                }
+                this.spawnExplosionEffect(entity, { duration: 420, startSize: 20, growth: 1.1, color: "#d00024", alpha: 0.5 });
+                entity.destroy?.();
+                this.challengeMagicEntities.delete(entity);
+                continue;
+            }
+            if (kind === "delayed_orb") {
+                const target = entity.craftrasChallengeMagicTarget;
+                if (!target || target.isDead?.() || target.craftrasSpectator) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                entity.color.base = Math.floor(now / 200) % 2 ? "#000000" : "#d00024";
+                entity.craftrasMagicTargetHistory ||= [];
+                entity.craftrasMagicTargetHistory.push({ x: target.x, y: target.y, at: now });
+                while (
+                    entity.craftrasMagicTargetHistory.length > 2 &&
+                    entity.craftrasMagicTargetHistory[1].at <= now - 500
+                ) entity.craftrasMagicTargetHistory.shift();
+                if (now >= (entity.craftrasMagicNextShotAt || Infinity)) {
+                    const angle = Math.atan2(target.y - entity.y, target.x - entity.x);
+                    this.spawnChallengeMagicBullet(entity, angle, 9, owner, {
+                        damage: 10,
+                        expiresAt: now + 6_000,
+                        color: "#d00024",
+                        skillToken: entity.craftrasMagicSkillToken,
+                    });
+                    entity.craftrasMagicNextShotAt = now + 1_000;
+                }
+                if (entity.craftrasMagicExplosionAt) {
+                    if (now < entity.craftrasMagicExplosionAt) continue;
+                    const base = Math.random() * Math.PI * 2;
+                    for (let index = 0; index < 6; index++) {
+                        this.spawnChallengeMagicBullet(entity, base + index * Math.PI / 3, 8, owner, {
+                            damage: 10,
+                            expiresAt: now + 6_000,
+                            color: "#d00024",
+                            skillToken: entity.craftrasMagicSkillToken,
+                        });
+                    }
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                const delayed = entity.craftrasMagicTargetHistory[0] || target;
+                const dx = delayed.x - entity.x;
+                const dy = delayed.y - entity.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                const speed = entity.craftrasMagicSpeed || 7;
+                if (distance <= speed * 1.35 || now >= (entity.craftrasMagicTrackingUntil || Infinity)) {
+                    entity.craftrasMagicExplosionAt = now + 1_000;
+                    continue;
+                }
+                entity.x += dx / distance * speed;
+                entity.y += dy / distance * speed;
+                entity.facing = Math.atan2(dy, dx);
+                entity.vfacing = entity.facing;
+                for (const { body } of players || []) {
+                    if (!body || body.isDead?.() || body.craftrasSpectator || entity.craftrasHitIds.has(body.id)) continue;
+                    const hitRadius = (entity.realSize || entity.size || CRAFTRAS_CHALLENGE_MAGIC_ORB_SIZE)
+                        + Math.max(8, body.realSize || body.size || 12);
+                    if ((body.x - entity.x) ** 2 + (body.y - entity.y) ** 2 > hitRadius ** 2) continue;
+                    entity.craftrasHitIds.add(body.id);
+                    this.applyPlayerDamage(body, 30, owner);
+                    entity.craftrasMagicExplosionAt = now + 1_000;
+                }
+                if (!owner.craftrasMagicBoss || !this.challengeEncounter?.magicalBossActive) {
+                    for (const actor of this.challengeActors) {
+                        if (!actor || actor.isDead?.() || actor.craftrasChallengeInjured || entity.craftrasHitIds.has(actor.id)) continue;
+                        const hitRadius = (entity.realSize || entity.size || CRAFTRAS_CHALLENGE_MAGIC_ORB_SIZE)
+                            + Math.max(8, actor.realSize || actor.size || 12);
+                        if ((actor.x - entity.x) ** 2 + (actor.y - entity.y) ** 2 > hitRadius ** 2) continue;
+                        entity.craftrasHitIds.add(actor.id);
+                        this.applyVillageCombatNpcDamage(actor, 30, owner);
+                        entity.craftrasMagicExplosionAt = now + 1_000;
+                    }
+                }
+                continue;
+            }
             if (kind === "circle") {
                 const target = entity.craftrasChallengeMagicTarget;
                 if (!target || target.isDead?.()) {
@@ -4349,12 +7632,38 @@ class Craftras {
                     this.challengeMagicEntities.delete(entity);
                     continue;
                 }
-                const angle = (now - (entity.craftrasMagicOrbitStartedAt || now)) / 420 + (entity.craftrasMagicOrbitIndex || 0) * Math.PI / 3;
-                const radius = BLOCK_SIZE * 2.2;
+                const count = entity.craftrasMagicOrbitCount || 6;
+                const angle = (now - (entity.craftrasMagicOrbitStartedAt || now)) / 420
+                    + (entity.craftrasMagicOrbitIndex || 0) * Math.PI * 2 / count;
+                const radius = entity.craftrasMagicOrbitRadius || BLOCK_SIZE * 2.2;
                 entity.x = target.x + Math.cos(angle) * radius;
                 entity.y = target.y + Math.sin(angle) * radius;
                 entity.facing = angle + Math.PI / 2;
                 entity.vfacing = entity.facing;
+                continue;
+            }
+            if (kind === "orbit_burst_warning") {
+                entity.facing = (entity.facing || 0) + 0.05;
+                entity.vfacing = entity.facing;
+                if (now < (entity.craftrasMagicBurstAt || Infinity)) continue;
+                const target = entity.craftrasChallengeMagicTarget;
+                if (!target || target.isDead?.() || target.craftrasSpectator) {
+                    entity.destroy?.();
+                    this.challengeMagicEntities.delete(entity);
+                    continue;
+                }
+                const aim = Math.atan2(target.y - entity.y, target.x - entity.x);
+                for (let index = 0; index < 4; index++) {
+                    this.spawnChallengeMagicBullet(entity, aim + index * Math.PI / 2, 13.5, owner, {
+                        damage: 20,
+                        expiresAt: now + 6_000,
+                        color: "#ff1028",
+                        skillToken: entity.craftrasMagicSkillToken,
+                    });
+                }
+                this.spawnExplosionEffect(entity, { duration: 300, startSize: 10, growth: 0.55, color: "#ff1028", alpha: 0.45 });
+                entity.destroy?.();
+                this.challengeMagicEntities.delete(entity);
                 continue;
             }
             if (kind === "pause") {
@@ -4391,14 +7700,32 @@ class Craftras {
                 const radius = hitRadius + Math.max(8, body.realSize || body.size || 12);
                 if (dx * dx + dy * dy > radius * radius) continue;
                 entity.craftrasHitIds.add(body.id);
-                this.applyPlayerDamage(body, entity.craftrasChallengeMagicDamage || CRAFTRAS_CHALLENGE_MAGIC_DAMAGE, owner);
+                this.applyPlayerDamage(
+                    body,
+                    entity.craftrasChallengeMagicDamage || CRAFTRAS_CHALLENGE_MAGIC_DAMAGE,
+                    owner,
+                    { bypassParry: !!entity.craftrasMagicBypassParry },
+                );
+                entity.destroy?.();
+                this.challengeMagicEntities.delete(entity);
+                break;
+            }
+            if (entity.isDead?.() || !this.challengeMagicEntities.has(entity)) continue;
+            if (owner.craftrasMagicBoss && this.challengeEncounter?.magicalBossActive) continue;
+            for (const actor of this.challengeActors) {
+                if (!actor || actor.isDead?.() || actor.craftrasChallengeInjured || entity.craftrasHitIds.has(actor.id)) continue;
+                const dx = actor.x - entity.x;
+                const dy = actor.y - entity.y;
+                const radius = hitRadius + Math.max(8, actor.realSize || actor.size || 12);
+                if (dx * dx + dy * dy > radius * radius) continue;
+                entity.craftrasHitIds.add(actor.id);
+                this.applyVillageCombatNpcDamage(actor, entity.craftrasChallengeMagicDamage || CRAFTRAS_CHALLENGE_MAGIC_DAMAGE, owner);
                 entity.destroy?.();
                 this.challengeMagicEntities.delete(entity);
                 break;
             }
         }
     }
-
     spawnChallengeCursedZombie(owner, target, now = Date.now()) {
         if (!owner || !target || target.isDead?.()) return null;
         const players = [{ socket: this.getSocketForBody(target), body: target }];
@@ -4435,6 +7762,39 @@ class Craftras {
             mob.craftrasCurseTarget = target;
         }
         if (!target) return true;
+        if (mob.craftrasCurseStraightLine) {
+            if (!mob.craftrasCurseDirection) {
+                const dx = target.x - mob.x;
+                const dy = target.y - mob.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                mob.craftrasCurseDirection = { x: dx / distance, y: dy / distance };
+                if (mob.settings) {
+                    mob.settings.goThruObstacle = true;
+                    mob.settings.no_collisions = true;
+                }
+            }
+            const direction = mob.craftrasCurseDirection;
+            mob.x += direction.x * 8;
+            mob.y += direction.y * 8;
+            mob.velocity.x = 0;
+            mob.velocity.y = 0;
+            mob.facing = Math.atan2(direction.y, direction.x);
+            mob.vfacing = mob.facing;
+            mob.craftrasControl = {
+                goal: { x: mob.x, y: mob.y },
+                target: { x: direction.x, y: direction.y },
+                fire: false,
+                power: 0,
+            };
+            const contactRange = (mob.realSize || mob.size || 48) + (target.realSize || target.size || 12) + 3;
+            if (Math.hypot(target.x - mob.x, target.y - mob.y) <= contactRange) {
+                this.applyChallengeCurse(target, now);
+                mob.craftrasChallengeNoLoot = true;
+                mob.destroy?.();
+                this.mobs.delete(mob);
+            }
+            return true;
+        }
         const nearest = this.updateChallengeHostileNavigation(mob, [{ socket: this.getSocketForBody(target), body: target }], now);
         if (!nearest?.body) return true;
         const contactRange = (mob.realSize || mob.size || 48) + (target.realSize || target.size || 12) + 3;
@@ -4447,70 +7807,268 @@ class Craftras {
     }
 
     updateChallengeMagicalZombieVisibility(mob, now = Date.now()) {
-        if (mob.craftrasMagicCast) {
-            const progress = Math.max(0, Math.min(1, (now - (mob.craftrasMagicFadeInAt || now)) / CRAFTRAS_CHALLENGE_MAGIC_FADE_DURATION));
-            mob.alpha = 0.95 * progress;
-            return;
-        }
-        if (mob.craftrasMagicFadeOutAt) {
-            const progress = Math.max(0, Math.min(1, (now - mob.craftrasMagicFadeOutAt) / CRAFTRAS_CHALLENGE_MAGIC_FADE_DURATION));
-            mob.alpha = (mob.craftrasMagicFadeOutAlpha || 0) * (1 - progress);
-            if (progress >= 1) {
-                mob.alpha = 0;
-                mob.craftrasMagicFadeOutAt = 0;
-                mob.craftrasMagicFadeOutAlpha = 0;
-            }
-            return;
-        }
-        mob.alpha = 0;
+        const phaseEntryHidden =
+            mob.craftrasMagicMode === "phase_entry" &&
+            now >= (mob.craftrasMagicCast?.attackStartsAt || 0);
+        const hidden =
+            mob.craftrasMagicMode === "skill" ||
+            phaseEntryHidden ||
+            mob.craftrasMagicMode === "black_hole_expanding";
+        this.updateChallengeMagicalBossFade(mob, hidden, now);
     }
 
     updateChallengeMagicalZombie(mob, players, now = Date.now()) {
         mob.craftrasFinalDashPhasing = true;
-        mob.health.amount = mob.health.max;
         mob.damageReceived = 0;
+        if (
+            mob.craftrasMagicBoss &&
+            mob.craftrasMagicPhase === 1 &&
+            mob.health.amount <= CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_HEALTH
+        ) {
+            mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_TWO_HEALTH;
+            this.startChallengeMagicalBossPhaseTwo(mob, players, now);
+        }
+        if (
+            mob.craftrasMagicBoss &&
+            mob.craftrasMagicPhase === 2 &&
+            mob.craftrasMagicVulnerable &&
+            mob.health.amount <= CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_HEALTH
+        ) {
+            mob.health.amount = CRAFTRAS_CHALLENGE_MAGIC_PHASE_THREE_HEALTH;
+            this.startChallengeMagicalBossPhaseThree(mob, players, now);
+        }
+        if (mob.craftrasMagicBoss && mob.health.amount <= 0) {
+            mob.health.amount = 1;
+            this.finishChallengeMagicalBoss(mob, now);
+            return true;
+        }
         if (this.challengeStage === "completed") {
             this.freezeChallengeActor(mob);
             const remaining = Math.max(0, (mob.craftrasChallengeFarewellUntil || now) - now);
             mob.alpha = Math.min(0.95, (mob.craftrasChallengeFarewellStartAlpha || 0) * remaining / 5_000);
             return true;
         }
-        const nearest = this.nearestPlayer(mob, players);
-        if (!nearest?.body) {
-            this.updateChallengeMagicalZombieVisibility(mob, now);
-            return true;
-        }
-        const target = nearest.body;
-        const phase = (mob.craftrasMagicOrbitPhase || 0) + now / 420;
-        const radius = BLOCK_SIZE * 7.5;
-        const goal = {
-            x: target.x + Math.cos(phase) * radius,
-            y: target.y + Math.sin(phase) * radius,
-        };
-        const dx = goal.x - mob.x;
-        const dy = goal.y - mob.y;
-        const distance = Math.hypot(dx, dy) || 1;
-        const speed = Math.min(distance, BLOCK_SIZE * 0.16);
-        mob.x += dx / distance * speed;
-        mob.y += dy / distance * speed;
         mob.velocity.x = 0;
         mob.velocity.y = 0;
-        mob.facing = Math.atan2(target.y - mob.y, target.x - mob.x);
-        mob.vfacing = mob.facing;
+        if (mob.accel) {
+            mob.accel.x = 0;
+            mob.accel.y = 0;
+        }
+        const nearest = this.nearestPlayer(mob, players);
+        const target = nearest?.body || null;
+        if (target) {
+            mob.facing = Math.atan2(target.y - mob.y, target.x - mob.x);
+            mob.vfacing = mob.facing;
+        }
         mob.craftrasControl = {
             goal: { x: mob.x, y: mob.y },
-            target: { x: target.x - mob.x, y: target.y - mob.y },
+            target: target ? { x: target.x - mob.x, y: target.y - mob.y } : { x: 1, y: 0 },
             fire: false,
             power: 0,
         };
-        this.updateChallengeMagicalZombieCombat(mob, players, now);
+        if (mob.craftrasMagicBoss && this.challengeEncounter?.magicalBossActive) {
+            this.updateChallengeMagicalZombieCombat(mob, players, now);
+        }
         this.updateChallengeMagicalZombieVisibility(mob, now);
         return true;
     }
 
+    updateWorld2MagicalZombie(mob, players, now = Date.now()) {
+        if (mob.craftrasWorld2MagicDeathAt) {
+            mob.health.amount = 1;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            mob.velocity.x = 0;
+            mob.velocity.y = 0;
+            if (now >= mob.craftrasWorld2MagicDeathAt) mob.kill?.();
+            return true;
+        }
+        mob.craftrasFinalDashPhasing = true;
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
+        if (mob.accel) {
+            mob.accel.x = 0;
+            mob.accel.y = 0;
+        }
+        const living = (players || []).filter(entry => entry?.body && !entry.body.isDead?.() && !entry.body.craftrasSpectator);
+        if (!mob.craftrasWorld2MagicEnraged && mob.health.amount <= mob.health.max * 0.5) {
+            this.startWorld2MagicalZombieEnrage(mob, living, now);
+        }
+        if (mob.craftrasWorld2MagicEnraged && now >= (mob.craftrasWorld2MagicNextBlackHoleAt || 0)) {
+            this.spawnWorld2MagicMiniBlackHole(mob, living, now);
+            mob.craftrasWorld2MagicNextBlackHoleAt = now + CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_INTERVAL;
+        }
+        const nearest = this.nearestPlayer(mob, living);
+        const target = nearest?.body || null;
+        if (target) {
+            mob.facing = Math.atan2(target.y - mob.y, target.x - mob.x);
+            mob.vfacing = mob.facing;
+        }
+        mob.craftrasControl = {
+            goal: { x: mob.x, y: mob.y },
+            target: target ? { x: target.x - mob.x, y: target.y - mob.y } : { x: 1, y: 0 },
+            fire: false,
+            power: 0,
+        };
+        if (!living.length) {
+            if (mob.craftrasMagicCast) {
+                this.clearChallengeMagicEntities(mob);
+                mob.craftrasMagicCast = null;
+            }
+            mob.craftrasMagicMode = "cooldown";
+            mob.craftrasMagicVulnerable = true;
+            mob.invuln = false;
+            mob.craftrasMagicNextSkillAt = now + 1_000;
+            this.beginChallengeMagicalBossFade(mob, false, now);
+            this.updateChallengeMagicalZombieVisibility(mob, now);
+            return true;
+        }
+        this.updateChallengeMagicalZombieCombat(mob, living, now);
+        this.updateChallengeMagicalZombieVisibility(mob, now);
+        return true;
+    }
+
+    getWorld2MagicalZombieAudience() {
+        return this.getLivingPlayers().filter(({ body }) => {
+            const cell = worldToBlock(body.x, body.y);
+            return isInsideWorld2(cell.x, cell.y) && this.isWorld2GiantCaveCell(cell.x, cell.y);
+        });
+    }
+
+    sendWorld2MagicalZombieLine(mob, players, text, duration = 4_000) {
+        if (!mob || !text) return;
+        mob.say?.(text, duration);
+        for (const entry of players || []) {
+            const socket = entry?.socket || this.getSocketForBody(entry?.body);
+            socket?.talk?.("BM", duration, `Magical Zombie: ${text}`, "#c63cff", "world2-magical-zombie");
+        }
+    }
+
+    spawnWorld2MagicTitan(mob, players, now = Date.now()) {
+        if (!mob || mob.craftrasWorld2MagicTitan?.isDead?.() === false) return mob.craftrasWorld2MagicTitan;
+        let location = this.findWorld2GiantCaveSpawn(players || []);
+        if (!location) {
+            for (let attempt = 0; attempt < 12; attempt++) {
+                const angle = Math.random() * Math.PI * 2;
+                const distance = BLOCK_SIZE * (4 + Math.random() * 4);
+                const candidate = {
+                    x: mob.x + Math.cos(angle) * distance,
+                    y: mob.y + Math.sin(angle) * distance,
+                };
+                const cell = worldToBlock(candidate.x, candidate.y);
+                if (this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) continue;
+                location = candidate;
+                break;
+            }
+        }
+        if (!location) location = { x: mob.x + BLOCK_SIZE * 4, y: mob.y };
+        const titan = this.spawnMobAt(location, {
+            type: "titan_zombie",
+            label: "Titan",
+            health: CRAFTRAS_WORLD2_MAGIC_TITAN_HEALTH,
+            contactDamage: 100,
+            scoreMultiplier: 0,
+            noKnockback: false,
+        }, { world2GiantCaveMob: true });
+        if (!titan) return null;
+        titan.craftrasChallengeHostile = true;
+        titan.craftrasChallengeSpecial = "world2_magic_titan";
+        titan.craftrasChallengeNoLoot = true;
+        titan.craftrasWorld2MagicTitan = true;
+        titan.craftrasWorld2MagicOwner = mob;
+        titan.craftrasSunImmune = true;
+        titan.craftrasScoreMultiplier = 0;
+        titan.skill.score = 0;
+        titan.craftrasContactDamage = 100;
+        titan.craftrasNextTitanDashAt = now + CRAFTRAS_CHALLENGE_TITAN_DASH_INTERVAL;
+        titan.craftrasTitanDash = null;
+        titan.alwaysActive = true;
+        mob.craftrasWorld2MagicTitan = titan;
+        return titan;
+    }
+
+    startWorld2MagicalZombieEnrage(mob, players = this.getWorld2MagicalZombieAudience(), now = Date.now()) {
+        if (!mob || mob.craftrasWorld2MagicEnraged || mob.craftrasWorld2MagicDeathAt) return false;
+        mob.craftrasWorld2MagicEnraged = true;
+        mob.craftrasWorld2MagicNextBlackHoleAt = now + 1_000;
+        this.sendWorld2MagicalZombieLine(mob, players, "Come forth.... Titan.", 4_000);
+        this.spawnWorld2MagicTitan(mob, players, now);
+        return true;
+    }
+
+    spawnWorld2MagicMiniBlackHole(mob, players, now = Date.now()) {
+        if (!mob || !players?.length) return null;
+        const activeCount = [...this.challengeMagicEntities].filter(entity =>
+            entity?.craftrasChallengeMagicOwner === mob
+            && entity.craftrasChallengeMagicKind === "world2_mini_black_hole"
+            && !entity.isDead?.()
+        ).length;
+        if (activeCount >= CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_MAX) return null;
+        const target = players[Math.floor(Math.random() * players.length)]?.body;
+        if (!target) return null;
+        let location = null;
+        for (let attempt = 0; attempt < 12; attempt++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = BLOCK_SIZE * (3 + Math.random() * 5);
+            const candidate = {
+                x: target.x + Math.cos(angle) * distance,
+                y: target.y + Math.sin(angle) * distance,
+            };
+            const cell = worldToBlock(candidate.x, candidate.y);
+            if (this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) continue;
+            location = candidate;
+            break;
+        }
+        if (!location) return null;
+        const blackHole = this.spawnChallengeMagicEntity("craftrasWorld2MiniBlackHole", location, {
+            kind: "world2_mini_black_hole",
+            owner: mob,
+            damage: CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_DAMAGE,
+            bypassParry: true,
+            expiresAt: now + CRAFTRAS_WORLD2_MAGIC_MINI_BLACK_HOLE_LIFETIME,
+            alpha: 0.96,
+            size: 36,
+            color: "#000000",
+        });
+        blackHole.craftrasMagicLastUpdateAt = now;
+        blackHole.craftrasNextTrailAt = now;
+        return blackHole;
+    }
+
+    startWorld2MagicalZombieDeath(mob, now = Date.now()) {
+        if (!mob || mob.craftrasWorld2MagicDeathAt) return false;
+        this.clearChallengeMagicEntities(mob);
+        mob.craftrasMagicCast = null;
+        mob.craftrasMagicMode = "death";
+        mob.craftrasMagicVulnerable = false;
+        mob.invuln = true;
+        mob.health.amount = 1;
+        mob.damageReceived = 0;
+        mob.readyToDie = false;
+        this.setChallengeMagicalBossHidden(mob, false);
+        const audience = this.getWorld2MagicalZombieAudience();
+        this.sendWorld2MagicalZombieLine(mob, audience, "I can't die like this.........", CRAFTRAS_WORLD2_MAGIC_DEATH_DIALOGUE_DURATION);
+        mob.craftrasWorld2MagicDeathAt = now + CRAFTRAS_WORLD2_MAGIC_DEATH_DIALOGUE_DURATION;
+        return true;
+    }
+
     updateChallengeTitanZombie(mob, players, now = Date.now()) {
+        if (this.updateChallengeHostileKnockback(mob, now)) {
+            mob.craftrasTitanDash = null;
+            return true;
+        }
         const nearest = this.nearestPlayer(mob, players);
-        if (!nearest?.body) return true;
+        if (!nearest?.body) {
+            mob.velocity.x = 0;
+            mob.velocity.y = 0;
+            mob.craftrasControl = {
+                goal: { x: mob.x, y: mob.y },
+                target: mob.craftrasControl?.target || { x: 1, y: 0 },
+                fire: false,
+                power: 0,
+            };
+            return true;
+        }
         const target = nearest.body;
         if (nearest.distance > BLOCK_SIZE * 28) {
             const angle = Math.random() * Math.PI * 2;
@@ -4519,7 +8077,7 @@ class Craftras {
             mob.velocity.x = 0;
             mob.velocity.y = 0;
             mob.craftrasTitanDash = null;
-            mob.craftrasNextTitanDashAt = now + 1200;
+            mob.craftrasNextTitanDashAt = now + CRAFTRAS_CHALLENGE_TITAN_DASH_INTERVAL;
         }
         let dash = mob.craftrasTitanDash;
         if (!dash && now >= (mob.craftrasNextTitanDashAt || 0)) {
@@ -4528,18 +8086,24 @@ class Craftras {
             const distance = Math.hypot(dx, dy) || 1;
             dash = mob.craftrasTitanDash = {
                 direction: { x: dx / distance, y: dy / distance },
-                targetPoint: { x: target.x, y: target.y },
-                slowAt: 0,
+                remaining: CRAFTRAS_CHALLENGE_TITAN_DASH_DISTANCE,
                 hitIds: new Set(),
             };
+            mob.craftrasNextTitanDashAt = now + CRAFTRAS_CHALLENGE_TITAN_DASH_INTERVAL;
+            const shake = JSON.stringify({
+                type: "camera",
+                duration: CRAFTRAS_CHALLENGE_TITAN_SHAKE_DURATION,
+                amount: CRAFTRAS_CHALLENGE_TITAN_SHAKE_AMOUNT,
+                keepShake: false,
+            });
+            for (const socket of this.gameManager.clients) socket?.talk?.("SH", shake);
         }
         if (dash) {
-            const distancePast = (mob.x - dash.targetPoint.x) * dash.direction.x + (mob.y - dash.targetPoint.y) * dash.direction.y;
-            if (!dash.slowAt && distancePast >= 0) dash.slowAt = now + 200;
             const dashSpeed = CRAFTRAS_GUARDIAN_SLASH_SPEED / 1.3;
-            const speedScale = dash.slowAt ? Math.max(0.08, (dash.slowAt - now) / 200) : 1;
-            mob.x += dash.direction.x * dashSpeed * speedScale;
-            mob.y += dash.direction.y * dashSpeed * speedScale;
+            const step = Math.min(dashSpeed, dash.remaining);
+            mob.x += dash.direction.x * step;
+            mob.y += dash.direction.y * step;
+            dash.remaining -= step;
             mob.craftrasControl = {
                 goal: { x: mob.x, y: mob.y },
                 target: { x: dash.direction.x, y: dash.direction.y },
@@ -4564,19 +8128,22 @@ class Craftras {
                 dash.hitIds.add(body.id);
                 this.applyCombatTargetDamage(body, 80, mob);
             }
-            if (dash.slowAt && now >= dash.slowAt) {
+            if (dash.remaining <= 0) {
                 mob.craftrasTitanDash = null;
-                mob.craftrasNextTitanDashAt = now + 5_000;
+                mob.velocity.x = 0;
+                mob.velocity.y = 0;
             }
             return true;
         }
         const dx = target.x - mob.x;
         const dy = target.y - mob.y;
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
         mob.craftrasControl = {
-            goal: { x: target.x, y: target.y },
+            goal: { x: mob.x, y: mob.y },
             target: { x: dx, y: dy },
             fire: false,
-            power: 1,
+            power: 0,
         };
         return true;
     }
@@ -4589,24 +8156,116 @@ class Craftras {
         if (this.challengeEncounter) this.challengeEncounter.completed = true;
         for (const mob of this.getChallengeHostiles()) {
             if (mob.craftrasMobType === "magical_zombie") {
-                mob.say?.(CRAFTRAS_CHALLENGE_MAGICIAN_FAREWELL, 5_000);
-                mob.craftrasChallengeFarewellUntil = now + 5_000;
+                this.freezeChallengeActor(mob);
+                mob.craftrasChallengeFarewellUntil = now + CRAFTRAS_CHALLENGE_CLEAR_DIVINE_DURATION + CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION;
                 mob.craftrasChallengeFarewellStartAlpha = Math.max(0, Math.min(0.95, mob.alpha || 0));
-                for (const socket of this.gameManager.clients) socket?.talk?.("BM", 5_000, CRAFTRAS_CHALLENGE_MAGICIAN_FAREWELL, "#ff3030");
-            } else if (mob.craftrasMobType === "titan_zombie") {
-                mob.destroy?.();
-                this.mobs.delete(mob);
+                continue;
             }
+            mob.craftrasChallengeNoLoot = true;
+            mob.destroy?.();
+            this.mobs.delete(mob);
         }
         this.weatherType = "clear";
         this.weatherRainElapsed = 0;
         this.weatherCheckElapsed = 0;
         this.syncWeather(true);
+        this.challengeCompletion = {
+            farewellAt: now + CRAFTRAS_CHALLENGE_CLEAR_DIVINE_DURATION,
+            clearAt: now + CRAFTRAS_CHALLENGE_CLEAR_DIVINE_DURATION + CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION,
+            fadeAt: now + CRAFTRAS_CHALLENGE_CLEAR_DIVINE_DURATION + CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION + CRAFTRAS_CHALLENGE_CLEAR_MESSAGE_DURATION,
+            transferAt: now + CRAFTRAS_CHALLENGE_CLEAR_DIVINE_DURATION + CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION + CRAFTRAS_CHALLENGE_CLEAR_MESSAGE_DURATION + CRAFTRAS_CHALLENGE_TRANSITION_OUT_MS,
+            farewellStarted: false,
+            clearShown: false,
+            fadeStarted: false,
+            transferred: false,
+        };
+        for (const socket of this.gameManager.clients) {
+            const tokenReward = this.gameManager.socketManager.grantCraftrasChallengeToken(socket, "world1", 1);
+            if (tokenReward.granted) {
+                socket?.talk?.("m", 6_000, "World 1 Challenge Token earned.");
+            } else if (tokenReward.reason === "claimed") {
+                socket?.talk?.("m", 6_000, "The World 1 Challenge Token was already claimed.");
+            } else if (tokenReward.reason === "blocked") {
+                socket?.talk?.("m", 6_000, "Admin or Creative sessions cannot earn Tokens.");
+            }
+            socket?.talk?.("BM", CRAFTRAS_CHALLENGE_CLEAR_DIVINE_DURATION, "The Pope's holy power begins to purge the corrupted beings...", "#ffe681");
+        }
         console.log("[Craftras World 1 Challenge] The escort reached the village. Spawning and rain stopped.");
     }
 
-    startWorld1ChallengeFailure(now = Date.now()) {
+    restoreChallengeSpectatorForTransfer(socket, now = Date.now()) {
+        const body = socket?.player?.body;
+        if (!body?.craftrasSpectator || body.isDead?.()) return false;
+        body.craftrasSpectator = false;
+        body.craftrasSpectatorFinalizing = false;
+        body.craftrasSpectatorSince = 0;
+        body.SPEED = Number.isFinite(body.craftrasSpectatorBaseSpeed) ? body.craftrasSpectatorBaseSpeed : 6;
+        if (Number.isFinite(body.craftrasSpectatorBaseTopSpeed)) body.topSpeed = body.craftrasSpectatorBaseTopSpeed;
+        if (Number.isFinite(body.craftrasSpectatorBaseAcceleration)) body.acceleration = body.craftrasSpectatorBaseAcceleration;
+        delete body.craftrasSpectatorBaseSpeed;
+        delete body.craftrasSpectatorBaseTopSpeed;
+        delete body.craftrasSpectatorBaseAcceleration;
+        body.invuln = false;
+        body.alpha = 1;
+        body.intangibility = false;
+        body.settings.no_collisions = false;
+        body.readyToDie = false;
+        body.damageReceived = 0;
+        body.collisionArray.length = 0;
+        body.health.amount = Math.max(1, body.health.max || 100);
+        body.craftrasLastDamageAt = now;
+        body.craftrasNextRegenAt = now + 10_000;
+        socket.status.deceased = false;
+        socket.craftrasSpectatorDeathRecords = null;
+        socket.craftrasSpectatorBodyId = null;
+        socket.talk?.("CSPEC", 0);
+        return true;
+    }
+
+    transferChallengeClientsToWorld1(now = Date.now()) {
+        const mainPort = Number(process.env.PORT) || 3000;
+        for (const socket of [...this.gameManager.clients]) {
+            this.restoreChallengeSpectatorForTransfer(socket, now);
+            this.gameManager.socketManager.sendToServer(socket, `http://127.0.0.1:${mainPort}`, "/");
+        }
+    }
+
+    updateWorld1ChallengeCompletion(now = Date.now()) {
+        const completion = this.challengeCompletion;
+        if (!completion) return false;
+        if (!completion.farewellStarted && now >= completion.farewellAt) {
+            completion.farewellStarted = true;
+            for (const mob of this.getChallengeHostiles()) {
+                if (mob.craftrasMobType !== "magical_zombie") continue;
+                mob.say?.(CRAFTRAS_CHALLENGE_MAGICIAN_FAREWELL, CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION);
+                mob.craftrasChallengeFarewellUntil = now + CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION;
+                mob.craftrasChallengeFarewellStartAlpha = Math.max(0, Math.min(0.95, mob.alpha || 0));
+            }
+            for (const socket of this.gameManager.clients) {
+                socket?.talk?.("BM", CRAFTRAS_CHALLENGE_CLEAR_FAREWELL_DURATION, CRAFTRAS_CHALLENGE_MAGICIAN_FAREWELL, "#ff3030");
+            }
+        }
+        if (!completion.clearShown && now >= completion.clearAt) {
+            completion.clearShown = true;
+            for (const socket of this.gameManager.clients) {
+                socket?.talk?.("BM", CRAFTRAS_CHALLENGE_CLEAR_MESSAGE_DURATION, "CHALLENGE CLEAR", "#38e56f");
+            }
+        }
+        if (!completion.fadeStarted && now >= completion.fadeAt) {
+            completion.fadeStarted = true;
+            for (const socket of this.gameManager.clients) socket?.talk?.("CTR", 1, CRAFTRAS_CHALLENGE_TRANSITION_OUT_MS);
+        }
+        if (!completion.transferred && now >= completion.transferAt) {
+            completion.transferred = true;
+            this.transferChallengeClientsToWorld1(now);
+        }
+        return true;
+    }
+
+    startWorld1ChallengeFailure(now = Date.now(), options = {}) {
         if (!Config.craftras_world1_challenge_builder || this.challengeFailure || !["intro", "active"].includes(this.challengeStage)) return false;
+        const reason = options.reason || "players";
+        const message = options.message || "CHALLENGE FAIL - All players have died.";
         this.challengeStage = "failed";
         this.challengeEscortMoving = false;
         this.challengeIntro = null;
@@ -4621,15 +8280,70 @@ class Craftras {
             this.mobs.delete(mob);
         }
         this.challengeFailure = {
+            reason,
+            allowCombat: !!options.allowCombat,
             fadeAt: now + CRAFTRAS_CHALLENGE_FAIL_MESSAGE_DURATION,
             transferAt: now + CRAFTRAS_CHALLENGE_FAIL_MESSAGE_DURATION + CRAFTRAS_CHALLENGE_TRANSITION_OUT_MS,
             fadeStarted: false,
             transferred: false,
         };
         for (const socket of this.gameManager.clients) {
-            socket?.talk?.("BM", CRAFTRAS_CHALLENGE_FAIL_MESSAGE_DURATION, "CHALLENGE FAIL - All players have died.", "#ff3030");
+            socket?.talk?.("BM", CRAFTRAS_CHALLENGE_FAIL_MESSAGE_DURATION, message, "#ff3030");
         }
-        console.log("[Craftras World 1 Challenge] CHALLENGE FAIL. All players have died.");
+        console.log(`[Craftras World 1 Challenge] ${message}`);
+        return true;
+    }
+
+    startWorld1ChallengeCaptainFailure(captain, now = Date.now()) {
+        if (!this.startWorld1ChallengeFailure(now, {
+            reason: "captain",
+            allowCombat: true,
+            message: "CHALLENGE FAIL - The Knight Captain has fallen.",
+        })) return false;
+        const players = this.getConnectedPlayerBodies();
+        for (const { body } of players) {
+            if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+            body.invuln = false;
+            body.damageReceived = 0;
+        }
+        const anchors = players.length
+            ? players
+            : captain ? [{ body: captain }] : [];
+        const variant = {
+            type: "giant_zombie",
+            scoreType: "giant_zombie",
+            label: "Armored Giant Zombie",
+            health: 1_000,
+            helmet: "iron",
+            sword: "iron",
+            swordDamage: 100,
+            contactDamage: 100,
+            scoreMultiplier: 0,
+            noKnockback: true,
+        };
+        let spawned = 0;
+        for (let index = 0; index < CRAFTRAS_CHALLENGE_CAPTAIN_FAILURE_WAVE_SIZE; index++) {
+            const location = this.findChallengeHostileSpawn(anchors, {
+                minDistance: 4,
+                maxDistance: 10,
+                ignoreRoute: true,
+            });
+            if (!location) continue;
+            const mob = this.spawnChallengeHostile(variant, location, {
+                special: "captain_failure_wave",
+                noLoot: true,
+            });
+            if (mob) spawned++;
+        }
+        for (const socket of this.gameManager.clients) {
+            socket?.talk?.("SH", JSON.stringify({
+                type: "camera",
+                duration: CRAFTRAS_CHALLENGE_FAIL_MESSAGE_DURATION,
+                amount: 70,
+                keepShake: false,
+            }));
+        }
+        console.log(`[Craftras World 1 Challenge] Knight Captain failure wave spawned ${spawned}/${CRAFTRAS_CHALLENGE_CAPTAIN_FAILURE_WAVE_SIZE} armored giants.`);
         return true;
     }
 
@@ -4642,10 +8356,7 @@ class Craftras {
         }
         if (!failure.transferred && now >= failure.transferAt) {
             failure.transferred = true;
-            for (const socket of [...this.gameManager.clients]) {
-                const mainPort = Number(process.env.PORT) || 3000;
-                this.gameManager.socketManager.sendToServer(socket, `http://127.0.0.1:${mainPort}`, "/");
-            }
+            this.transferChallengeClientsToWorld1(now);
         }
         return true;
     }
@@ -4694,7 +8405,9 @@ class Craftras {
         mob.craftrasChallengeRole = role;
         mob.craftrasChallengeActorIndex = index;
         mob.craftrasChallengeWaiting = true;
-        mob.craftrasNextChallengeRegenAt = Date.now() + CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL;
+        mob.craftrasNextChallengeRegenAt = Date.now() + (
+            role === "captain" ? CRAFTRAS_CHALLENGE_CAPTAIN_REGEN_INTERVAL : CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL
+        );
         mob.craftrasHome = { x: location.x, y: location.y };
         mob.craftrasNpcWanderRadius = 8;
         mob.craftrasInvulnerableNpc = false;
@@ -4702,6 +8415,7 @@ class Craftras {
         if (roleHealth) {
             mob.health.set(roleHealth);
             mob.health.amount = mob.health.max;
+            mob.craftrasChallengeTrackedHealth = mob.health.amount;
         }
         if (role === "guardian") {
             mob.craftrasHeldItem = "iron_sword";
@@ -4712,13 +8426,20 @@ class Craftras {
         mob.craftrasControl = { goal: { x: location.x, y: location.y }, target: { x: 1, y: 0 }, fire: false, power: 0 };
         mob.on("damage", () => {
             if (this.challengeStage === "active") {
-                mob.craftrasNextChallengeRegenAt = Date.now() + CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL;
+                mob.craftrasNextChallengeRegenAt = Date.now() + (
+                    role === "captain" ? CRAFTRAS_CHALLENGE_CAPTAIN_REGEN_INTERVAL : CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL
+                );
                 return;
             }
             mob.damageReceived = 0;
             mob.health.amount = mob.health.max;
             mob.readyToDie = false;
         });
+        if (role === "captain") {
+            mob.on("dead", () => {
+                if (this.challengeStage === "active") this.startWorld1ChallengeCaptainFailure(mob, Date.now());
+            });
+        }
         this.challengeActors.add(mob);
         return mob;
     }
@@ -4836,6 +8557,413 @@ class Craftras {
         return players;
     }
 
+    getPlayerBossFormDefinition(type) {
+        if (type === "world2_basic") return { health: CRAFTRAS_WORLD2_BASIC_FORM_HEALTH, size: CRAFTRAS_WORLD2_BASIC_FORM_SIZE, skills: 4 };
+        if (type === "jane") return { health: CRAFTRAS_JANE_PHASE_HEALTH, size: CRAFTRAS_JANE_FORM_SIZE, skills: 8 };
+        return { health: CRAFTRAS_WORLD1_BASIC_FORM_HEALTH, size: CRAFTRAS_WORLD1_BASIC_FORM_SIZE, skills: 3 };
+    }
+
+    getPlayerBossFormCooldowns(body, type = body?.craftrasBossFormType || "world1_basic") {
+        body.craftrasBossFormCooldowns ??= {};
+        const count = this.getPlayerBossFormDefinition(type).skills;
+        const existing = body.craftrasBossFormCooldowns[type];
+        body.craftrasBossFormCooldowns[type] = Array.from({ length: count }, (_, index) => existing?.[index] || 0);
+        return body.craftrasBossFormCooldowns[type];
+    }
+
+    syncPlayerBossForm(socket, body, force = false, now = Date.now()) {
+        if (!socket?.talk) return;
+        const type = body?.craftrasBossFormType || "";
+        const active = !!type;
+        const storedCooldowns = active ? this.getPlayerBossFormCooldowns(body, type) : [];
+        const cooldowns = storedCooldowns.map(value => Math.max(0, value - now));
+        const activeSkill = active && Number.isInteger(body.craftrasBossForm?.activeSkill)
+            ? body.craftrasBossForm.activeSkill
+            : -1;
+        const signature = `${active ? 1 : 0}:${type}:${activeSkill}:${storedCooldowns.join(":")}`;
+        if (!force && socket.craftrasBossFormSignature === signature) return;
+        socket.craftrasBossFormSignature = signature;
+        socket.talk("BFR", active ? 1 : 0, type, JSON.stringify(cooldowns), activeSkill);
+    }
+
+    enterPlayerBossForm(socket, body, type, now = Date.now()) {
+        if (!body || body.craftrasBossFormType === type) return;
+        const definition = this.getPlayerBossFormDefinition(type);
+        const oldMax = Math.max(1, body.health?.max || 100);
+        const healthRatio = Math.max(0, Math.min(1, (body.health?.amount || oldMax) / oldMax));
+        body.craftrasBossFormSnapshot = {
+            name: body.name,
+            nameColor: body.nameColor,
+            color: body.color?.base,
+            size: body.SIZE,
+            coreSize: body.coreSize,
+            healthMax: oldMax,
+            swordGuyPhase: body.craftrasSwordGuyPhase,
+            helmet: body.craftrasHelmet,
+        };
+        body.craftrasBossFormType = type;
+        body.craftrasBossForm = { type, activeSkill: null, target: null, fireWasDown: false, nextMeleeAt: 0 };
+        body.craftrasSwordGuyPhase = 2;
+        body.craftrasControl ??= {};
+        body.name = type === "jane" ? "Jane" : type === "world2_basic" ? "Basic" : "THE SWORD";
+        body.nameColor = type === "jane" ? "#ff62c8" : "#4aa3ff";
+        if (body.color) body.color.base = "#ffffff";
+        body.SIZE = definition.size;
+        body.coreSize = definition.size;
+        body.refreshBodyAttributes?.();
+        body.health.set(definition.health);
+        body.health.amount = Math.max(1, definition.health * healthRatio);
+        body.slayerSwingActive = false;
+        body.slayerSwingPhase = 0;
+        this.getPlayerBossFormCooldowns(body, type);
+        if (type === "jane") {
+            body.craftrasHelmet = "jane_hat";
+            body.craftrasJaneState = "player_form";
+            body.craftrasJanePhase = 1;
+            body.craftrasJaneActiveSkill = null;
+            body.craftrasJaneRootOwner = body;
+            this.setJaneSkillTwoVisible(body, true);
+            this.setJaneSwordPose(body, -35, 1, 0.94);
+        } else {
+            body.craftrasSwordGuy2State = type === "world2_basic" ? "player_form" : body.craftrasSwordGuy2State;
+            body.craftrasSwordGuy2BasicDefeated = false;
+            body.craftrasSwordGuy2Bominik = null;
+            body.craftrasBossFormBasicOnly = type === "world2_basic";
+            body.craftrasSwordGuy2PhaseTwoEvents = [];
+            body.craftrasSwordGuy2PendingFriends = [];
+            body.craftrasNextSwordGuy2FriendAt = type === "world2_basic"
+                ? now + CRAFTRAS_SWORD_GUY_2_FRIEND_INTERVAL
+                : 0;
+            this.setSwordGuyWeaponVisual(body);
+            this.setTheSwordIdlePose(body);
+        }
+        this.syncPlayerBossForm(socket, body, true, now);
+    }
+
+    clearPlayerBossFormProjectiles(body) {
+        for (const projectile of [...this.theGreatProjectiles]) {
+            if (projectile?.craftrasBossFormOwner !== body) continue;
+            projectile.craftrasWarningLine?.destroy?.();
+            this.theGreatWarnings.delete(projectile.craftrasWarningLine);
+            projectile.destroy?.();
+            this.theGreatProjectiles.delete(projectile);
+        }
+        for (const projectile of [...this.guardianSlashProjectiles]) {
+            if (projectile?.craftrasBossFormOwner !== body) continue;
+            projectile.destroy?.();
+            this.guardianSlashProjectiles.delete(projectile);
+        }
+        for (const entity of [...this.janeSkillEntities]) {
+            if (entity?.craftrasJaneOwner !== body && entity?.craftrasJaneRootOwner !== body) continue;
+            this.mobs.delete(entity);
+            entity.destroy?.();
+            this.janeSkillEntities.delete(entity);
+        }
+        for (let index = this.laserTestBeams.length - 1; index >= 0; index--) {
+            if (this.laserTestBeams[index]?.owner === body) this.laserTestBeams.splice(index, 1);
+        }
+        for (const effect of [...this.explosionEffects]) {
+            if (effect?.craftrasJaneOwner !== body && effect?.craftrasSwordGuy2Owner !== body) continue;
+            effect.destroy?.();
+            this.explosionEffects.delete(effect);
+        }
+    }
+
+    exitPlayerBossForm(socket, body, now = Date.now()) {
+        if (!body?.craftrasBossFormType) return;
+        const snapshot = body.craftrasBossFormSnapshot || {};
+        const formMax = Math.max(1, body.health?.max || this.getPlayerBossFormDefinition(body.craftrasBossFormType).health);
+        const healthRatio = Math.max(0, Math.min(1, (body.health?.amount || 1) / formMax));
+        this.clearPlayerBossFormProjectiles(body);
+        body.craftrasSwordGuyCombo = null;
+        body.craftrasBossForm = null;
+        body.craftrasBossFormType = null;
+        body.craftrasSwordGuyPhase = snapshot.swordGuyPhase;
+        body.craftrasHelmet = snapshot.helmet ?? null;
+        body.name = snapshot.name ?? body.name;
+        body.nameColor = snapshot.nameColor || "#ffffff";
+        if (body.color && snapshot.color != null) body.color.base = snapshot.color;
+        if (Number.isFinite(snapshot.size)) body.SIZE = snapshot.size;
+        if (Number.isFinite(snapshot.coreSize)) body.coreSize = snapshot.coreSize;
+        body.refreshBodyAttributes?.();
+        const restoredMax = Math.max(1, Number(snapshot.healthMax) || 100);
+        body.health.set(restoredMax);
+        body.health.amount = Math.max(1, restoredMax * healthRatio);
+        body.craftrasBossFormSnapshot = null;
+        body.craftrasTheSwordStaffPoseStartedAt = 0;
+        body.craftrasSwordGuy2PhaseTwoEvents = [];
+        body.craftrasSwordGuy2PendingFriends = [];
+        body.craftrasNextSwordGuy2FriendAt = 0;
+        body.craftrasSwordGuy2Dash = null;
+        body.craftrasSwordGuy2ActiveSkill = null;
+        body.craftrasBossFormBasicOnly = false;
+        body.craftrasJaneActiveSkill = null;
+        body.craftrasJaneDash = null;
+        body.craftrasJaneRootOwner = null;
+        body.invuln = false;
+        body.godmode = false;
+        body.alpha = 1;
+        body.craftrasInvisible = false;
+        body.invisible = [0, 0];
+        if (body.settings) body.settings.fullyInvisible = false;
+        socket.craftrasBossFormSignature = null;
+        this.syncPlayerBossForm(socket, body, true, now);
+    }
+
+    updatePlayerBossFormEquipment(socket, body, now = Date.now()) {
+        let desiredType = null;
+        if (body && !body.craftrasSpectator && !body.isDead?.()) {
+            if (body.craftrasHeldItem === "jane_sword") desiredType = "jane";
+            else if (body.craftrasHeldItem === "the_great") {
+                const cell = worldToBlock(body.x, body.y);
+                desiredType = isInsideWorld2(cell.x, cell.y) ? "world2_basic" : "world1_basic";
+            }
+        }
+        if (desiredType && body.craftrasBossFormType !== desiredType) {
+            if (body.craftrasBossFormType) this.exitPlayerBossForm(socket, body, now);
+            this.enterPlayerBossForm(socket, body, desiredType, now);
+        } else if (!desiredType && body?.craftrasBossFormType) this.exitPlayerBossForm(socket, body, now);
+        else if (body?.craftrasBossFormType) this.syncPlayerBossForm(socket, body, false, now);
+        else if (String(socket.craftrasBossFormSignature || "").startsWith("1:")) {
+            socket.craftrasBossFormSignature = null;
+            this.syncPlayerBossForm(socket, body, true, now);
+        }
+    }
+
+    cancelPlayerBossForm(socket, now = Date.now()) {
+        const body = socket?.player?.body;
+        if (!body?.craftrasBossFormType) return false;
+        this.exitPlayerBossForm(socket, body, now);
+        body.craftrasHeldItem = null;
+        body.craftrasMainHandStack = null;
+        body.craftrasSwordMaterial = null;
+        return true;
+    }
+
+    findPlayerBossFormTarget(body) {
+        if (!body) return null;
+        const aimX = body.x + (body.control?.target?.x || 0);
+        const aimY = body.y + (body.control?.target?.y || 0);
+        let best = null;
+        let bestScore = Infinity;
+        for (const mob of this.mobs) {
+            if (!this.isValidGreatFriendMonsterTarget(mob)) continue;
+            if (mob.craftrasJaneOwner === body || mob.craftrasJaneRootOwner === body || mob.craftrasSwordGuy2SummonOwner === body) continue;
+            const cursorDistance = Math.hypot(mob.x - aimX, mob.y - aimY);
+            const ownerDistance = Math.hypot(mob.x - body.x, mob.y - body.y);
+            const score = cursorDistance + ownerDistance * 0.08;
+            if (score >= bestScore) continue;
+            best = mob;
+            bestScore = score;
+        }
+        return best;
+    }
+
+    requestBossFormSkill(socket, skillIndex, now = Date.now()) {
+        const body = socket?.player?.body;
+        const type = body?.craftrasBossFormType;
+        if (!body || !type || body.craftrasSpectator || body.isDead?.()) return false;
+        const skillCount = this.getPlayerBossFormDefinition(type).skills;
+        if (!Number.isInteger(skillIndex) || skillIndex < 0 || skillIndex >= skillCount || body.craftrasBossForm?.activeSkill != null) return false;
+        const cooldowns = this.getPlayerBossFormCooldowns(body, type);
+        if (now < cooldowns[skillIndex]) {
+            this.syncPlayerBossForm(socket, body, true, now);
+            return false;
+        }
+        const target = this.findPlayerBossFormTarget(body);
+        if (!target) {
+            socket.talk?.("m", 2_500, "Aim near a monster to use this skill.");
+            return false;
+        }
+        body.craftrasBossForm.activeSkill = skillIndex;
+        body.craftrasBossForm.target = target;
+        if (type === "world1_basic") {
+            this.startTheSwordCombo(body, target, now, skillIndex + 1);
+        } else if (type === "world2_basic") {
+            if (skillIndex === 0) {
+                socket.talk?.("SGP", CRAFTRAS_SWORD_GUY_2_NOW_STEP_DURATION, CRAFTRAS_SWORD_GUY_2_NOW_DURATION, 500);
+                body.craftrasBossForm.impactAt = now + CRAFTRAS_SWORD_GUY_2_NOW_STEP_DURATION * 3;
+                body.craftrasBossForm.endsAt = body.craftrasBossForm.impactAt + CRAFTRAS_SWORD_GUY_2_NOW_DURATION;
+                body.craftrasBossForm.impactResolved = false;
+            } else {
+                body.craftrasSwordGuy2Phase = 2;
+                this.startSwordGuy2PhaseTwoSkill(body, skillIndex, target, now);
+            }
+        } else if (type === "jane") {
+            const phase = skillIndex >= 5 ? 2 : 1;
+            const janeSkill = phase === 2 ? skillIndex - 4 : skillIndex + 1;
+            body.craftrasJanePhase = phase;
+            if (janeSkill === 1) this.startJaneSkillOne(body, target, now);
+            else if (janeSkill === 2) this.startJaneSkillTwo(body, target, now);
+            else if (janeSkill === 3) this.startJaneSkillThree(body, target, now);
+            else if (janeSkill === 4) this.startJaneSkillFour(body, target, now);
+            else this.startJaneSkillFive(body, target, now);
+        }
+        this.syncPlayerBossForm(socket, body, true, now);
+        return true;
+    }
+
+    requestCustomWeaponSpecialAction(socket, key, now = Date.now()) {
+        const body = socket?.player?.body;
+        const item = ITEMS[body?.craftrasHeldItem];
+        const normalizedKey = String(key || "").toLowerCase();
+        if (
+            !body
+            || body.isDead?.()
+            || body.craftrasSpectator
+            || !item?.customWeapon
+            || body.slayerSwingActive
+            || !["z", "x", "c", "v", "b", "n", "m"].includes(normalizedKey)
+        ) return false;
+        const action = (item.weapon?.specialActions || []).find(entry => String(entry?.key || "").toLowerCase() === normalizedKey);
+        if (!action || !Array.isArray(action.keyframes) || action.keyframes.length < 2) return false;
+        body.craftrasSpecialActionCooldowns ??= Object.create(null);
+        if (now < (body.craftrasSpecialActionCooldowns[normalizedKey] || 0)) return false;
+        body.craftrasSpecialActionCooldowns[normalizedKey] = now + Math.max(0, Number(action.cooldown) || 0);
+        body.slayerSwingPhase = 0;
+        body.slayerSwingActive = true;
+        body.craftrasActiveCustomAttack = { ...action, type: "emote" };
+        body.craftrasCustomAnimationMode = "special";
+        body.craftrasCustomSwingStartedAt = now;
+        body.craftrasCustomSwingPrepared = false;
+        body.craftrasCustomScreenCutTriggered = false;
+        body.craftrasCustomDash = null;
+        body.craftrasMiningHitKeys = new Set();
+        body.craftrasCombatHitIds = new Set();
+        body.craftrasPreviousToolSegment = null;
+        body.craftrasPreviousToolPolygons = null;
+        return true;
+    }
+
+    updatePlayerBossFormSkills(players, now = Date.now()) {
+        for (const { socket, body } of players || []) {
+            const form = body?.craftrasBossForm;
+            if (!form || !body.craftrasBossFormType) continue;
+            this.updatePlayerBossFormMelee(body, now);
+            if (body.craftrasBossFormType === "world2_basic") {
+                this.updateWorld2BasicFormPassive(body, now);
+            }
+            if (form.activeSkill == null) continue;
+            let target = form.target;
+            if (!this.isValidGreatFriendMonsterTarget(target)) target = this.findPlayerBossFormTarget(body);
+            if (!target) {
+                body.craftrasSwordGuyCombo = null;
+                body.craftrasJaneActiveSkill = null;
+                body.craftrasSwordGuy2PhaseTwoEvents = [];
+            } else {
+                form.target = target;
+                const dx = target.x - body.x;
+                const dy = target.y - body.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                body.facing = Math.atan2(dy, dx);
+                body.vfacing = body.facing;
+                body.craftrasControl.target = { x: dx / distance, y: dy / distance };
+                if (body.craftrasBossFormType === "world1_basic") {
+                    this.updateTheSwordCombo(body, target, now);
+                } else if (body.craftrasBossFormType === "world2_basic") {
+                    if (form.activeSkill === 0) {
+                        if (!form.impactResolved && now >= (form.impactAt || 0)) {
+                            form.impactResolved = true;
+                            this.damageMobFromGreatFriend(target, body, Math.max(1, target.health.max * 0.15), now);
+                            this.knockCombatTargetFromSource(target, body, 90);
+                        }
+                    } else {
+                        this.runSwordGuy2PhaseTwoEvents(body, now);
+                        this.updateSwordGuy2PhaseTwoBasicDash(body, target, now);
+                        this.updateSwordGuy2PhaseTwoWeaponPose(body, now);
+                    }
+                } else if (body.craftrasBossFormType === "jane") {
+                    const active = body.craftrasJaneActiveSkill;
+                    if (active?.type === "skill_two") this.updateJaneSkillTwo(body, target, now);
+                    else if (active?.type === "skill_three") this.updateJaneSkillThree(body, target, now);
+                    else if (active?.type === "skill_four") this.updateJaneSkillFour(body, target, now);
+                    else if (active?.type === "skill_five") this.updateJaneSkillFive(body, target, now);
+                    else if (active) this.updateJaneSkillOne(body, target, now);
+                }
+            }
+            const stillActive = body.craftrasBossFormType === "world1_basic"
+                ? !!body.craftrasSwordGuyCombo
+                : body.craftrasBossFormType === "world2_basic"
+                    ? (form.activeSkill === 0 ? now < (form.endsAt || 0) : now < (body.craftrasSwordGuy2SkillEndsAt || 0) || !!body.craftrasSwordGuy2Dash || !!body.craftrasSwordGuy2PhaseTwoEvents?.length)
+                    : !!body.craftrasJaneActiveSkill;
+            if (stillActive) continue;
+            const skillIndex = form.activeSkill;
+            this.getPlayerBossFormCooldowns(body, body.craftrasBossFormType)[skillIndex] = now + CRAFTRAS_BOSS_FORM_SKILL_COOLDOWN;
+            form.activeSkill = null;
+            form.target = null;
+            form.impactAt = 0;
+            form.endsAt = 0;
+            body.craftrasTheSwordStaffPoseStartedAt = 0;
+            body.invuln = false;
+            if (body.craftrasBossFormType === "jane") {
+                this.setJaneSkillTwoVisible(body, true);
+                this.setJaneSwordPose(body, -35, 1, 0.94);
+            } else this.setTheSwordIdlePose(body);
+            this.syncPlayerBossForm(socket, body, true, now);
+        }
+    }
+
+    updateWorld2BasicFormPassive(body, now = Date.now()) {
+        const pending = body.craftrasSwordGuy2PendingFriends || [];
+        for (let index = pending.length - 1; index >= 0; index--) {
+            const entry = pending[index];
+            if (now < entry.spawnAt) continue;
+            pending.splice(index, 1);
+            const target = this.isValidGreatFriendMonsterTarget(entry.target)
+                ? entry.target
+                : this.findPlayerBossFormTarget(body);
+            if (target) this.spawnSwordGuy2Friend(body, target, entry, now);
+        }
+        if (body.craftrasBossForm?.activeSkill != null || now < (body.craftrasNextSwordGuy2FriendAt || 0)) return;
+        const target = this.findPlayerBossFormTarget(body);
+        body.craftrasNextSwordGuy2FriendAt = now + CRAFTRAS_SWORD_GUY_2_FRIEND_INTERVAL;
+        if (!target) return;
+        const circle = this.spawnSwordGuy2MagicCircle(body, target, now);
+        const queued = pending[pending.length - 1];
+        if (circle && queued) queued.target = target;
+    }
+
+    updatePlayerBossFormMelee(body, now = Date.now()) {
+        const form = body?.craftrasBossForm;
+        if (!form) return;
+        if (form.activeSkill == null && form.meleeStartedAt) {
+            const progress = Math.max(0, Math.min(1, (now - form.meleeStartedAt) / CRAFTRAS_BOSS_FORM_MELEE_COOLDOWN));
+            if (progress >= 1) {
+                form.meleeStartedAt = 0;
+                if (body.craftrasBossFormType === "jane") this.setJaneSwordPose(body, -35, 1, 0.94);
+                else this.setTheSwordIdlePose(body);
+            } else if (body.craftrasBossFormType === "jane") {
+                this.setJaneSwordPose(body, -125 + progress * 250, 1.08, 1.02);
+            } else this.setTheSwordSlashPose(body, form.meleeStartedAt, now, CRAFTRAS_BOSS_FORM_MELEE_COOLDOWN, false);
+        }
+        const firing = !!body.control?.fire;
+        const pressed = firing && !form.fireWasDown;
+        form.fireWasDown = firing;
+        if (!pressed || form.activeSkill != null || now < (form.nextMeleeAt || 0)) return;
+        const facing = Math.atan2(body.control?.target?.y || 0, body.control?.target?.x || 1);
+        let target = null;
+        let nearest = Infinity;
+        for (const mob of this.mobs) {
+            if (!this.isValidGreatFriendMonsterTarget(mob)) continue;
+            const dx = mob.x - body.x;
+            const dy = mob.y - body.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance > BLOCK_SIZE * 2.2 + (mob.realSize || mob.size || 12)) continue;
+            const difference = Math.abs(Math.atan2(Math.sin(Math.atan2(dy, dx) - facing), Math.cos(Math.atan2(dy, dx) - facing)));
+            if (difference > Math.PI * 0.42 || distance >= nearest) continue;
+            target = mob;
+            nearest = distance;
+        }
+        form.nextMeleeAt = now + CRAFTRAS_BOSS_FORM_MELEE_COOLDOWN;
+        form.meleeStartedAt = now;
+        if (target) this.damageMobFromGreatFriend(target, body, Math.max(1, target.health.max * CRAFTRAS_BOSS_FORM_MELEE_RATIO), now);
+    }
+
+    getPlayerBossFormDamage(target, kind) {
+        const ratio = CRAFTRAS_WORLD1_BASIC_FORM_DAMAGE_RATIOS[kind] || CRAFTRAS_WORLD1_BASIC_FORM_DAMAGE_RATIOS.bullet;
+        return Math.max(1, (target?.health?.max || 1) * ratio);
+    }
+
     loadVillageNpcSpawns() {
         const fallback = Config.craftras_blacksmith_spawn || { x: -287, y: 322 };
         this.villageNpcSpawns = {
@@ -4875,12 +9003,18 @@ class Craftras {
         this.villageNpcSpawns[type] = { x, y };
         this.saveVillageNpcSpawns();
         const location = blockToWorld(x, y);
-        let npc = null;
+        const matches = [];
         for (const mob of this.mobs) {
-            if (mob?.craftrasMobType === type && !mob.isDead?.()) {
-                npc = mob;
-                break;
-            }
+            if (mob?.craftrasMobType === type && !mob.isDead?.()) matches.push(mob);
+        }
+        let npc =
+            matches.find(mob => mob.craftrasVillageStaticType === type) ??
+            matches[0] ??
+            null;
+        for (const duplicate of matches) {
+            if (duplicate === npc) continue;
+            this.mobs.delete(duplicate);
+            duplicate.destroy?.();
         }
         if (!npc) npc = this.spawnMobAt(location, type, { fixed: true });
         this.configureVillageStaticNpc(npc, type, 0, location);
@@ -4898,7 +9032,7 @@ class Craftras {
         const y = Math.trunc(Number(blacksmithSpawn.y));
         if (!Number.isFinite(x) || !Number.isFinite(y)) return;
         this.configureVillageStaticNpc(this.spawnMobAt(blockToWorld(x, y), "blacksmith", { fixed: true }), "blacksmith", 0, blockToWorld(x, y));
-        for (const type of ["merchant", "monster_merchant", "pope", "blesser"]) {
+        for (const type of ["merchant", "monster_merchant", "miner", "healer", "pope", "blesser"]) {
             const spawn = this.villageNpcSpawns[type];
             const sx = Math.trunc(Number(spawn?.x));
             const sy = Math.trunc(Number(spawn?.y));
@@ -4991,6 +9125,82 @@ class Craftras {
                 this.configureVillageStaticNpc(mob, type, index, location);
             }
         }
+        this.maintainWorld2VillageGuards(force);
+    }
+
+    findWorld2VillageGuardSpawnLocation(index = 0) {
+        const cells = this.world2VillageSpawnCells || [];
+        const tryCell = cell => {
+            if (!cell || this.getBlock(cell.x, cell.y) !== BLOCKS.AIR) return null;
+            if (this.getCell(cell.x, cell.y)?.floor === FLOORS.WATER) return null;
+            if (this.placementOverlapsEntity(cell.x, cell.y)) return null;
+            return blockToWorld(cell.x, cell.y);
+        };
+        for (let attempt = 0; attempt < cells.length; attempt++) {
+            const cell = cells[(index * 73 + attempt * 37) % cells.length];
+            const location = tryCell(cell);
+            if (location) return location;
+        }
+        const bounds = this.world2VillageBounds;
+        if (!bounds) return null;
+        const width = Math.max(1, bounds.maxX - bounds.minX + 1);
+        const height = Math.max(1, bounds.maxY - bounds.minY + 1);
+        for (let attempt = 0; attempt < width * height; attempt++) {
+            const hash = (index * 19349663 + attempt * 83492791) >>> 0;
+            const location = tryCell({
+                x: bounds.minX + hash % width,
+                y: bounds.minY + Math.floor(hash / width) % height,
+            });
+            if (location) return location;
+        }
+        return blockToWorld(
+            Math.round((bounds.minX + bounds.maxX) / 2),
+            Math.round((bounds.minY + bounds.maxY) / 2),
+        );
+    }
+
+    configureWorld2VillageGuard(mob, index, location) {
+        if (!mob) return null;
+        mob.x = location.x;
+        mob.y = location.y;
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
+        mob.craftrasVillageStaticType = "world2_guard";
+        mob.craftrasVillageStaticIndex = index;
+        mob.craftrasWorld2VillageGuard = true;
+        mob.craftrasFixedNpc = true;
+        mob.craftrasInvulnerableNpc = false;
+        mob.craftrasNpcWanderRadius = VILLAGE_NPC_MAX_HOME_DISTANCE;
+        mob.craftrasHome = { x: location.x, y: location.y };
+        mob.craftrasHeldItem = "ruby_sword";
+        mob.craftrasMainHandStack = makeItem("ruby_sword");
+        mob.craftrasHelmetMaterial = "sapphire";
+        mob.craftrasSwordMaterial = "ruby";
+        mob.craftrasSwordDamage = 200;
+        mob.health.set(1000);
+        mob.health.amount = 1000;
+        mob.craftrasWanderPath = null;
+        mob.craftrasWanderPathIndex = 0;
+        mob.craftrasNextWanderAt = 0;
+        mob.craftrasControl = { goal: { x: location.x, y: location.y }, target: { x: 1, y: 0 }, fire: false, power: 0 };
+        return mob;
+    }
+
+    maintainWorld2VillageGuards(force = false) {
+        if (!this.world2VillageBounds || Config.craftras_village_builder || Config.craftras_broken_kingdom_builder ||
+            Config.craftras_intact_kingdom_builder || Config.craftras_world1_challenge_builder ||
+            Config.craftras_cave_builder || Config.craftras_world2_village_builder) return;
+        const existing = new Map();
+        for (const mob of this.mobs) {
+            if (!mob || mob.isDead?.() || mob.craftrasMobType !== "world2_guard" || mob.craftrasVillageStaticType !== "world2_guard") continue;
+            existing.set(mob.craftrasVillageStaticIndex, mob);
+        }
+        for (let index = 0; index < WORLD2_VILLAGE_GUARD_COUNT; index++) {
+            if (existing.has(index)) continue;
+            const location = this.findWorld2VillageGuardSpawnLocation(index);
+            if (!location) continue;
+            this.configureWorld2VillageGuard(this.spawnMobAt(location, "world2_guard", { fixed: true }), index, location);
+        }
     }
 
     findNearbyBlacksmith(body, range = VILLAGE_BLACKSMITH_INTERACT_RANGE) {
@@ -5014,7 +9224,7 @@ class Craftras {
     findNearbyMerchant(body, range = VILLAGE_MERCHANT_INTERACT_RANGE) {
         if (!body || body.isDead?.()) return null;
         for (const mob of this.mobs) {
-            if (!mob || mob.isDead?.() || (mob.craftrasMobType !== "merchant" && mob.craftrasMobType !== "monster_merchant")) continue;
+            if (!mob || mob.isDead?.() || !["merchant", "monster_merchant", "miner"].includes(mob.craftrasMobType)) continue;
             if ((mob.x - body.x) ** 2 + (mob.y - body.y) ** 2 <= range ** 2) return mob;
         }
         return null;
@@ -5033,6 +9243,15 @@ class Craftras {
         if (!body || body.isDead?.()) return null;
         for (const mob of this.mobs) {
             if (!mob || mob.isDead?.() || mob.craftrasMobType !== "blesser") continue;
+            if ((mob.x - body.x) ** 2 + (mob.y - body.y) ** 2 <= range ** 2) return mob;
+        }
+        return null;
+    }
+
+    findNearbyHealer(body, range = VILLAGE_HEALER_INTERACT_RANGE) {
+        if (!body || body.isDead?.()) return null;
+        for (const mob of this.mobs) {
+            if (!mob || mob.isDead?.() || mob.craftrasMobType !== "healer") continue;
             if ((mob.x - body.x) ** 2 + (mob.y - body.y) ** 2 <= range ** 2) return mob;
         }
         return null;
@@ -5058,7 +9277,8 @@ class Craftras {
 
     openBlesser(socket) {
         const body = socket?.player?.body;
-        if (!this.findNearbyBlesser(body)) return false;
+        const kind = this.findNearbyHealer(body) ? "healer" : this.findNearbyBlesser(body) ? "blesser" : null;
+        if (!kind) return false;
         const socketManager = this.gameManager.socketManager;
         socketManager.initializeCraftrasInventory(socket);
         socketManager.closeCraftrasCrafting(socket);
@@ -5068,7 +9288,7 @@ class Craftras {
         this.closeBlesser(socket);
         this.closeBlacksmith(socket);
         this.closeCleric(socket);
-        socket.craftrasBlesser = { open: true };
+        socket.craftrasBlesser = { open: true, kind };
         socket.craftrasShopPoints = Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0));
         socketManager.sendCraftrasInventory(socket);
         this.sendBlesserView(socket);
@@ -5080,7 +9300,7 @@ class Craftras {
             this.sendBlesserView(socket);
             return true;
         }
-        socket.craftrasBlesser = { open: false };
+        socket.craftrasBlesser = { open: false, kind: socket.craftrasBlesser?.kind || "blesser" };
         this.sendBlesserView(socket);
         return true;
     }
@@ -5106,12 +9326,15 @@ class Craftras {
         socket.craftrasBlesserNextFreeAt ??= {};
         socket.craftrasBlesserItemCooldowns ??= {};
         const now = Date.now();
-        const offers = CRAFTRAS_BLESSER_SHOP_OFFERS.map(offer => this.getBlesserOfferState(socket, offer, now));
+        const kind = socket.craftrasBlesser?.kind === "healer" ? "healer" : "blesser";
+        const baseOffers = kind === "healer" ? CRAFTRAS_HEALER_SHOP_OFFERS : CRAFTRAS_BLESSER_SHOP_OFFERS;
+        const offers = baseOffers.map(offer => this.getBlesserOfferState(socket, offer, now));
         socket.talk(
             "SV",
             socket.craftrasBlesser?.open ? 1 : 0,
             Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0)),
             JSON.stringify(offers),
+            kind,
         );
         return true;
     }
@@ -5119,11 +9342,18 @@ class Craftras {
     buyBlesserOffer(socket, index) {
         const body = socket?.player?.body;
         if (!socket?.craftrasBlesser?.open || !body || body.isDead?.() || !Number.isInteger(index)) return false;
-        if (!this.findNearbyBlesser(body)) {
+        const kind = socket.craftrasBlesser.kind === "healer" ? "healer" : "blesser";
+        const shopNpc = kind === "healer" ? this.findNearbyHealer(body) : this.findNearbyBlesser(body);
+        if (!shopNpc) {
             this.closeBlesser(socket);
             return false;
         }
-        const baseOffer = CRAFTRAS_BLESSER_SHOP_OFFERS[index];
+        if (this.hasWorld2Curse(body)) {
+            body.sendMessage("The World 2 curse prevents you from buying items.");
+            return false;
+        }
+        const baseOffers = kind === "healer" ? CRAFTRAS_HEALER_SHOP_OFFERS : CRAFTRAS_BLESSER_SHOP_OFFERS;
+        const baseOffer = baseOffers[index];
         if (!baseOffer) return false;
         const now = Date.now();
         socket.craftrasShopPoints = Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0));
@@ -5164,6 +9394,15 @@ class Craftras {
             body.craftrasNextBlessingRegenAt = now + 1000;
             if (offer.free) socket.craftrasBlesserNextFreeAt.health = now + VILLAGE_BLESSER_FREE_INTERVAL;
             body.sendMessage("Health Buff activated for 15 minutes.");
+        } else if (offer.id === "health_buff_2") {
+            body.craftrasHealthBlessingLevel2Until = Math.max(body.craftrasHealthBlessingLevel2Until || 0, now + WORLD2_HEALER_BUFF_DURATION);
+            body.sendMessage("Health Buff Lv.2 activated for 15 minutes.");
+        } else if (offer.id === "strength_buff_2") {
+            body.craftrasStrengthBlessingLevel2Until = Math.max(body.craftrasStrengthBlessingLevel2Until || 0, now + WORLD2_HEALER_BUFF_DURATION);
+            body.sendMessage("Strength Buff Lv.2 activated for 15 minutes.");
+        } else if (offer.id === "haste_buff_2") {
+            body.craftrasHasteBlessingLevel2Until = Math.max(body.craftrasHasteBlessingLevel2Until || 0, now + WORLD2_HEALER_BUFF_DURATION);
+            body.sendMessage("Haste Buff Lv.2 activated for 15 minutes.");
         } else return false;
         socket.craftrasShopPoints -= offer.price;
         this.gameManager.socketManager.sendCraftrasInventory(socket);
@@ -5180,17 +9419,39 @@ class Craftras {
         return body?.craftrasHelmet === "blesser_hat" || (body?.craftrasBlessingUntil || 0) > now || (body?.craftrasStrengthBlessingUntil || 0) > now;
     }
 
+    hasHealthBlessingLevel2(body, now = Date.now()) {
+        return (body?.craftrasHealthBlessingLevel2Until || 0) > now;
+    }
+
+    hasStrengthBlessingLevel2(body, now = Date.now()) {
+        return (body?.craftrasStrengthBlessingLevel2Until || 0) > now;
+    }
+
+    hasHasteBlessingLevel2(body, now = Date.now()) {
+        return (body?.craftrasHasteBlessingLevel2Until || 0) > now;
+    }
+
     hasActiveBlessing(body, now = Date.now()) {
-        return this.hasHealthBlessing(body, now) || this.hasStrengthBlessing(body, now);
+        return this.hasHealthBlessing(body, now)
+            || this.hasStrengthBlessing(body, now)
+            || this.hasHealthBlessingLevel2(body, now)
+            || this.hasStrengthBlessingLevel2(body, now)
+            || this.hasHasteBlessingLevel2(body, now);
     }
 
     sendMerchantView(socket) {
         if (!socket) return false;
-        this.refreshMerchantShop();
         const merchant = socket.craftrasMerchant || { open: false, sellSlot: null };
-        const kind = merchant.kind === "monster" ? "monster" : "normal";
-        const offers = kind === "monster" ? CRAFTRAS_MONSTER_SHOP_OFFERS.map(offer => ({ ...offer })) : this.shopOffers;
-        const refreshIn = kind === "monster" ? 0 : Math.max(0, Math.ceil((this.shopNextRefreshAt - Date.now()) / 1000));
+        const kind = merchant.kind === "monster" ? "monster" : merchant.kind === "miner" ? "miner" : "normal";
+        if (kind === "normal") this.refreshMerchantShop();
+        const offers = kind === "monster"
+            ? CRAFTRAS_MONSTER_SHOP_OFFERS.map(offer => ({ ...offer }))
+            : kind === "miner"
+                ? CRAFTRAS_MINER_SHOP_OFFERS.map(offer => offer.id === "parry_tool" && this.getCraftrasRebirths(socket) < 1
+                    ? { ...offer, name: `${offer.name} [Rebirth 1]`, locked: true, requirement: "Rebirth 1" }
+                    : { ...offer })
+                : this.shopOffers;
+        const refreshIn = kind === "normal" ? Math.max(0, Math.ceil((this.shopNextRefreshAt - Date.now()) / 1000)) : 0;
         socket.talk(
             "MV",
             merchant.open ? 1 : 0,
@@ -5217,7 +9478,11 @@ class Craftras {
         this.closeBlesser(socket);
         socket.craftrasMerchant ??= { open: false, sellSlot: null };
         socket.craftrasMerchant.open = true;
-        socket.craftrasMerchant.kind = nearbyMerchant.craftrasMobType === "monster_merchant" ? "monster" : "normal";
+        socket.craftrasMerchant.kind = nearbyMerchant.craftrasMobType === "monster_merchant"
+            ? "monster"
+            : nearbyMerchant.craftrasMobType === "miner"
+                ? "miner"
+                : "normal";
         socket.craftrasShopPoints = Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0));
         socketManager.sendCraftrasInventory(socket);
         this.sendMerchantView(socket);
@@ -5256,7 +9521,7 @@ class Craftras {
         const merchant = socket.craftrasMerchant;
         const target = merchant.sellSlot;
         const cursor = inventory.cursor;
-        const cursorSellPrice = this.getShopSellPrice(cursor?.id);
+        const cursorSellPrice = this.getMerchantSellPrice(merchant.kind, cursor?.id);
 
         if (button === 0) {
             if (!cursor) {
@@ -5313,8 +9578,12 @@ class Craftras {
         const body = socket?.player?.body;
         const merchant = socket?.craftrasMerchant;
         if (!merchant?.open || !body || body.isDead?.() || !this.findNearbyMerchant(body)) return false;
+        if (this.gameManager.socketManager.isCraftrasEconomyRewardBlocked(socket)) {
+            body.sendMessage("Admin or Creative sessions cannot earn Points.");
+            return false;
+        }
         const stack = merchant.sellSlot;
-        const unitPrice = this.getShopSellPrice(stack?.id);
+        const unitPrice = this.getMerchantSellPrice(merchant.kind, stack?.id);
         if (!stack || !unitPrice) {
             body.sendMessage("Only sellable items can be sold.");
             return false;
@@ -5345,10 +9614,24 @@ class Craftras {
             this.closeMerchant(socket);
             return false;
         }
-        const monsterShop = socket.craftrasMerchant.kind === "monster";
-        if (!monsterShop) this.refreshMerchantShop();
-        const offer = monsterShop ? CRAFTRAS_MONSTER_SHOP_OFFERS[index] && { ...CRAFTRAS_MONSTER_SHOP_OFFERS[index] } : this.shopOffers[index];
+        if (this.hasWorld2Curse(body)) {
+            body.sendMessage("The World 2 curse prevents you from buying items.");
+            return false;
+        }
+        const shopKind = socket.craftrasMerchant.kind;
+        const monsterShop = shopKind === "monster";
+        const minerShop = shopKind === "miner";
+        if (!monsterShop && !minerShop) this.refreshMerchantShop();
+        const offer = monsterShop
+            ? CRAFTRAS_MONSTER_SHOP_OFFERS[index] && { ...CRAFTRAS_MONSTER_SHOP_OFFERS[index] }
+            : minerShop
+                ? CRAFTRAS_MINER_SHOP_OFFERS[index] && { ...CRAFTRAS_MINER_SHOP_OFFERS[index] }
+                : this.shopOffers[index];
         if (!offer) return false;
+        if (offer.id === "parry_tool" && this.getCraftrasRebirths(socket) < 1) {
+            body.sendMessage("Parry Tool requires Rebirth 1.");
+            return false;
+        }
         const stock = Math.max(0, Math.floor(Number(offer.stock) || 0));
         if (stock <= 0) {
             body.sendMessage("This shop item is sold out.");
@@ -5388,7 +9671,7 @@ class Craftras {
         const mode = clericState.mode === "pope" ? "pope" : "token";
         const slots = Array.from({ length: 4 }, (_, index) => clericState.slots?.[index] || null);
         const rebirths = this.getCraftrasRebirths(socket);
-        const levelCap = this.getCraftrasLevelCap(socket);
+        const levelCap = CRAFTRAS_BASE_LEVEL_CAP;
         const level = body?.skill?.level || 0;
         const requirements = this.getRebirthRequirementStatus(socket);
         const hasRequirements = requirements.every(requirement => requirement.count >= requirement.required);
@@ -5402,7 +9685,7 @@ class Craftras {
             level,
             levelCap,
             canRebirth ? 1 : 0,
-            CRAFTRAS_BASE_LEVEL_CAP + (rebirths + 1) * CRAFTRAS_REBIRTH_LEVEL_STEP,
+            0,
             this.getCraftrasLevelHealthBonus(level),
             JSON.stringify(requirements),
             JSON.stringify(slots),
@@ -5568,7 +9851,7 @@ class Craftras {
             this.sendClericView(socket);
             return false;
         }
-        const levelCap = this.getCraftrasLevelCap(socket);
+        const levelCap = CRAFTRAS_BASE_LEVEL_CAP;
         if ((body.skill?.level || 0) < levelCap) {
             body.sendMessage(`Rebirth needs level ${levelCap}.`);
             this.sendClericView(socket);
@@ -5583,13 +9866,19 @@ class Craftras {
         }
         for (const requirement of requirements) this.removeCraftrasItem(socket, requirement.id, requirement.required);
         socket.craftrasRebirths = this.getCraftrasRebirths(socket) + 1;
+        socket.craftrasUnlockedRecipes ??= new Set();
+        if (!(socket.craftrasUnlockedRecipes instanceof Set)) socket.craftrasUnlockedRecipes = new Set(socket.craftrasUnlockedRecipes);
+        for (const itemId of CRAFTRAS_REBIRTH_ONE_RECIPE_UNLOCKS) socket.craftrasUnlockedRecipes.add(itemId);
         this.rebuildSkillAfterLevelPayment(body.skill, 0);
         body.health.set(100);
         body.health.amount = 100;
         socket.craftrasHealthSignature = "";
-        this.gameManager.socketManager.saveCraftrasPlayerSave(socket);
+        const socketManager = this.gameManager.socketManager;
+        socketManager.sendCraftrasRecipeCatalog(socket, true);
+        socketManager.sendCraftrasRecipeUnlock(socket, [...CRAFTRAS_REBIRTH_ONE_RECIPE_UNLOCKS, "parry_tool"]);
+        socketManager.saveCraftrasPlayerSave(socket);
         this.sendClericView(socket);
-        body.sendMessage(`Rebirth complete. Level cap is now ${this.getCraftrasLevelCap(socket)}.`);
+        body.sendMessage("Rebirth complete. Dash and Rebirth 1 equipment are now unlocked.");
         return true;
     }
 
@@ -5632,6 +9921,11 @@ class Craftras {
 
     getShopSellPrice(itemId) {
         return CRAFTRAS_SHOP_SELL_PRICES[itemId] || 0;
+    }
+
+    getMerchantSellPrice(kind, itemId) {
+        if (kind === "miner" && !CRAFTRAS_MINER_SELL_ITEMS.has(itemId)) return 0;
+        return this.getShopSellPrice(itemId);
     }
 
     rollShopItemId(used) {
@@ -5707,6 +10001,104 @@ class Craftras {
         return this.gameManager.clients.find(client => client?.player?.body === body) || null;
     }
 
+    getPlayerBodyFromDamageSource(source) {
+        if (!source) return null;
+        const pending = [source];
+        const visited = new Set();
+        const ownerKeys = [
+            "craftrasOwner",
+            "craftrasOwnerBody",
+            "craftrasRocketOwner",
+            "craftrasBoneBombOwner",
+            "master",
+            "source",
+            "parent",
+            "owner",
+        ];
+        while (pending.length && visited.size < 32) {
+            const candidate = pending.shift();
+            if (!candidate || (typeof candidate !== "object" && typeof candidate !== "function") || visited.has(candidate)) continue;
+            visited.add(candidate);
+            if (this.getSocketForBody(candidate)) return candidate;
+            for (const key of ownerKeys) {
+                const owner = candidate[key];
+                if (owner && !visited.has(owner)) pending.push(owner);
+            }
+        }
+        return null;
+    }
+
+    recordPlayerDamageTarget(source, target, amount, now = Date.now()) {
+        const player = this.getPlayerBodyFromDamageSource(source)
+            || (this.getSocketForBody(source) ? source : null);
+        const damage = Math.max(0, Number(amount) || 0);
+        if (!player || !target || player === target || damage <= 0 || target.isDead?.()) return false;
+        player.craftrasDamageTargetTotals ??= new Map();
+        const key = target.id;
+        if (key == null) return false;
+        const previous = player.craftrasDamageTargetTotals.get(key);
+        player.craftrasDamageTargetTotals.set(key, {
+            target,
+            damage: (previous?.damage || 0) + damage,
+            lastAt: now,
+        });
+        if (player.craftrasDamageTargetTotals.size > 256) {
+            const entries = [...player.craftrasDamageTargetTotals.entries()]
+                .sort((first, second) => (first[1]?.lastAt || 0) - (second[1]?.lastAt || 0));
+            for (let index = 0; index < entries.length - 192; index++) {
+                player.craftrasDamageTargetTotals.delete(entries[index][0]);
+            }
+        }
+        return true;
+    }
+
+    isZombieWizardStaffTarget(owner, target) {
+        if (!owner || !target || owner === target || target.isDead?.() || target.craftrasSpectator) return false;
+        if (!target.health || target.health.amount <= 0 || target.invuln || target.godmode || target.craftrasInvulnerableNpc) return false;
+        const targetSocket = this.getSocketForBody(target);
+        if (targetSocket) return !this.areCraftrasPlayerAllies(owner, target);
+        if (!this.mobs.has(target)) return false;
+        if (target.craftrasMagicBoss && !target.craftrasMagicVulnerable) return false;
+        if (this.isWormDamageImmune(target)) return false;
+        if (target.craftrasMobFamily === "npc") {
+            const damageableChallengeActor = target.craftrasChallengeActor && this.challengeStage === "active";
+            return VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType) || damageableChallengeActor;
+        }
+        return true;
+    }
+
+    getZombieWizardStaffTarget(owner) {
+        const totals = owner?.craftrasDamageTargetTotals;
+        if (!(totals instanceof Map)) return null;
+        let best = null;
+        let bestDamage = -1;
+        let bestLastAt = -1;
+        for (const [key, entry] of totals) {
+            if (!entry || !this.isZombieWizardStaffTarget(owner, entry.target)) {
+                totals.delete(key);
+                continue;
+            }
+            const damage = Math.max(0, Number(entry.damage) || 0);
+            const lastAt = Math.max(0, Number(entry.lastAt) || 0);
+            if (damage < bestDamage || (damage === bestDamage && lastAt <= bestLastAt)) continue;
+            best = entry.target;
+            bestDamage = damage;
+            bestLastAt = lastAt;
+        }
+        return best;
+    }
+
+    areCraftrasPlayerAllies(firstBody, secondBody) {
+        if (!firstBody || !secondBody) return false;
+        if (firstBody === secondBody) return true;
+        const firstSocket = this.getSocketForBody(firstBody);
+        const secondSocket = this.getSocketForBody(secondBody);
+        if (!firstSocket || !secondSocket) return false;
+        if (Config.craftras_challenge_instance || Config.craftras_world1_challenge_builder || Config.craftras_world2_challenge_builder) return true;
+        const firstTeamId = firstSocket.craftrasChallengeTeamId;
+        return !!firstTeamId && firstTeamId === secondSocket.craftrasChallengeTeamId;
+    }
+
     getCraftrasLevelScore(level) {
         const targetLevel = Math.max(1, Math.trunc(Number(level) || 1));
         let score = 0;
@@ -5723,6 +10115,38 @@ class Craftras {
 
     getCraftrasRebirths(socket) {
         return Math.max(0, Math.trunc(Number(socket?.craftrasRebirths) || 0));
+    }
+
+    getCraftrasProgressionPlayer(source) {
+        if (!source) return null;
+        return this.getPlayerBodyFromDamageSource(source)
+            || (this.getSocketForBody(source) ? source : null);
+    }
+
+    hasWorld1RebirthBlessing(source) {
+        const body = this.getCraftrasProgressionPlayer(source);
+        const socket = body && this.getSocketForBody(body);
+        return !!socket && this.getCraftrasRebirths(socket) >= 1;
+    }
+
+    hasWorld2Curse(source) {
+        const body = this.getCraftrasProgressionPlayer(source);
+        const socket = body && this.getSocketForBody(body);
+        if (!body || !socket || Math.max(0, Math.floor(Number(body.skill?.level) || 0)) > 100) return false;
+        const cell = worldToBlock(body.x, body.y);
+        return isInsideWorld2(cell.x, cell.y);
+    }
+
+    getPlayerProgressionDamageMultiplier(source) {
+        let multiplier = 1;
+        if (this.hasWorld1RebirthBlessing(source)) multiplier *= 2;
+        if (this.hasWorld2Curse(source)) multiplier *= 0.5;
+        return multiplier;
+    }
+
+    scalePlayerProgressionDamage(source, amount) {
+        const damage = Math.max(0, Number(amount) || 0);
+        return damage * this.getPlayerProgressionDamageMultiplier(source);
     }
 
     countCraftrasItem(socket, itemId) {
@@ -5776,7 +10200,7 @@ class Craftras {
     }
 
     getCraftrasLevelCap(socket) {
-        return CRAFTRAS_BASE_LEVEL_CAP + this.getCraftrasRebirths(socket) * CRAFTRAS_REBIRTH_LEVEL_STEP;
+        return Infinity;
     }
 
     getCraftrasLevelHealthBonus(level) {
@@ -5804,30 +10228,53 @@ class Craftras {
     }
 
     clampCraftrasLevelToCap(socket, body = socket?.player?.body) {
-        if (!body?.skill) return false;
-        const cap = this.getCraftrasLevelCap(socket);
-        const capScore = this.getCraftrasLevelScore(cap);
-        if (body.skill.level <= cap) return false;
-        const spentPoints = Array.isArray(body.skill.raw) ? body.skill.raw.reduce((total, value) => total + (Number(value) || 0), 0) : 0;
-        body.skill.score = capScore;
-        body.skill.deduction = 0;
-        body.skill.level = 0;
-        body.skill.levelUpScore = 1;
-        body.skill.points = 0;
-        let guard = 0;
-        while (guard++ < cap + 5 && body.skill.maintain()) {}
-        this.ensureCraftrasMinimumLevel(body.skill);
-        body.skill.points = Math.max(0, body.skill.points - spentPoints);
-        body.skill.update();
-        return true;
+        return false;
     }
 
     updateCraftrasScoreGate(socket, body = socket?.player?.body) {
         if (!body?.skill?.level && body?.skill?.level !== 0) return false;
-        const cap = this.getCraftrasLevelCap(socket);
-        if (body.skill.level > cap) this.clampCraftrasLevelToCap(socket, body);
-        body.settings.acceptsScore = body.skill.level < cap;
-        return body.settings.acceptsScore;
+        body.settings.acceptsScore = true;
+        return true;
+    }
+
+    useRebirthDash(socket) {
+        const body = socket?.player?.body;
+        if (!body || body.isDead?.() || socket?.craftrasSpectator || this.getCraftrasRebirths(socket) < 1) return false;
+        const now = Date.now();
+        if (now < (body.craftrasNextRebirthDashAt || 0)) return false;
+        const target = body.control?.target || body.craftrasControl?.target;
+        let dx = Number(target?.x) || 0;
+        let dy = Number(target?.y) || 0;
+        let length = Math.hypot(dx, dy);
+        if (length < 0.001) {
+            dx = Math.cos(body.facing || 0);
+            dy = Math.sin(body.facing || 0);
+            length = 1;
+        }
+        dx /= length;
+        dy /= length;
+        body.craftrasNextRebirthDashAt = now + CRAFTRAS_REBIRTH_DASH_COOLDOWN;
+        body.velocity.x = dx * CRAFTRAS_REBIRTH_DASH_SPEED;
+        body.velocity.y = dy * CRAFTRAS_REBIRTH_DASH_SPEED;
+        if (body.accel) {
+            body.accel.x = dx * CRAFTRAS_REBIRTH_DASH_SPEED * 0.35;
+            body.accel.y = dy * CRAFTRAS_REBIRTH_DASH_SPEED * 0.35;
+        }
+        const size = Math.max(10, body.realSize || body.size || 12);
+        for (let index = 1; index <= 5; index++) {
+            this.spawnExplosionEffect({
+                x: body.x - dx * size * index * 0.65,
+                y: body.y - dy * size * index * 0.65,
+            }, {
+                duration: 220 + index * 45,
+                startSize: size * (1 - index * 0.08),
+                endSize: size * 0.2,
+                color: "#65c8ff",
+                alpha: 0.34,
+                fade: true,
+            });
+        }
+        return true;
     }
 
     rebuildSkillAfterLevelPayment(skill, score) {
@@ -5839,7 +10286,7 @@ class Craftras {
         skill.levelUpScore = 1;
         skill.points = 0;
         let guard = 0;
-        while (guard++ < 200 && skill.maintain()) {}
+        while (guard++ < 100_000 && skill.maintain()) {}
         this.ensureCraftrasMinimumLevel(skill);
         skill.points = Math.max(0, skill.points - spentPoints);
         skill.update();
@@ -5878,6 +10325,7 @@ class Craftras {
         socketManager.initializeCraftrasInventory(socket);
         if (this.findNearbyPope(body)) return this.openPope(socket);
         if (this.findNearbyBlesser(body)) return this.openBlesser(socket);
+        if (this.findNearbyHealer(body)) return this.openBlesser(socket);
         if (this.findNearbyCleric(body)) return this.openCleric(socket);
         if (this.findNearbyMerchant(body)) return this.openMerchant(socket);
         if (!this.findNearbyBlacksmith(body)) {
@@ -6016,6 +10464,8 @@ class Craftras {
         this.rebuildSkillAfterLevelPayment(body.skill, this.getBlacksmithLevelScore(targetLevel));
         socketManager.sendCraftrasCrafting(socket);
         socketManager.sendCraftrasInventory(socket);
+        socketManager.sendCraftrasRecipeCatalog(socket, true);
+        socketManager.sendCraftrasRecipeUnlock(socket, [unlock.output]);
         this.sendBlacksmithView(socket);
         body.sendMessage(`Blacksmith unlocked ${unlock.name}.`);
         return true;
@@ -7066,7 +11516,7 @@ class Craftras {
 
     getPassiveBossCavePlaces(activePlaceIds) {
         return this.monsterPlaces
-            .filter(place => CRAFTRAS_BOSS_CAVE_TYPES.has(place.type) && !activePlaceIds.has(place.id))
+            .filter(place => CRAFTRAS_PASSIVE_BOSS_CAVE_TYPES.has(place.type) && !activePlaceIds.has(place.id))
             .map(place => ({ place, players: [], passive: true }));
     }
 
@@ -7161,16 +11611,38 @@ class Craftras {
         if (type === "iron_sword_zombie") return { type: "zombie", label: "Iron Sword Zombie", health: 100, helmet: null, sword: "iron", swordDamage: 40, scoreMultiplier: 1.5 };
         if (type === "diamond_sword_zombie") return { type: "zombie", label: "Diamond Sword Zombie", health: 100, helmet: null, sword: "diamond", swordDamage: 60, scoreMultiplier: 2 };
         if (type === "giant_zombie") return { type: "giant_zombie", label: "Giant Zombie", health: 500, contactDamage: 30, scoreMultiplier: 3, noKnockback: true };
+        if (type === "iron_armored_giant_zombie") return { type, label: "Iron Armored Giant Zombie", health: 3500, helmet: "iron", sword: "iron", swordDamage: 150, contactDamage: 0, scoreMultiplier: 1, noKnockback: true, fixedEquipment: true };
+        if (type === "diamond_armored_giant_zombie") return { type, label: "Diamond Armored Giant Zombie", health: 5000, helmet: "diamond", sword: "diamond", swordDamage: 250, contactDamage: 0, scoreMultiplier: 1, noKnockback: true, fixedEquipment: true };
+        if (type === "artillery_giant_zombie") return { type, label: "Artillery Giant Zombie", health: 3000, contactDamage: 0, projectileDamage: 300, scoreMultiplier: 1, noKnockback: true, ranged: true, fixedEquipment: true };
+        if (type === "ruby_armored_giant_zombie") {
+            const hasSword = Math.random() < 0.10;
+            return { type, label: "Ruby Armored Giant Zombie", health: 7000, helmet: "ruby", sword: hasSword ? "ruby" : null, swordDamage: hasSword ? 400 : 0, contactDamage: hasSword ? 0 : 100, scoreMultiplier: 1, noKnockback: true };
+        }
+        if (type === "elite_giant_zombie") return { type, label: "Elite Giant Zombie", health: 15000, helmet: "great_diamond", sword: "sapphire", swordDamage: 500, contactDamage: 0, scoreMultiplier: 1, noKnockback: true, fixedEquipment: true };
         if (type === "runner_zombie") return { type: "runner_zombie", label: "Runner Zombie", health: 100, contactDamage: 20, scoreMultiplier: 1, noKnockback: false };
         if (type === "cursed_zombie") return { type: "cursed_zombie", label: "Cursed Zombie", health: 1, contactDamage: 0, scoreMultiplier: 0, noKnockback: false };
-        if (type === "titan_zombie") return { type: "titan_zombie", label: "Titan Zombie", health: 4000, contactDamage: 80, scoreMultiplier: 4, noKnockback: false };
+        if (type === "titan_zombie") return { type: "titan_zombie", label: "Titan Zombie", health: 480_000, contactDamage: 80, scoreMultiplier: 4, noKnockback: false };
         if (type === "magical_zombie") return { type: "magical_zombie", label: "Magical Zombie", health: 1_000_000_000, contactDamage: 0, scoreMultiplier: 0, noKnockback: true };
+        if (type === "world2_magical_zombie") return { type, label: "Magical Zombie", health: CRAFTRAS_WORLD2_MAGIC_BOSS_HEALTH, contactDamage: 0, scoreMultiplier: 0, noKnockback: true };
         if (type === "king_zombie") return { type: "king_zombie", label: "King Zombie", health: 400, helmet: "zombie_crown", sword: null, swordDamage: 0, contactDamage: 0, scoreMultiplier: 6, noKnockback: false };
-        if (type === "king_guardian") return { type: "king_guardian", label: "Knight Zombie", health: 1000, helmet: "iron", sword: "iron", shield: "knight_shield", swordDamage: 30, contactDamage: 0, scoreMultiplier: 3, noKnockback: true };
+        if (type === "king_guardian") return { type: "king_guardian", label: "Knight Zombie", health: 1500, helmet: "iron", sword: "iron", shield: "knight_shield", swordDamage: 30, contactDamage: 0, scoreMultiplier: 3, noKnockback: true };
         if (type === "sniper_skeleton") return { type: "sniper_skeleton", label: "Sniper Skeleton", health: 500, scoreMultiplier: 1.4 };
         if (type === "cannon_skeleton") return { type: "cannon_skeleton", label: "Cannon Skeleton", health: 1500, scoreMultiplier: 2 };
+        if (type === "bandage_zombie") return { type, label: "Bandage Zombie", health: 700, contactDamage: 100, bandage: true, scoreMultiplier: 1 };
+        if (type === "armored_bandage_zombie") return { type, label: "Armored Bandage Zombie", health: 1200, contactDamage: 100, bandage: true, helmet: "ruby", fixedEquipment: true, scoreMultiplier: 1 };
+        if (type === "giant_bandage_zombie") return { type, label: "Giant Bandage Zombie", health: 3000, contactDamage: 200, bandage: true, scoreMultiplier: 1, noKnockback: true };
+        if (type === "elite_bandage_zombie") return { type, label: "Elite Bandage Zombie", health: 1200, contactDamage: 0, bandage: true, helmet: "ruby", sword: "ruby", swordDamage: 200, fixedEquipment: true, scoreMultiplier: 1, noKnockback: true };
+        if (type === "burning_skeleton") return { type, label: "Burning Skeleton", health: 1200, scoreMultiplier: 1 };
+        if (type === "sniper_burning_skeleton") return { type, label: "Sniper Burning Skeleton", health: 600, scoreMultiplier: 1 };
+        if (type === "phoenix_skeleton") return { type, label: "Phoenix Skeleton", health: 2400, scoreMultiplier: 1, noKnockback: true };
+        if (type === "fire_zombie") return { type, label: "Fire Zombie", health: 3000, contactDamage: 150, scoreMultiplier: 1 };
+        if (type === "fire_worm") return { type, label: "Fire Worm", health: 2500, contactDamage: 100, scoreMultiplier: 1, noKnockback: true };
+        if (type === "worm") return { type, label: "Worm", health: 500, contactDamage: 80, scoreMultiplier: 1, noKnockback: true };
+        if (type === "large_worm") return { type, label: "Large Worm", health: 1500, contactDamage: 160, scoreMultiplier: 1, noKnockback: true };
+        if (type === "giant_worm") return { type, label: "Giant Worm", health: 7000, contactDamage: 250, scoreMultiplier: 1, noKnockback: true };
         if (type === "sword_guy") return { type: "sword_guy", label: "Sword guy", health: 1000, sword: "diamond", swordDamage: 60, contactDamage: 0, scoreMultiplier: 10, noKnockback: true };
-        if (type === "queen_spider") return { type: "queen_spider", label: "Queen Spider", health: 2500, contactDamage: 30, scoreMultiplier: 12, noKnockback: true };
+        if (type === "jane") return { type: "jane", label: "Jane", health: CRAFTRAS_JANE_PHASE_HEALTH, contactDamage: 0, scoreMultiplier: 0, noKnockback: true, fixedEquipment: true };
+        if (type === "queen_spider") return { type: "queen_spider", label: "Queen Spider", health: 3000, contactDamage: 30, scoreMultiplier: 12, noKnockback: true };
         if (type === "annihilator") return { type: "annihilator", label: "Annihilator", health: 1500, contactDamage: 0, scoreMultiplier: 5, noKnockback: true };
         if (type === "the_nuclear") return { type: "the_nuclear", label: "The Nuclear", health: 10000, contactDamage: 0, scoreMultiplier: 20, noKnockback: true };
         return null;
@@ -7262,6 +11734,8 @@ class Craftras {
             level: Math.floor(Number(body.skill.level) || 0),
             raw: Array.isArray(body.skill.raw) ? body.skill.raw.map(value => Math.floor(Number(value) || 0)) : [],
             shopPoints: Math.floor(Number(socket.craftrasShopPoints) || 0),
+            currencyTokens: Math.floor(Number(socket.craftrasCurrencyTokens) || 0),
+            challengeTokenClaims: Array.from(socket.craftrasChallengeTokenClaims instanceof Set ? socket.craftrasChallengeTokenClaims : []).sort(),
             rebirths: this.getCraftrasRebirths(socket),
             unlockedRecipes: Array.from(socket.craftrasUnlockedRecipes instanceof Set ? socket.craftrasUnlockedRecipes : []),
         });
@@ -7275,7 +11749,7 @@ class Craftras {
         return this.gameManager.socketManager.saveCraftrasPlayerSave(socket);
     }
 
-    isTouchingChallengeStartBlock(body) {
+    isTouchingChallengeBlock(body, blockType) {
         if (!body || body.isDead?.() || body.craftrasSpectator) return false;
         const center = worldToBlock(body.x, body.y);
         const radius = Math.max(1, body.realSize || body.size || 1);
@@ -7283,7 +11757,7 @@ class Craftras {
         const searchRadius = Math.max(1, Math.ceil((radius + halfWall) / BLOCK_SIZE));
         for (let y = center.y - searchRadius; y <= center.y + searchRadius; y++) {
             for (let x = center.x - searchRadius; x <= center.x + searchRadius; x++) {
-                if (this.getBlock(x, y) !== BLOCKS.CHALLENGE_START) continue;
+                if (this.getBlock(x, y) !== blockType) continue;
                 const location = blockToWorld(x, y);
                 const nearestX = Math.max(location.x - halfWall, Math.min(body.x, location.x + halfWall));
                 const nearestY = Math.max(location.y - halfWall, Math.min(body.y, location.y + halfWall));
@@ -7295,23 +11769,33 @@ class Craftras {
         return false;
     }
 
-    sendChallengeEntryView(socket, open = true) {
+    isTouchingChallengeStartBlock(body) {
+        return this.isTouchingChallengeBlock(body, BLOCKS.CHALLENGE_START);
+    }
+
+    isTouchingWorld2ChallengeStartBlock(body) {
+        return this.isTouchingChallengeBlock(body, BLOCKS.WORLD2_CHALLENGE_START);
+    }
+
+    sendChallengeEntryView(socket, open = true, kind = socket?.craftrasChallengeEntryKind || "world1") {
         if (!socket) return false;
         if (!open) {
             socket.craftrasChallengeEntrySignature = "closed";
             socket.craftrasChallengeStartOpen = false;
-            socket.talk?.("CSG", 0, "", 0, 0);
+            socket.talk?.("CSG", 0, "", 0, 0, "world1");
             return true;
         }
+        const challengeKind = kind === "world2" ? "world2" : "world1";
         const team = challengeTeams.getTeamInfo(this.gameManager, socket);
         const teamName = team?.name || "";
         const memberCount = team?.members?.length || 1;
         const isHost = !team || team.isHost;
-        const signature = `open:${teamName}:${memberCount}:${isHost ? 1 : 0}`;
+        const signature = `open:${challengeKind}:${teamName}:${memberCount}:${isHost ? 1 : 0}`;
         socket.craftrasChallengeStartOpen = true;
+        socket.craftrasChallengeEntryKind = challengeKind;
         if (socket.craftrasChallengeEntrySignature === signature) return true;
         socket.craftrasChallengeEntrySignature = signature;
-        socket.talk?.("CSG", 1, teamName, memberCount, isHost ? 1 : 0);
+        socket.talk?.("CSG", 1, teamName, memberCount, isHost ? 1 : 0, challengeKind);
         return true;
     }
 
@@ -7324,8 +11808,13 @@ class Craftras {
         }
         if (normalizedAction !== 1) return { ok: false, reason: "action" };
         if (socket?.craftrasChallengeEntryTransferring) return { ok: false, reason: "transferring" };
+        const challengeKind = socket?.craftrasChallengeEntryKind === "world2" ? "world2" : "world1";
+        const world2Challenge = challengeKind === "world2";
         const body = socket?.player?.body;
-        if (!socket?.craftrasChallengeStartOpen || !body || body.isDead?.() || body.craftrasSpectator || !this.isTouchingChallengeStartBlock(body)) {
+        const touchingChallengeBlock = world2Challenge
+            ? this.isTouchingWorld2ChallengeStartBlock(body)
+            : this.isTouchingChallengeStartBlock(body);
+        if (!socket?.craftrasChallengeStartOpen || !body || body.isDead?.() || body.craftrasSpectator || !touchingChallengeBlock) {
             this.sendChallengeEntryView(socket, false);
             return { ok: false, reason: "block" };
         }
@@ -7343,18 +11832,22 @@ class Craftras {
                 return { ok: false, reason: "member" };
             }
             const cell = worldToBlock(memberBody.x, memberBody.y);
-            if (!isBrokenKingdomSurfaceCell(cell.x, cell.y)) {
-                socket.talk?.("m", 5_000, `${challengeTeams.playerName(member)} is not in the kingdom.`);
-                return { ok: false, reason: "kingdom", member };
+            if (world2Challenge ? !isInsideWorld2(cell.x, cell.y) : !isBrokenKingdomSurfaceCell(cell.x, cell.y)) {
+                const areaName = world2Challenge ? "World 2" : "the kingdom";
+                socket.talk?.("m", 5_000, `${challengeTeams.playerName(member)} is not in ${areaName}.`);
+                return { ok: false, reason: "area", member };
             }
         }
+        const requiredKey = world2Challenge ? CRAFTRAS_WORLD2_CHALLENGE_KEY_ITEM : CRAFTRAS_CHALLENGE_KEY_ITEM;
+        const requiredKeyName = world2Challenge ? "Ancient Key" : "Royal Key";
+        const requiredKeyArticle = world2Challenge ? "an" : "a";
         for (const member of members) {
-            if (this.countCraftrasItem(member, CRAFTRAS_CHALLENGE_KEY_ITEM) > 0) continue;
-            socket.talk?.("m", 5_000, `${challengeTeams.playerName(member)} does not have a Royal Key.`);
+            if (this.countCraftrasItem(member, requiredKey) > 0) continue;
+            socket.talk?.("m", 5_000, `${challengeTeams.playerName(member)} does not have ${requiredKeyArticle} ${requiredKeyName}.`);
             return { ok: false, reason: "key", member };
         }
         if (typeof global.createCraftrasChallengeInstance !== "function") {
-            socket.talk?.("m", 5_000, "World 1 Challenge is currently unavailable.");
+            socket.talk?.("m", 5_000, `${world2Challenge ? "World 2" : "World 1"} Challenge is currently unavailable.`);
             return { ok: false, reason: "server" };
         }
         if (members.some(member => member.status?.transferred || member.craftrasChallengeEntryTransferring)) {
@@ -7371,6 +11864,7 @@ class Craftras {
                 teamName: team?.name || `${challengeTeams.playerName(socket)} Solo`,
                 hostName: challengeTeams.playerName(socket),
                 memberCount: members.length,
+                challengeWorld: world2Challenge ? 2 : 1,
             });
         } catch (error) {
             for (const member of members) member.craftrasChallengeEntryTransferring = false;
@@ -7386,10 +11880,10 @@ class Craftras {
             return { ok: false, reason: "member_left" };
         }
         for (const member of members) {
-            if (!this.removeCraftrasItem(member, CRAFTRAS_CHALLENGE_KEY_ITEM, 1)) {
+            if (!this.removeCraftrasItem(member, requiredKey, 1)) {
                 global.disposeCraftrasChallengeInstance?.(challengeInstance.id, "entry item failure");
                 for (const lockedMember of members) lockedMember.craftrasChallengeEntryTransferring = false;
-                socket.talk?.("m", 5_000, "Challenge entry failed while consuming a Royal Key.");
+                socket.talk?.("m", 5_000, `Challenge entry failed while consuming ${requiredKeyArticle} ${requiredKeyName}.`);
                 return { ok: false, reason: "consume", member };
             }
             this.gameManager.socketManager.saveCraftrasPlayerSave(member);
@@ -7407,10 +11901,14 @@ class Craftras {
     }
 
     updatePlayerChallengeStartPrompt(socket, body, now = Date.now()) {
-        const touching = this.isTouchingChallengeStartBlock(body);
+        const kind = this.isTouchingWorld2ChallengeStartBlock(body)
+            ? "world2"
+            : this.isTouchingChallengeStartBlock(body) ? "world1" : null;
+        const touching = !!kind;
         if (touching && !socket.craftrasChallengeStartDismissed) {
+            if (socket.craftrasChallengeEntryKind !== kind) socket.craftrasChallengeEntrySignature = null;
             socket.craftrasChallengeStartTouching = true;
-            this.sendChallengeEntryView(socket, true);
+            this.sendChallengeEntryView(socket, true, kind);
         } else if (!touching) {
             socket.craftrasChallengeStartTouching = false;
             socket.craftrasChallengeStartDismissed = false;
@@ -7420,15 +11918,30 @@ class Craftras {
 
     syncPlayerSurvivalState(players, now) {
         for (const { socket, body } of players) {
-            challengeTeams.syncSocketTeam(this.gameManager, socket);
+            if (Config.craftras_challenge_instance || Config.craftras_world1_challenge_builder || Config.craftras_world2_challenge_builder) {
+                if (socket.player) socket.player.team = CRAFTRAS_CHALLENGE_PLAYER_TEAM;
+                body.team = CRAFTRAS_CHALLENGE_PLAYER_TEAM;
+            } else {
+                const joinedTeam = challengeTeams.syncSocketTeam(this.gameManager, socket);
+                if (!joinedTeam) {
+                    socket.craftrasSoloEngineTeam ??= -1_000_000 - Math.abs(body.id || 0);
+                    if (socket.player) socket.player.team = socket.craftrasSoloEngineTeam;
+                    body.team = socket.craftrasSoloEngineTeam;
+                }
+            }
             socket.craftrasRebirths = this.getCraftrasRebirths(socket);
             body.craftrasRebirths = socket.craftrasRebirths;
-            const forcedNameColor = socket.permissions?.admin ? (socket.permissions.nameColor || "#4aa3ff") : "#ffffff";
+            body.craftrasWorld1BlessingActive = this.hasWorld1RebirthBlessing(body);
+            body.craftrasWorld2CurseActive = this.hasWorld2Curse(body);
+            const forcedNameColor = body.craftrasBossFormType
+                ? body.craftrasBossFormType === "jane" ? "#ff62c8" : "#4aa3ff"
+                : socket.permissions?.admin ? (socket.permissions.nameColor || "#4aa3ff") : "#ffffff";
             if (body.nameColor !== forcedNameColor) {
                 body.nameColor = forcedNameColor;
                 socket.talk?.("z", forcedNameColor);
             }
             this.gameManager.socketManager.updateTemporaryCraftrasCreative(socket, now);
+            this.gameManager.socketManager.syncCraftrasEconomyState(socket);
             this.updateWorldEditAxeInput(socket, body);
             if (!body.craftrasStartingLevelApplied) {
                 body.craftrasStartingLevelApplied = true;
@@ -7437,6 +11950,7 @@ class Craftras {
             this.updateCraftrasScoreGate(socket, body);
             body.skill.points = 0;
             this.syncPlayerProgressSave(socket, body, now);
+            this.updatePlayerBossFormEquipment(socket, body, now);
             if (body.craftrasSpectator) {
                 body.health.amount = Math.max(1, body.health.amount || 1);
                 body.damageReceived = 0;
@@ -7475,11 +11989,29 @@ class Craftras {
                 ? CRAFTRAS_POPE_HAT_HEALTH_BONUS
                 : body.craftrasHelmet === "blesser_hat"
                 ? CRAFTRAS_BLESSER_HAT_HEALTH_BONUS
-                : body.craftrasHelmet === "zombie_crown" ? 300 : body.craftrasHelmet === "diamond_helmet" ? 100 : body.craftrasHelmet === "iron_helmet" ? 50 : 0;
-            const blessingHealthBonus = this.hasHealthBlessing(body, now) && body.craftrasHelmet !== "blesser_hat" ? VILLAGE_BLESSER_HEALTH_BONUS : 0;
+                : body.craftrasHelmet === "zombie_crown" ? 300
+                : body.craftrasHelmet === "sturdy_helmet" ? 2000
+                : body.craftrasHelmet === "great_diamond_helmet" ? 1000
+                : body.craftrasHelmet === "great_iron_helmet" ? 500
+                : body.craftrasHelmet === "sapphire_helmet" ? 600
+                : body.craftrasHelmet === "ruby_helmet" ? 500
+                : body.craftrasHelmet === "diamond_helmet" ? 100
+                : body.craftrasHelmet === "iron_helmet" ? 50 : 0;
+            const blessingHealthBonus = this.hasHealthBlessingLevel2(body, now)
+                ? WORLD2_HEALER_HEALTH_BONUS
+                : this.hasHealthBlessing(body, now) && body.craftrasHelmet !== "blesser_hat"
+                    ? VILLAGE_BLESSER_HEALTH_BONUS
+                    : 0;
             const adminPickaxeBonus = body.craftrasHeldItem === "admin_pickaxe" ? 1e100 : 0;
             const levelHealth = this.getCraftrasLevelHealthBonus(body.skill.level);
-            const desiredHealth = 100 + helmetBonus + blessingHealthBonus + levelHealth + adminPickaxeBonus;
+            const world1StatMultiplier = body.craftrasWorld1BlessingActive ? 2 : 1;
+            const normalDesiredHealth = (100 + helmetBonus + blessingHealthBonus + levelHealth) * world1StatMultiplier
+                + adminPickaxeBonus;
+            const desiredHealth = Config.craftras_world2_challenge_builder
+                ? CRAFTRAS_WORLD2_CHALLENGE_HEALTH
+                : body.craftrasBossFormType
+                ? this.getPlayerBossFormDefinition(body.craftrasBossFormType).health
+                : normalDesiredHealth;
             if (body.health.max !== desiredHealth) {
                 const oldMax = body.health.max > 0 ? body.health.max : desiredHealth;
                 const oldAmount = Number.isFinite(body.health.amount) ? body.health.amount : oldMax;
@@ -7492,39 +12024,64 @@ class Craftras {
             this.updatePlayerBoneBomb(socket, body, now);
             this.updatePlayerEating(socket, body, now);
             this.updatePlayerClericStaff(socket, body, now);
+            this.updatePlayerZombieWizardStaff(socket, body, now);
             this.updatePlayerBlesserStaff(socket, body, now);
             this.updatePlayerShieldRecovery(socket, body, now);
             this.updatePlayerPopeStaff(socket, body, now);
             const hasPopeStaffFov = body.craftrasHeldItem === "pope_staff";
-            if (!hasPopeStaffFov) {
-                if (body.craftrasPopeStaffFovActive) {
-                    body.FOV = body.craftrasPopeStaffBaseFov || 1;
-                    body.craftrasPopeStaffFovActive = false;
-                    body.updateBodyInfo?.();
-                }
-                body.craftrasPopeStaffBaseFov = body.FOV || body.craftrasPopeStaffBaseFov || 1;
-            } else {
-                if (!body.craftrasPopeStaffFovActive) {
-                    body.craftrasPopeStaffBaseFov = body.FOV || body.craftrasPopeStaffBaseFov || 1;
-                    body.craftrasPopeStaffFovActive = true;
-                }
-                const desiredFov = (body.craftrasPopeStaffBaseFov || 1) * 2;
-                if (body.FOV !== desiredFov) {
-                    body.FOV = desiredFov;
-                    body.updateBodyInfo?.();
-                }
+            const swordGuy2FovMultiplier = Math.max(
+                1,
+                Number(body.craftrasSwordGuy2FovMultiplier) || 1,
+            );
+            const previousFovMultiplier = Math.max(
+                1,
+                Number(body.craftrasAppliedGameplayFovMultiplier)
+                    || (body.craftrasPopeStaffFovActive ? 2 : 1),
+            );
+            if (!Number.isFinite(body.craftrasGameplayBaseFov)) {
+                body.craftrasGameplayBaseFov = body.craftrasPopeStaffBaseFov
+                    || (body.FOV || 1) / previousFovMultiplier;
+            }
+            const expectedCurrentFov = body.craftrasGameplayBaseFov * previousFovMultiplier;
+            if (Math.abs((body.FOV || 1) - expectedCurrentFov) > 0.0001) {
+                body.craftrasGameplayBaseFov = (body.FOV || 1) / previousFovMultiplier;
+            }
+            const bossFormFovMultiplier = body.craftrasBossFormType ? 2 : 1;
+            const challengeFovMultiplier = Config.craftras_world2_challenge_builder
+                ? CRAFTRAS_WORLD2_CHALLENGE_FOV_MULTIPLIER
+                : 1;
+            const desiredFovMultiplier = (hasPopeStaffFov ? 2 : 1) * swordGuy2FovMultiplier * bossFormFovMultiplier * challengeFovMultiplier;
+            const desiredFov = body.craftrasGameplayBaseFov * desiredFovMultiplier;
+            body.craftrasPopeStaffBaseFov = body.craftrasGameplayBaseFov;
+            body.craftrasPopeStaffFovActive = hasPopeStaffFov;
+            body.craftrasAppliedGameplayFovMultiplier = desiredFovMultiplier;
+            if (body.FOV !== desiredFov) {
+                body.FOV = desiredFov;
+                body.updateBodyInfo?.();
             }
             const eatingSpeedMultiplier = body.craftrasEating ? 0.4 : 1;
             const hasDirectAdminSpeed = global.craftrasCheatsEnabled !== false
                 && !!socket.permissions?.admin
                 && Number.isFinite(socket.craftrasMovementSpeedMultiplier);
             const curseSpeedMultiplier = now < (body.craftrasCursedUntil || 0) ? 1 / 1.5 : 1;
-            const movementSpeedMultiplier = (hasDirectAdminSpeed
+            const hasteSpeedMultiplier = this.hasHasteBlessingLevel2(body, now) ? WORLD2_HEALER_HASTE_MULTIPLIER : 1;
+            const movementSpeedMultiplier = Config.craftras_world2_challenge_builder
+                ? 1
+                : (hasDirectAdminSpeed
                 ? Math.max(0.1, Math.min(100, socket.craftrasMovementSpeedMultiplier))
-                : 1) * curseSpeedMultiplier;
-            body.topSpeed = this.gameManager.runSpeed * 6 * (body.craftrasCreativeFlight ? 10 : 1) * eatingSpeedMultiplier * movementSpeedMultiplier;
-            body.craftrasDirectMovement = hasDirectAdminSpeed;
-            if (hasDirectAdminSpeed) {
+                : 1) * curseSpeedMultiplier * hasteSpeedMultiplier;
+            const bossSkillMovementMultiplier = body.craftrasBossForm?.activeSkill == null ? 1 : 0;
+            body.topSpeed = this.gameManager.runSpeed * 6 * (body.craftrasCreativeFlight ? 10 : 1) * eatingSpeedMultiplier * movementSpeedMultiplier * bossSkillMovementMultiplier;
+            if (Config.craftras_world2_challenge_builder) {
+                body.craftrasWorld2ChallengeBaseDamp ??= Number.isFinite(body.damp) ? body.damp : 0.05;
+                body.damp = CRAFTRAS_WORLD2_CHALLENGE_VELOCITY_DAMP;
+            } else if (Number.isFinite(body.craftrasWorld2ChallengeBaseDamp)) {
+                body.damp = body.craftrasWorld2ChallengeBaseDamp;
+                delete body.craftrasWorld2ChallengeBaseDamp;
+            }
+            const useDirectMovement = hasDirectAdminSpeed && !Config.craftras_world2_challenge_builder;
+            body.craftrasDirectMovement = useDirectMovement;
+            if (useDirectMovement) {
                 const command = socket.player?.command;
                 const moveX = (command?.right ? 1 : 0) - (command?.left ? 1 : 0);
                 const moveY = (command?.down ? 1 : 0) - (command?.up ? 1 : 0);
@@ -7534,22 +12091,40 @@ class Craftras {
                 body.accel.x = 0;
                 body.accel.y = 0;
             }
+            this.updateMagicBookPlayer(socket, body, now);
 
             if (!body.craftrasDamageHooked) {
                 body.craftrasDamageHooked = true;
-                body.on("damage", ({ damageTool = [] }) => {
+                body.on("damage", ({ damageInflictor = [], damageTool = [] }) => {
                     let projectileDamage = 0;
                     for (const tool of damageTool) {
                         const label = tool?.label || "";
-                        if (label.includes("Craftras M134 Bullet")) {
-                            projectileDamage += 5;
+                        if (tool?.craftrasParryReflected && Number(tool.craftrasParryReflectedDamage) > 0) {
+                            projectileDamage += Number(tool.craftrasParryReflectedDamage);
+                            this.spawnProjectileHitRemnant(tool);
                             tool.kill?.();
+                        } else if (label.includes("Craftras M134 Bullet")) {
+                            projectileDamage += 5;
+                            this.spawnProjectileHitRemnant(tool);
+                            tool.kill?.();
+                        } else if (label.includes("Craftras Phoenix Bullet")) {
+                            this.explodePhoenixProjectile(tool);
                         } else if (label.includes("Craftras Skeleton Bullet") || tool?.master?.craftrasMobFamily === "skeleton") {
                             projectileDamage += tool?.master?.craftrasSkeletonBulletDamage || 20;
+                            if (tool?.master?.craftrasFireOnHit) this.applyPlayerFire(body, tool.master);
+                            this.spawnProjectileHitRemnant(tool);
                             tool.kill?.();
                         }
                     }
-                    if (projectileDamage) body.damageReceived = this.absorbShieldDamage(body, projectileDamage);
+                    let resolvedDamage = projectileDamage || Math.max(0, Number(body.damageReceived) || 0);
+                    const attacker = this.findPlayerDamageSource(damageInflictor, damageTool);
+                    if (attacker && attacker !== body) resolvedDamage = this.scalePlayerProgressionDamage(attacker, resolvedDamage);
+                    if (this.hasWorld2Curse(body)) resolvedDamage *= 1.5;
+                    if (projectileDamage) body.damageReceived = this.absorbShieldDamage(body, resolvedDamage);
+                    else body.damageReceived = resolvedDamage;
+                    if (attacker && attacker !== body && body.damageReceived > 0) {
+                        this.recordPlayerDamageTarget(attacker, body, body.damageReceived);
+                    }
                     body.craftrasLastDamageAt = Date.now();
                     body.craftrasNextRegenAt = body.craftrasLastDamageAt + 10000;
                     this.flashEntity(body);
@@ -7573,8 +12148,12 @@ class Craftras {
                 body.craftrasBlessingUntil = 0;
                 body.craftrasHealthBlessingUntil = 0;
                 body.craftrasStrengthBlessingUntil = 0;
+                body.craftrasHealthBlessingLevel2Until = 0;
+                body.craftrasStrengthBlessingLevel2Until = 0;
+                body.craftrasHasteBlessingLevel2Until = 0;
             }
             this.updatePlayerPoison(body, now);
+            this.updatePlayerFire(body, now);
             this.syncPlayerDebuffs(socket, body, now);
             this.restoreEntityFlash(body, now);
 
@@ -7612,6 +12191,9 @@ class Craftras {
             body.sendMessage?.("Cheats are disabled.");
             return;
         }
+        if (item.creativeDuration) {
+            this.gameManager.socketManager.markCraftrasPersistenceBlocked(socket, "temporary-creative", true);
+        }
         if (!this.gameManager.socketManager.consumeCraftrasSelectedItem(socket, 1, true)) return;
         if (item.creativeDuration) {
             this.gameManager.socketManager.grantTemporaryCraftrasCreative(socket, item.creativeDuration);
@@ -7635,8 +12217,102 @@ class Craftras {
         if (bossType === "king_zombie") return "King Zombie";
         if (bossType === "queen_spider") return "Queen Spider";
         if (bossType === "sword_guy") return "Sword guy";
+        if (bossType === "sword_guy_2") return "Basic";
+        if (bossType === "jane") return "Jane";
         if (bossType === "annihilator") return "Annihilator";
+        if (bossType === "the_nuclear") return "The Nuclear";
+        if (bossType === "giant_worm") return "Giant Worm";
+        if (bossType === "spiker") return "SPIKER";
+        if (bossType === "world2_magical_zombie") return "Magical Zombie";
+        if (bossType === "the_worm") return "THE WORM";
         return item?.name?.replace(" Summon Ticket", "") || bossType;
+    }
+
+    isBossHealthMob(mob) {
+        return !!mob && (mob.craftrasMagicBoss || CRAFTRAS_BOSS_HEALTH_MOB_TYPES.has(mob.craftrasMobType));
+    }
+
+    getBossHealthDisplayName(mob) {
+        if (mob?.craftrasMagicBoss) return "Magical Zombie";
+        const customName = String(mob?.name || "").trim();
+        if (customName && !/^unknown/i.test(customName)) return customName;
+        return this.getBossDisplayName(mob?.craftrasMobType);
+    }
+
+    markBossHealthHit(mob, source, now = Date.now()) {
+        if (!this.isBossHealthMob(mob) || !mob.health) return false;
+        const body = this.getPlayerBodyFromDamageSource(source) || source;
+        const socket = this.getSocketForBody(body);
+        if (!socket) return false;
+        socket.craftrasBossHealthBar = {
+            mob,
+            expiresAt: now + CRAFTRAS_BOSS_HEALTH_VISIBLE_DURATION,
+            nextSyncAt: 0,
+            lastHealth: NaN,
+            lastMaxHealth: NaN,
+            visible: false,
+        };
+        return true;
+    }
+
+    syncBossHealthBars(now = Date.now()) {
+        for (const socket of this.gameManager.clients) {
+            const state = socket?.craftrasBossHealthBar;
+            if (!state) continue;
+            const mob = state.mob;
+            if (!mob || !mob.health) {
+                if (state.visible) socket.talk?.("CBH", 0);
+                socket.craftrasBossHealthBar = null;
+                continue;
+            }
+            const defeated = mob.isDead?.() || !this.mobs.has(mob) || mob.health.amount <= 0;
+            if (defeated) {
+                if (!state.defeatStartedAt) {
+                    state.defeatStartedAt = now;
+                    state.expiresAt = now + CRAFTRAS_BOSS_HEALTH_DEFEAT_DURATION;
+                    state.visible = true;
+                    socket.talk?.(
+                        "CBH",
+                        1,
+                        mob.id || 0,
+                        this.getBossHealthDisplayName(mob),
+                        0,
+                        Math.max(1, Number(mob.health.max) || 1),
+                        CRAFTRAS_BOSS_HEALTH_DEFEAT_DURATION,
+                    );
+                    continue;
+                }
+                if (now < state.expiresAt) continue;
+                socket.talk?.("CBH", 0);
+                socket.craftrasBossHealthBar = null;
+                continue;
+            }
+            if (now >= state.expiresAt) {
+                if (state.visible) socket.talk?.("CBH", 0);
+                socket.craftrasBossHealthBar = null;
+                continue;
+            }
+            const health = Math.max(0, Number(mob.health.amount) || 0);
+            const maxHealth = Math.max(1, Number(mob.health.max) || 1);
+            if (
+                now < state.nextSyncAt &&
+                health === state.lastHealth &&
+                maxHealth === state.lastMaxHealth
+            ) continue;
+            state.nextSyncAt = now + CRAFTRAS_BOSS_HEALTH_SYNC_INTERVAL;
+            state.lastHealth = health;
+            state.lastMaxHealth = maxHealth;
+            state.visible = true;
+            socket.talk?.(
+                "CBH",
+                1,
+                mob.id || 0,
+                this.getBossHealthDisplayName(mob),
+                health,
+                maxHealth,
+                Math.max(0, state.expiresAt - now),
+            );
+        }
     }
 
     updatePlayerSummonTicket(socket, body, now) {
@@ -7738,6 +12414,46 @@ class Craftras {
         }
         body.craftrasClericStaffCastStarted = now;
         body.craftrasClericStaffCastUntil = now + 900;
+    }
+
+    updatePlayerZombieWizardStaff(socket, body, now) {
+        if (!body || body.isDead?.() || body.craftrasSpectator || body.craftrasHeldItem !== "zombie_wizard_staff") return false;
+        if (!body.control.fire || now < (body.craftrasNextZombieWizardStaffAt || 0)) return false;
+        if (!body.health || body.health.amount <= 0) return false;
+
+        const aim = body.control?.target || {};
+        const aimX = Number.isFinite(aim.x) ? aim.x : Math.cos(body.facing || 0) * BLOCK_SIZE * 10;
+        const aimY = Number.isFinite(aim.y) ? aim.y : Math.sin(body.facing || 0) * BLOCK_SIZE * 10;
+        const destination = { x: body.x + aimX, y: body.y + aimY };
+        const angle = Math.atan2(destination.y - body.y, destination.x - body.x);
+        const ownerRadius = Math.max(12, body.realSize || body.size || 12);
+        const spawnDistance = ownerRadius + CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SIZE * 0.7;
+        const projectile = new Entity({
+            x: body.x + Math.cos(angle) * spawnDistance,
+            y: body.y + Math.sin(angle) * spawnDistance,
+        });
+        projectile.define("craftrasZombieWizardStaffOrb");
+        projectile.team = projectile.id;
+        projectile.master = body;
+        projectile.source = body;
+        projectile.parent = body;
+        projectile.craftrasOwner = body;
+        projectile.craftrasZombieWizardStaffKind = "main";
+        projectile.craftrasZombieWizardStaffDestination = destination;
+        projectile.craftrasZombieWizardStaffPrevious = { x: projectile.x, y: projectile.y };
+        projectile.craftrasZombieWizardStaffExpiresAt = now + CRAFTRAS_ZOMBIE_WIZARD_STAFF_PROJECTILE_LIFE;
+        projectile.velocity.x = Math.cos(angle) * CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SPEED;
+        projectile.velocity.y = Math.sin(angle) * CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SPEED;
+        projectile.facing = angle;
+        projectile.vfacing = angle;
+        projectile.alwaysActive = true;
+        projectile.on("dead", () => this.zombieWizardStaffProjectiles.delete(projectile));
+        this.zombieWizardStaffProjectiles.add(projectile);
+
+        body.craftrasNextZombieWizardStaffAt = now + CRAFTRAS_ZOMBIE_WIZARD_STAFF_COOLDOWN;
+        body.craftrasZombieWizardStaffCastStarted = now;
+        body.craftrasZombieWizardStaffCastUntil = now + CRAFTRAS_ZOMBIE_WIZARD_STAFF_CAST_DURATION;
+        return true;
     }
 
     reviveNearbyCraftrasSpectator(clericBody, now = Date.now()) {
@@ -8240,15 +12956,568 @@ class Craftras {
         return forward >= -margin && forward <= length + margin && side <= halfWidth + margin * 0.65;
     }
 
+    updateLaserTestInput(body, now = Date.now()) {
+        const itemId = body?.craftrasHeldItem;
+        const isLaserTest = itemId === "laser_test";
+        const isBlueLaser = itemId === "blue_laser_beam";
+        if (body) {
+            const result = this.updateWorld2ChallengeBlueLaserInput(body, isBlueLaser, now);
+            if (isBlueLaser) return result;
+        }
+        if (!body || body.isDead?.() || body.craftrasSpectator || !isLaserTest) {
+            if (body) body.craftrasLaserTestFireWasDown = false;
+            return false;
+        }
+        const firing = !!body.control?.fire;
+        if (!firing) {
+            body.craftrasLaserTestFireWasDown = false;
+            return false;
+        }
+        if (body.craftrasLaserTestFireWasDown) return false;
+        body.craftrasLaserTestFireWasDown = true;
+        return this.fireLaserTest(body, now);
+    }
+
+    initializeWorld2ChallengeBlueLaser(body, now = Date.now()) {
+        if (!body) return;
+        if (!Number.isFinite(body.craftrasBlueLaserGauge)) body.craftrasBlueLaserGauge = CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_MAX;
+        if (!Number.isFinite(body.craftrasBlueLaserGaugeUpdatedAt)) body.craftrasBlueLaserGaugeUpdatedAt = now;
+        if (!Number.isFinite(body.craftrasBlueLaserRechargeStartsAt)) body.craftrasBlueLaserRechargeStartsAt = now;
+        if (!Number.isFinite(body.craftrasBlueLaserOverheatedUntil)) body.craftrasBlueLaserOverheatedUntil = 0;
+        if (typeof body.craftrasBlueLaserRequiresRelease !== "boolean") body.craftrasBlueLaserRequiresRelease = false;
+    }
+
+    syncWorld2ChallengeBlueLaser(body, equipped, firing, now = Date.now(), force = false) {
+        if (!body) return;
+        const gauge = Math.max(0, Math.min(CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_MAX, Math.floor(body.craftrasBlueLaserGauge || 0)));
+        const overheatedFor = Math.max(0, Math.ceil((body.craftrasBlueLaserOverheatedUntil || 0) - now));
+        const signature = `${gauge}:${overheatedFor > 0 ? Math.ceil(overheatedFor / 100) : 0}:${equipped ? 1 : 0}:${firing ? 1 : 0}`;
+        if (!force && signature === body.craftrasBlueLaserLastSync) return;
+        body.craftrasBlueLaserLastSync = signature;
+        this.getSocketForBody(body)?.talk?.("BLG", gauge, overheatedFor, equipped ? 1 : 0, firing ? 1 : 0);
+    }
+
+    stopWorld2ChallengeBlueLaser(body, now = Date.now()) {
+        const beam = body?.craftrasBlueLaserBeam;
+        if (!beam) return false;
+        beam.expiresAt = Math.min(beam.expiresAt, now);
+        beam.craftrasStopSent = true;
+        body.craftrasBlueLaserBeam = null;
+        for (const socket of this.gameManager.clients || []) socket?.talk?.("LZS", beam.id, 140);
+        return true;
+    }
+
+    updateWorld2ChallengeBlueLaserRecoil(owner, beam, now = Date.now()) {
+        const elapsed = Math.max(1, Math.min(100, now - (owner.craftrasBlueLaserAimUpdatedAt || now - 16)));
+        owner.craftrasBlueLaserAimUpdatedAt = now;
+        const desiredAngle = this.getPopeStaffAimAngle(owner);
+        const currentAngle = Number.isFinite(owner.craftrasBlueLaserAimAngle) ? owner.craftrasBlueLaserAimAngle : desiredAngle;
+        const difference = Math.atan2(Math.sin(desiredAngle - currentAngle), Math.cos(desiredAngle - currentAngle));
+        const maxTurn = CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_TURN_RATE * elapsed / 1000;
+        const angle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, difference));
+        owner.craftrasBlueLaserAimAngle = angle;
+        beam.angle = angle;
+        beam.initialAngle = angle;
+        const muzzleDistance = beam.muzzleDistance || Math.max(46, (owner.realSize || owner.size || 20) * 1.9);
+        beam.start.x = owner.x + Math.cos(angle) * muzzleDistance;
+        beam.start.y = owner.y + Math.sin(angle) * muzzleDistance;
+
+        const recoilAngle = angle + Math.PI;
+        owner.craftrasBlueLaserRecoilAngle = recoilAngle;
+        const recoilImpulse = CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_RECOIL_PER_SECOND * elapsed / 1000;
+        owner.velocity.x += Math.cos(recoilAngle) * recoilImpulse;
+        owner.velocity.y += Math.sin(recoilAngle) * recoilImpulse;
+
+        if (now - (beam.lastManualSyncAt || 0) >= 50) {
+            beam.lastManualSyncAt = now;
+            for (const socket of this.gameManager.clients || []) {
+                socket?.talk?.("LZU", beam.id, beam.angle, beam.start.x, beam.start.y);
+            }
+        }
+    }
+
+    updateWorld2ChallengeBlueLaserInput(body, equipped, now = Date.now()) {
+        this.initializeWorld2ChallengeBlueLaser(body, now);
+        const usable = equipped && !body.isDead?.() && !body.craftrasSpectator;
+        const wantsToFire = usable && !!body.control?.fire;
+        if (!wantsToFire) body.craftrasBlueLaserRequiresRelease = false;
+        const overheated = now < (body.craftrasBlueLaserOverheatedUntil || 0);
+        let firing = wantsToFire && !body.craftrasBlueLaserRequiresRelease && !overheated && body.craftrasBlueLaserGauge > 0;
+
+        if (firing && !body.craftrasBlueLaserBeam) {
+            body.craftrasBlueLaserBeam = this.fireWorld2ChallengeBlueLaser(body, now);
+            body.craftrasBlueLaserGaugeUpdatedAt = now;
+            body.craftrasBlueLaserAimUpdatedAt = now;
+            body.craftrasBlueLaserAimAngle = this.getPopeStaffAimAngle(body);
+            body.craftrasBlueLaserRecoilAngle = body.craftrasBlueLaserAimAngle + Math.PI;
+            firing = !!body.craftrasBlueLaserBeam;
+        }
+
+        if (firing) {
+            const elapsed = now - body.craftrasBlueLaserGaugeUpdatedAt;
+            const steps = Math.floor(elapsed / CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_INTERVAL);
+            if (steps > 0) {
+                body.craftrasBlueLaserGauge = Math.max(0, body.craftrasBlueLaserGauge - steps);
+                body.craftrasBlueLaserGaugeUpdatedAt += steps * CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_INTERVAL;
+            }
+            if (body.craftrasBlueLaserGauge <= 0) {
+                body.craftrasBlueLaserGauge = 0;
+                body.craftrasBlueLaserOverheatedUntil = now + CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_OVERHEAT_DURATION;
+                body.craftrasBlueLaserRechargeStartsAt = body.craftrasBlueLaserOverheatedUntil;
+                body.craftrasBlueLaserGaugeUpdatedAt = body.craftrasBlueLaserRechargeStartsAt;
+                body.craftrasBlueLaserRequiresRelease = true;
+                this.stopWorld2ChallengeBlueLaser(body, now);
+                this.getSocketForBody(body)?.talk?.("m", 3_000, "LASER OVERHEATED!!");
+                firing = false;
+            } else {
+                this.updateWorld2ChallengeBlueLaserRecoil(body, body.craftrasBlueLaserBeam, now);
+            }
+        } else {
+            if (body.craftrasBlueLaserBeam) {
+                this.stopWorld2ChallengeBlueLaser(body, now);
+                if (!overheated) body.craftrasBlueLaserRechargeStartsAt = now + CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_RECHARGE_DELAY;
+                body.craftrasBlueLaserGaugeUpdatedAt = Math.max(body.craftrasBlueLaserGaugeUpdatedAt, body.craftrasBlueLaserRechargeStartsAt);
+            }
+            const rechargeStartsAt = Math.max(
+                body.craftrasBlueLaserRechargeStartsAt || 0,
+                body.craftrasBlueLaserOverheatedUntil || 0,
+            );
+            if (now >= rechargeStartsAt && body.craftrasBlueLaserGauge < CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_MAX) {
+                body.craftrasBlueLaserGaugeUpdatedAt = Math.max(body.craftrasBlueLaserGaugeUpdatedAt, rechargeStartsAt);
+                const steps = Math.floor((now - body.craftrasBlueLaserGaugeUpdatedAt) / CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_INTERVAL);
+                if (steps > 0) {
+                    body.craftrasBlueLaserGauge = Math.min(
+                        CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_MAX,
+                        body.craftrasBlueLaserGauge + steps * CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_RECHARGE_PER_STEP,
+                    );
+                    body.craftrasBlueLaserGaugeUpdatedAt += steps * CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_INTERVAL;
+                }
+            }
+        }
+
+        this.syncWorld2ChallengeBlueLaser(body, equipped, firing, now);
+        return firing;
+    }
+
+    updateScreenCutTestInput(body, now = Date.now()) {
+        if (!body || body.isDead?.() || body.craftrasSpectator || body.craftrasHeldItem !== "screen_cut_test") {
+            if (body) body.craftrasScreenCutTestFireWasDown = false;
+            return false;
+        }
+        if (!body.control?.fire) {
+            body.craftrasScreenCutTestFireWasDown = false;
+            return false;
+        }
+        if (body.craftrasScreenCutTestFireWasDown) return false;
+        body.craftrasScreenCutTestFireWasDown = true;
+        return this.fireScreenCutTest(body, now);
+    }
+
+    showCustomWeaponScreenCut(owner) {
+        if (!owner || owner.isDead?.()) return false;
+        const socket = this.getSocketForBody(owner);
+        socket?.talk?.(
+            "CSC",
+            720,
+            58,
+            this.getPopeStaffAimAngle(owner),
+        );
+        socket?.talk?.("SH", JSON.stringify({
+            type: "camera",
+            duration: 220,
+            amount: 7,
+            keepShake: false,
+        }));
+        return true;
+    }
+
+    setScreenCutTestHealth(entity) {
+        if (!entity?.health || entity.isDead?.()) return false;
+        entity.health.amount = 1;
+        entity.damageReceived = 0;
+        entity.readyToDie = false;
+        return true;
+    }
+
+    fireScreenCutTest(owner, now = Date.now()) {
+        if (!owner || owner.isDead?.()) return false;
+        const radiusSquared = CRAFTRAS_SCREEN_CUT_TEST_RADIUS ** 2;
+        const cutAngle = this.getPopeStaffAimAngle(owner);
+        for (const { body, socket } of this.getLivingPlayers()) {
+            if (!body || (body.x - owner.x) ** 2 + (body.y - owner.y) ** 2 > radiusSquared) continue;
+            socket?.talk?.(
+                "SCT",
+                CRAFTRAS_SCREEN_CUT_TEST_EFFECT_DURATION,
+                CRAFTRAS_SCREEN_CUT_TEST_SHIFT,
+                cutAngle,
+            );
+            if (body !== owner) this.setScreenCutTestHealth(body);
+        }
+        for (const mob of this.mobs) {
+            if (
+                !mob
+                || mob.isDead?.()
+                || mob.craftrasInvulnerableNpc
+                || mob.craftrasMobFamily === "npc"
+                || (mob.x - owner.x) ** 2 + (mob.y - owner.y) ** 2 > radiusSquared
+            ) continue;
+            this.setScreenCutTestHealth(mob);
+        }
+        return true;
+    }
+
+    fireLaserTest(owner, now = Date.now()) {
+        if (!owner || owner.isDead?.()) return false;
+        const angle = this.getPopeStaffAimAngle(owner);
+        const muzzleDistance = Math.max(32, (owner.realSize || owner.size || 20) * 1.7);
+        return !!this.spawnCraftrasLaser(owner, {
+            start: {
+                x: owner.x + Math.cos(angle) * muzzleDistance,
+                y: owner.y + Math.sin(angle) * muzzleDistance,
+            },
+            angle,
+            length: CRAFTRAS_LASER_TEST_LENGTH,
+            width: CRAFTRAS_LASER_TEST_WIDTH,
+            duration: CRAFTRAS_LASER_TEST_DURATION,
+            damage: CRAFTRAS_LASER_TEST_DAMAGE,
+            damageInterval: CRAFTRAS_LASER_TEST_DAMAGE_INTERVAL,
+            shakeRange: CRAFTRAS_LASER_TEST_SHAKE_RANGE,
+            shakeAmount: 11,
+        }, now);
+    }
+
+    fireWorld2ChallengeBlueLaser(owner, now = Date.now()) {
+        if (!owner || owner.isDead?.()) return null;
+        const angle = this.getPopeStaffAimAngle(owner);
+        const muzzleDistance = Math.max(46, (owner.realSize || owner.size || 20) * 1.9);
+        const beam = this.spawnCraftrasLaser(owner, {
+            start: {
+                x: owner.x + Math.cos(angle) * muzzleDistance,
+                y: owner.y + Math.sin(angle) * muzzleDistance,
+            },
+            angle,
+            length: 3_200,
+            width: 520,
+            hitboxWidth: 260,
+            duration: CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_DURATION,
+            damageRatio: CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_DAMAGE_RATIO,
+            damageInterval: CRAFTRAS_WORLD2_CHALLENGE_BLUE_LASER_GAUGE_INTERVAL,
+            bypassWormDamageImmunity: true,
+            singleHit: false,
+            ignoreProgressionScaling: true,
+            colorMode: "blue",
+            visualVariant: "blue",
+            shakeRange: 1_100,
+            shakeAmount: 13,
+            shakeDuration: 520,
+            manualTracking: true,
+            followOwner: true,
+            muzzleDistance,
+        }, now);
+        return beam || null;
+    }
+
+    spawnCraftrasLaser(owner, options = {}, now = Date.now()) {
+        if (!owner || owner.isDead?.()) return null;
+        const bossFormOwner = this.getBossFormOwnerFromDamageSource(owner);
+        const activeDelay = Math.max(0, Number(options.activeDelay) || 0);
+        const duration = Math.max(activeDelay + 1, Number(options.duration) || CRAFTRAS_LASER_TEST_DURATION);
+        const beam = {
+            id: ++this.laserTestBeamId,
+            owner,
+            bossFormOwner,
+            start: options.start || { x: owner.x, y: owner.y },
+            initialAngle: Number(options.angle) || 0,
+            angle: Number(options.angle) || 0,
+            angularVelocity: Number(options.angularVelocity) || 0,
+            trackingTarget: options.trackingTarget || null,
+            trackingTurnRate: Math.max(0, Number(options.trackingTurnRate) || 0),
+            trackingResponsiveness: Math.max(0, Number(options.trackingResponsiveness) || 0),
+            lastTrackingUpdateAt: now,
+            lastTrackingSyncAt: 0,
+            visualAngularVelocity: Number(options.angularVelocity) || 0,
+            length: Math.max(1, Number(options.length) || CRAFTRAS_LASER_TEST_LENGTH),
+            width: Math.max(1, Number(options.width) || CRAFTRAS_LASER_TEST_WIDTH),
+            hitboxWidth: Math.max(1, Number(options.hitboxWidth) || Number(options.width) || CRAFTRAS_LASER_TEST_WIDTH),
+            startedAt: now,
+            activeAt: now + activeDelay,
+            expiresAt: now + duration,
+            damage: Math.max(0, Number(options.damage) || 0),
+            damageRatio: Math.max(0, Number(options.damageRatio) || 0),
+            damageInterval: Math.max(1, Number(options.damageInterval) || CRAFTRAS_LASER_TEST_DAMAGE_INTERVAL),
+            playersOnly: !!options.playersOnly,
+            targetId: options.targetId || null,
+            bypassParry: !!options.bypassParry,
+            targetMobType: options.targetMobType ? String(options.targetMobType) : null,
+            bypassWormDamageImmunity: !!options.bypassWormDamageImmunity,
+            singleHit: !!options.singleHit,
+            ignoreProgressionScaling: !!options.ignoreProgressionScaling,
+            shakeRange: Math.max(0, Number(options.shakeRange) || CRAFTRAS_LASER_TEST_SHAKE_RANGE),
+            shakeAmount: Math.max(0, Number(options.shakeAmount) || 11),
+            shakeDuration: Math.max(1, Number(options.shakeDuration) || 420),
+            fadeOutStart: Math.max(0, Math.min(0.99, Number(options.fadeOutStart) || 0.72)),
+            colorMode: String(options.colorMode || "pink"),
+            alphaScale: Math.max(0.02, Math.min(1, Number(options.alphaScale) || 1)),
+            visualVariant: String(options.visualVariant || "default"),
+            hitboxDefinition: options.hitboxDefinition || CRAFTRAS_LASER_HITBOX,
+            manualTracking: !!options.manualTracking,
+            followOwner: !!options.followOwner,
+            muzzleDistance: Math.max(0, Number(options.muzzleDistance) || 0),
+            shakeSent: false,
+            lastHitAt: new Map(),
+            hitTargets: new Set(),
+        };
+        beam.hitboxPolygons = this.buildLaserTestHitboxPolygons(beam);
+        this.laserTestBeams.push(beam);
+        for (const socket of this.gameManager.clients || []) {
+            socket?.talk?.(
+                "LZR",
+                beam.id,
+                beam.start.x,
+                beam.start.y,
+                beam.angle,
+                beam.length,
+                beam.width,
+                duration,
+                activeDelay,
+                beam.angularVelocity,
+                beam.fadeOutStart,
+                beam.colorMode,
+                beam.alphaScale,
+                beam.visualVariant,
+            );
+        }
+        return beam;
+    }
+
+    laserTestBeamDistance(beam, target) {
+        if (!beam || !target) return Infinity;
+        const forwardX = Math.cos(beam.angle);
+        const forwardY = Math.sin(beam.angle);
+        const dx = target.x - beam.start.x;
+        const dy = target.y - beam.start.y;
+        const forward = Math.max(0, Math.min(beam.length, dx * forwardX + dy * forwardY));
+        const closestX = beam.start.x + forwardX * forward;
+        const closestY = beam.start.y + forwardY * forward;
+        return Math.hypot(target.x - closestX, target.y - closestY);
+    }
+
+    laserTestBeamContains(beam, target) {
+        if (!beam || !target) return false;
+        const forwardX = Math.cos(beam.angle);
+        const forwardY = Math.sin(beam.angle);
+        const dx = target.x - beam.start.x;
+        const dy = target.y - beam.start.y;
+        const margin = target.realSize || target.size || target.SIZE || 0;
+        const forward = dx * forwardX + dy * forwardY;
+        const side = dx * -forwardY + dy * forwardX;
+        const polygons = beam.hitboxPolygons;
+        if (!Array.isArray(polygons) || !polygons.length) {
+            if (forward < -margin || forward > beam.length + margin) return false;
+            return Math.abs(side) <= beam.hitboxWidth / 2 + margin * 0.65;
+        }
+        return polygons.some(polygon => this.circleIntersectsLaserHitboxPolygon(forward, side, margin, polygon));
+    }
+
+    laserTestBeamHitsMob(beam, mob) {
+        if (this.laserTestBeamContains(beam, mob)) return true;
+        if (mob?.craftrasMobFamily !== "worm") return false;
+        return (mob.craftrasWormSegments || []).some(segment => (
+            segment && !segment.isDead?.() && this.laserTestBeamContains(beam, segment)
+        ));
+    }
+
+    buildLaserTestHitboxPolygons(beam) {
+        const definition = beam.hitboxDefinition || CRAFTRAS_LASER_HITBOX;
+        const imageWidth = Math.max(1, Number(definition?.sourceImage?.width) || 1);
+        const imageHeight = Math.max(1, Number(definition?.sourceImage?.height) || 1);
+        const render = definition?.render || {};
+        const anchorX = Math.max(0, Math.min(1, Number(render.anchorX) || 0));
+        const anchorY = Math.max(0, Math.min(1, Number(render.anchorY) || 0));
+        const cropLeft = Math.max(0, Math.min(imageWidth - 1, Number(render.cropLeft) || 0));
+        const renderWidth = Math.max(1, imageWidth - cropLeft);
+        const renderHeight = beam.width * Math.max(0.01, Number(render.heightMultiplier) || 1);
+        const polygons = Array.isArray(definition?.polygons) ? definition.polygons : [];
+        return polygons
+            .map(polygon => (polygon?.points || []).map(point => ({
+                x: (((Number(point?.[0]) - cropLeft) / renderWidth) - anchorX) * beam.length,
+                y: ((Number(point?.[1]) / imageHeight) - anchorY) * renderHeight,
+            })))
+            .filter(points => points.length >= 3 && points.every(point => Number.isFinite(point.x) && Number.isFinite(point.y)));
+    }
+
+    circleIntersectsLaserHitboxPolygon(x, y, radius, polygon) {
+        let inside = false;
+        for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index++) {
+            const currentPoint = polygon[index];
+            const previousPoint = polygon[previous];
+            const crosses = (currentPoint.y > y) !== (previousPoint.y > y)
+                && x < (previousPoint.x - currentPoint.x) * (y - currentPoint.y)
+                    / ((previousPoint.y - currentPoint.y) || 1e-9) + currentPoint.x;
+            if (crosses) inside = !inside;
+        }
+        if (inside) return true;
+        const radiusSquared = radius * radius;
+        for (let index = 0; index < polygon.length; index++) {
+            const start = polygon[index];
+            const end = polygon[(index + 1) % polygon.length];
+            const edgeX = end.x - start.x;
+            const edgeY = end.y - start.y;
+            const edgeLengthSquared = edgeX * edgeX + edgeY * edgeY;
+            const projection = edgeLengthSquared > 0
+                ? Math.max(0, Math.min(1, ((x - start.x) * edgeX + (y - start.y) * edgeY) / edgeLengthSquared))
+                : 0;
+            const closestX = start.x + edgeX * projection;
+            const closestY = start.y + edgeY * projection;
+            const distanceX = x - closestX;
+            const distanceY = y - closestY;
+            if (distanceX * distanceX + distanceY * distanceY <= radiusSquared) return true;
+        }
+        return false;
+    }
+
+    updateLaserTestBeams(players, now = Date.now()) {
+        for (let index = this.laserTestBeams.length - 1; index >= 0; index--) {
+            const beam = this.laserTestBeams[index];
+            if (!beam?.owner || beam.owner.isDead?.() || now >= beam.expiresAt) {
+                if (beam && !beam.craftrasStopSent) {
+                    beam.craftrasStopSent = true;
+                    for (const socket of this.gameManager.clients || []) socket?.talk?.("LZS", beam.id, 140);
+                }
+                this.laserTestBeams.splice(index, 1);
+                continue;
+            }
+            if (
+                beam.trackingTarget
+                && !beam.trackingTarget.isDead?.()
+                && (beam.trackingTurnRate > 0 || beam.trackingResponsiveness > 0)
+            ) {
+                const elapsed = Math.max(1, Math.min(100, now - (beam.lastTrackingUpdateAt || now - 16)));
+                beam.lastTrackingUpdateAt = now;
+                const desired = Math.atan2(
+                    beam.trackingTarget.y - beam.start.y,
+                    beam.trackingTarget.x - beam.start.x,
+                );
+                const difference = Math.atan2(Math.sin(desired - beam.angle), Math.cos(desired - beam.angle));
+                const turn = beam.trackingResponsiveness > 0
+                    ? difference * (1 - Math.exp(-beam.trackingResponsiveness * elapsed))
+                    : Math.max(-beam.trackingTurnRate * elapsed, Math.min(beam.trackingTurnRate * elapsed, difference));
+                beam.angle += turn;
+                beam.visualAngularVelocity = 0;
+                if (now - (beam.lastTrackingSyncAt || 0) >= 50) {
+                    beam.lastTrackingSyncAt = now;
+                    for (const socket of this.gameManager.clients || []) {
+                        socket?.talk?.("LZU", beam.id, beam.angle);
+                    }
+                }
+            } else if (!beam.manualTracking) {
+                beam.angle = beam.initialAngle + beam.angularVelocity * Math.max(0, now - beam.activeAt);
+            }
+            if (beam.followOwner) {
+                const muzzleDistance = beam.muzzleDistance || Math.max(46, (beam.owner.realSize || beam.owner.size || 20) * 1.9);
+                beam.start.x = beam.owner.x + Math.cos(beam.angle) * muzzleDistance;
+                beam.start.y = beam.owner.y + Math.sin(beam.angle) * muzzleDistance;
+            }
+            if (now < beam.activeAt) continue;
+            if (!beam.shakeSent) {
+                beam.shakeSent = true;
+                for (const socket of this.gameManager.clients || []) {
+                    const body = socket?.player?.body;
+                    if (!body || this.laserTestBeamDistance(beam, body) > beam.shakeRange) continue;
+                    socket?.talk?.("SH", JSON.stringify({
+                        type: "camera",
+                        duration: beam.shakeDuration,
+                        amount: beam.shakeAmount,
+                        keepShake: false,
+                        push: false,
+                    }));
+                }
+            }
+            const damageUntil = Math.min(now, beam.expiresAt);
+            if (!beam.playersOnly) for (const mob of this.mobs) {
+                if (!mob || mob.isDead?.() || mob.craftrasInvulnerableNpc || mob.craftrasMobFamily === "npc") continue;
+                if (beam.targetMobType && mob.craftrasMobType !== beam.targetMobType) continue;
+                if (beam.bossFormOwner && (mob.craftrasJaneOwner === beam.bossFormOwner || mob.craftrasJaneRootOwner === beam.bossFormOwner)) continue;
+                if (this.isWormDamageImmune(mob) && !beam.bypassWormDamageImmunity && beam.targetMobType !== mob.craftrasMobType) continue;
+                if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) continue;
+                if (beam.singleHit && beam.hitTargets.has(mob.id)) continue;
+                if (!this.laserTestBeamHitsMob(beam, mob)) {
+                    if (!beam.singleHit) beam.lastHitAt.delete(mob.id);
+                    continue;
+                }
+                const previous = beam.lastHitAt.get(mob.id);
+                const ticks = previous == null
+                    ? 1
+                    : Math.min(2, Math.floor((damageUntil - previous) / beam.damageInterval));
+                if (ticks <= 0) continue;
+                beam.lastHitAt.set(mob.id, damageUntil);
+                if (beam.singleHit) beam.hitTargets.add(mob.id);
+                const damagePerTick = beam.damageRatio > 0
+                    ? Math.max(1, mob.health.max * beam.damageRatio)
+                    : beam.damage;
+                let damage = damagePerTick * ticks;
+                if (beam.bossFormOwner) damage *= 0.5;
+                const damageOwner = beam.bossFormOwner || beam.owner;
+                if (!beam.ignoreProgressionScaling) damage = this.scalePlayerProgressionDamage(damageOwner, damage);
+                if (mob.craftrasMobType === "king_zombie" && this.protectKingFromPlayer(mob, damageOwner, now)) continue;
+                damage = this.capKingDamageByGuardian(mob, damage);
+                if (mob.craftrasGuardian) damage = this.absorbGuardianShieldDamage(mob, damage, now);
+                if (damage <= 0 || this.tryGuardianDodge(mob, damageOwner, now)) continue;
+                if (this.tryGuardianLastStand(mob, damage)) {
+                    this.flashEntity(mob, 350);
+                    continue;
+                }
+                mob.health.amount -= damage;
+                this.markBossHealthHit(mob, damageOwner, now);
+                this.setMobAggro(mob, damageOwner, now);
+                this.handleSwordGuyDamaged(mob, damage, damageOwner, now);
+                this.flashEntity(mob);
+                if (mob.health.amount > 0) continue;
+                if (mob.craftrasMagicBoss) {
+                    mob.health.amount = 1;
+                    this.finishChallengeMagicalBoss(mob, now);
+                    continue;
+                }
+                this.awardCraftrasScore(damageOwner, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
+                this.mobs.delete(mob);
+                mob.kill?.();
+            }
+            if (beam.bossFormOwner) continue;
+            for (const { body } of players || []) {
+                if (!body || body === beam.owner || body.isDead?.() || this.areCraftrasPlayerAllies(beam.owner, body)) continue;
+                if (beam.targetId && body.id !== beam.targetId) continue;
+                if (!this.laserTestBeamContains(beam, body)) {
+                    beam.lastHitAt.delete(body.id);
+                    continue;
+                }
+                const previous = beam.lastHitAt.get(body.id);
+                const ticks = previous == null
+                    ? 1
+                    : Math.min(2, Math.floor((damageUntil - previous) / beam.damageInterval));
+                if (ticks <= 0) continue;
+                beam.lastHitAt.set(body.id, damageUntil);
+                const damagePerTick = beam.damageRatio > 0
+                    ? Math.max(1, body.health.max * beam.damageRatio)
+                    : beam.damage;
+                this.applyPlayerDamage(body, damagePerTick * ticks, beam.owner, {
+                    noKnockback: true,
+                    bypassParry: beam.bypassParry,
+                });
+            }
+        }
+    }
+
     applyPopeStaffBeamDamage(zone, owner, players, now) {
         if (!zone || !owner || owner.isDead?.()) return;
         const lastHit = zone.craftrasPopeLastHitAt ??= new Map();
         for (const mob of this.mobs) {
             if (!mob || mob.isDead?.() || mob.craftrasInvulnerableNpc || mob.craftrasMobFamily === "npc") continue;
+            if (this.isWormDamageImmune(mob)) continue;
+            if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) continue;
             if (!this.popeStaffBeamContains(zone, mob)) continue;
             if (now - (lastHit.get(mob.id) || 0) < CRAFTRAS_POPE_STAFF_DAMAGE_INTERVAL) continue;
             lastHit.set(mob.id, now);
-            let damage = CRAFTRAS_POPE_STAFF_BEAM_DAMAGE;
+            let damage = this.scalePlayerProgressionDamage(owner, CRAFTRAS_POPE_STAFF_BEAM_DAMAGE);
             if (mob.craftrasMobType === "king_zombie" && this.protectKingFromPlayer(mob, owner, now)) continue;
             damage = this.capKingDamageByGuardian(mob, damage);
             if (mob.craftrasGuardian) damage = this.absorbGuardianShieldDamage(mob, damage, now);
@@ -8258,10 +13527,16 @@ class Craftras {
                 continue;
             }
             mob.health.amount -= damage;
+            this.markBossHealthHit(mob, owner, now);
             this.setMobAggro(mob, owner, now);
             this.handleSwordGuyDamaged(mob, damage, owner, now);
             this.flashEntity(mob);
             if (mob.health.amount <= 0) {
+                if (mob.craftrasMagicBoss) {
+                    mob.health.amount = 1;
+                    this.finishChallengeMagicalBoss(mob, now);
+                    continue;
+                }
                 this.awardCraftrasScore(owner, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
                 this.mobs.delete(mob);
                 mob.kill?.();
@@ -8302,7 +13577,10 @@ class Craftras {
                 if (now - (lastHit.get(key) || 0) < CRAFTRAS_POPE_STAFF_DAMAGE_INTERVAL) continue;
                 if (this.getBlock(cell.x, cell.y) === BLOCKS.AIR) continue;
                 lastHit.set(key, now);
-                this.damageBlockAt(cell.x, cell.y, CRAFTRAS_POPE_STAFF_BEAM_BLOCK_DAMAGE, { suppressDrops: true });
+                this.damageBlockAt(cell.x, cell.y, CRAFTRAS_POPE_STAFF_BEAM_BLOCK_DAMAGE, {
+                    suppressDrops: true,
+                    owner: zone.owner,
+                });
             }
         }
     }
@@ -8312,13 +13590,15 @@ class Craftras {
         const lastHit = sourceEntity.craftrasPopeLastHitAt ??= new Map();
         for (const mob of this.mobs) {
             if (!mob || mob.isDead?.() || mob.craftrasInvulnerableNpc || mob.craftrasMobFamily === "npc") continue;
+            if (this.isWormDamageImmune(mob)) continue;
+            if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) continue;
             const hitRadius = radius + Math.max(1, mob.realSize || mob.size || 12);
             const dx = mob.x - sourceEntity.x;
             const dy = mob.y - sourceEntity.y;
             if (dx * dx + dy * dy > hitRadius * hitRadius) continue;
             if (now - (lastHit.get(mob.id) || 0) < CRAFTRAS_POPE_STAFF_DAMAGE_INTERVAL) continue;
             lastHit.set(mob.id, now);
-            let damage = baseDamage;
+            let damage = this.scalePlayerProgressionDamage(owner, baseDamage);
             if (mob.craftrasMobType === "king_zombie" && this.protectKingFromPlayer(mob, owner, now)) continue;
             damage = this.capKingDamageByGuardian(mob, damage);
             if (mob.craftrasGuardian) damage = this.absorbGuardianShieldDamage(mob, damage, now);
@@ -8328,10 +13608,16 @@ class Craftras {
                 continue;
             }
             mob.health.amount -= damage;
+            this.markBossHealthHit(mob, owner, now);
             this.setMobAggro(mob, owner, now);
             this.handleSwordGuyDamaged(mob, damage, owner, now);
             this.flashEntity(mob);
             if (mob.health.amount <= 0) {
+                if (mob.craftrasMagicBoss) {
+                    mob.health.amount = 1;
+                    this.finishChallengeMagicalBoss(mob, now);
+                    continue;
+                }
                 this.awardCraftrasScore(owner, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
                 this.mobs.delete(mob);
                 mob.kill?.();
@@ -8365,7 +13651,7 @@ class Craftras {
         entity.alpha = 1;
     }
 
-    absorbShieldDamage(body, amount) {
+    absorbShieldDamage(body, amount, options = {}) {
         if (!body?.control?.alt || amount <= 0) return amount;
         if (ITEMS[body.craftrasHeldItem]?.heal) return amount;
         if (body.craftrasHeldItem === "pope_staff") return amount;
@@ -8381,7 +13667,11 @@ class Craftras {
         }
         if (shield.brokenUntil && now < shield.brokenUntil) return amount;
         if (!Number.isFinite(shield.durability)) shield.durability = maxHealth;
-        const absorbed = Math.min(shield.durability, amount);
+        const proportionalSwordDamage = !!options.swordGuyAttack;
+        const durabilityDamage = proportionalSwordDamage
+            ? Math.max(CRAFTRAS_SWORD_GUY_SHIELD_MIN_DAMAGE, maxHealth * CRAFTRAS_SWORD_GUY_SHIELD_DAMAGE_RATIO)
+            : amount;
+        const absorbed = Math.min(shield.durability, durabilityDamage);
         shield.durability -= absorbed;
         if (absorbed > 0) {
             shield.hitUntil = now + 450;
@@ -8394,6 +13684,9 @@ class Craftras {
         }
         const socket = this.gameManager.clients.find(client => client?.player?.body === body);
         if (socket) this.gameManager.socketManager.sendCraftrasInventory(socket);
+        if (proportionalSwordDamage) {
+            return amount * Math.max(0, 1 - absorbed / durabilityDamage);
+        }
         return amount - absorbed;
     }
 
@@ -8430,30 +13723,49 @@ class Craftras {
     }
 
     applyPlayerDamage(body, amount, source, options = {}) {
+        const bossFormOwner = this.getBossFormOwnerFromDamageSource(source);
+        if (bossFormOwner && body !== bossFormOwner && this.mobs.has(body)) {
+            const scale = Math.max(0, Number(bossFormOwner.craftrasBossFormDamageScale) || 0.5);
+            return this.damageMobFromGreatFriend(body, bossFormOwner, amount * scale, Date.now());
+        }
         if (!body || body.isDead?.() || body.invuln || body.godmode || amount <= 0) return false;
+        const playerSource = this.getPlayerBodyFromDamageSource(source);
+        if (playerSource && playerSource !== body && this.areCraftrasPlayerAllies(body, playerSource)) return false;
+        if (playerSource && playerSource !== body) amount = this.scalePlayerProgressionDamage(playerSource, amount);
+        if (this.hasWorld2Curse(body)) amount *= 1.5;
+        const now = Date.now();
+        if (!options.bypassParry && now < (body.craftrasParryInvulnerableUntil || 0)) return true;
+        if (!options.bypassParry && this.queuePlayerParryDamage(body, amount, source, options, now)) return true;
+        if (!options.bypassParry && this.isPlayerParryGuarding(body)) {
+            amount *= CRAFTRAS_PARRY_GUARD_DAMAGE_MULTIPLIER;
+        }
         const noKnockback = !!options.noKnockback;
-        amount = this.absorbShieldDamage(body, amount);
+        const knockbackForce = Math.max(0, Number(options.knockbackForce) || 12);
+        const swordGuyAttack = !!options.swordGuyAttack || source?.craftrasMobType === "sword_guy";
+        if (!options.ignoreShield) amount = this.absorbShieldDamage(body, amount, { swordGuyAttack });
         if (amount <= 0) {
             if (source && !noKnockback) {
                 const dx = body.x - source.x;
                 const dy = body.y - source.y;
                 const distance = Math.hypot(dx, dy) || 1;
-                body.velocity.x += dx / distance * 12;
-                body.velocity.y += dy / distance * 12;
+                body.velocity.x += dx / distance * knockbackForce;
+                body.velocity.y += dy / distance * knockbackForce;
                 this.resolveEntityOutOfWall(body);
             }
             return true;
         }
+        this.resetPlayerParryCounter(body);
         body.health.amount -= amount;
-        body.craftrasLastDamageAt = Date.now();
+        if (playerSource && playerSource !== body) this.recordPlayerDamageTarget(playerSource, body, amount, now);
+        body.craftrasLastDamageAt = now;
         body.craftrasNextRegenAt = body.craftrasLastDamageAt + 10000;
         this.flashEntity(body);
         if (source && !noKnockback) {
             const dx = body.x - source.x;
             const dy = body.y - source.y;
             const distance = Math.hypot(dx, dy) || 1;
-            body.velocity.x += dx / distance * 12;
-            body.velocity.y += dy / distance * 12;
+            body.velocity.x += dx / distance * knockbackForce;
+            body.velocity.y += dy / distance * knockbackForce;
             this.resolveEntityOutOfWall(body);
         }
         if (body.health.amount <= 0) {
@@ -8463,17 +13775,3381 @@ class Craftras {
         return true;
     }
 
+    getBossFormOwnerFromDamageSource(source) {
+        let current = source;
+        const visited = new Set();
+        for (let depth = 0; current && depth < 6 && !visited.has(current); depth++) {
+            visited.add(current);
+            if (current.craftrasBossFormType) return current;
+            current = current.craftrasBossFormOwner
+                || current.craftrasJaneRootOwner
+                || current.craftrasJaneOwner
+                || current.craftrasOwner
+                || null;
+        }
+        return null;
+    }
+
+    hasPlayerParryTool(body) {
+        return ["parry_tool", "parry_tool_op", "magic_book"].includes(body?.craftrasOffhandShield?.id);
+    }
+
+    isPlayerAutoParryTool(body) {
+        return body?.craftrasOffhandShield?.id === "parry_tool_op";
+    }
+
+    hasMagicBook(body) {
+        return body?.craftrasOffhandShield?.id === "magic_book";
+    }
+
+    initializeMagicBookState(body, now = Date.now()) {
+        if (!body) return;
+        if (!Number.isFinite(body.craftrasMagicBookGauge)) body.craftrasMagicBookGauge = 0;
+        if (!Number.isFinite(body.craftrasMagicBookGaugeUpdatedAt)) body.craftrasMagicBookGaugeUpdatedAt = now;
+        if (!Number.isFinite(body.craftrasMagicBookRegenLockedUntil)) body.craftrasMagicBookRegenLockedUntil = 0;
+        if (!Number.isFinite(body.craftrasMagicBookSlashCooldownUntil)) body.craftrasMagicBookSlashCooldownUntil = 0;
+        if (!Number.isFinite(body.craftrasMagicBookBarrageCooldownUntil)) body.craftrasMagicBookBarrageCooldownUntil = 0;
+    }
+
+    syncMagicBookState(body, now = Date.now(), force = false) {
+        if (!body) return;
+        this.initializeMagicBookState(body, now);
+        const equipped = this.hasMagicBook(body);
+        const gauge = Math.max(0, Math.min(CRAFTRAS_MAGIC_BOOK_GAUGE_MAX, Math.floor(body.craftrasMagicBookGauge)));
+        const regenLock = Math.max(0, (body.craftrasMagicBookRegenLockedUntil || 0) - now);
+        const slashCooldown = Math.max(0, (body.craftrasMagicBookSlashCooldownUntil || 0) - now);
+        const barrageCooldown = Math.max(0, (body.craftrasMagicBookBarrageCooldownUntil || 0) - now);
+        const charge = body.craftrasMagicBookCharging
+            ? Math.max(0, Math.min(1, (now - body.craftrasMagicBookChargeStartedAt) / CRAFTRAS_MAGIC_BOOK_SLASH_CHARGE))
+            : 0;
+        const signature = [
+            equipped ? 1 : 0,
+            gauge,
+            Math.ceil(regenLock / 100),
+            Math.ceil(slashCooldown / 100),
+            Math.ceil(barrageCooldown / 100),
+            Math.floor(charge * 100),
+            body.craftrasMagicBookShiftActive ? 1 : 0,
+        ].join(":");
+        if (!force && signature === body.craftrasMagicBookLastSync) return;
+        body.craftrasMagicBookLastSync = signature;
+        this.getSocketForBody(body)?.talk?.(
+            "MG",
+            gauge,
+            regenLock,
+            slashCooldown,
+            barrageCooldown,
+            Math.floor(charge * 100),
+            equipped ? 1 : 0,
+            body.craftrasMagicBookShiftActive ? 1 : 0,
+        );
+    }
+
+    spendMagicBookGauge(body, amount, now = Date.now()) {
+        this.initializeMagicBookState(body, now);
+        if ((body.craftrasMagicBookGauge || 0) < amount) return false;
+        body.craftrasMagicBookGauge = Math.max(0, body.craftrasMagicBookGauge - amount);
+        body.craftrasMagicBookRegenLockedUntil = now + CRAFTRAS_MAGIC_BOOK_RECHARGE_LOCK;
+        body.craftrasMagicBookGaugeUpdatedAt = now;
+        this.syncMagicBookState(body, now, true);
+        return true;
+    }
+
+    setMagicBookShiftInput(socket, active) {
+        const body = socket?.player?.body;
+        if (!body || body.isDead?.() || body.craftrasSpectator) return false;
+        this.initializeMagicBookState(body);
+        body.craftrasMagicBookShiftRequested = !!active && this.hasMagicBook(body);
+        if (!active) body.craftrasMagicBookShiftActive = false;
+        return true;
+    }
+
+    getMagicBookLevel(body) {
+        return Math.max(1, Math.floor(Number(body?.skill?.level) || 1));
+    }
+
+    getMagicBookSwordDamage(body) {
+        const heldItem = body?.craftrasHeldItem;
+        if (heldItem === "the_great_friend") return this.getMagicBookLevel(body) * 2;
+        const damages = {
+            sword: 20,
+            wooden_sword: 20,
+            stone_sword: 40,
+            iron_sword: 60,
+            gold_sword: 20,
+            diamond_sword: 80,
+            ruby_sword: 200,
+            horn_sword: 500,
+            sapphire_sword: 260,
+            venom_sword: 100,
+            the_great: 200,
+        };
+        return Math.max(1, Number(ITEMS[heldItem]?.damage) || damages[heldItem] || 20);
+    }
+
+    findMagicBookTarget(owner, x = owner?.x || 0, y = owner?.y || 0) {
+        let best = null;
+        let bestDistance = Infinity;
+        for (const mob of this.mobs) {
+            if (!this.isValidGreatFriendMonsterTarget(mob)) continue;
+            const distance = (mob.x - x) ** 2 + (mob.y - y) ** 2;
+            if (distance >= bestDistance) continue;
+            best = mob;
+            bestDistance = distance;
+        }
+        return best;
+    }
+
+    getMagicBookColor(now, offset = 0, palette = ["#9f42ff", "#ff58d4", "#17121f"]) {
+        const phase = ((now / 900 + offset) % palette.length + palette.length) % palette.length;
+        const index = Math.floor(phase);
+        const t = phase - index;
+        const parse = hex => [
+            parseInt(hex.slice(1, 3), 16),
+            parseInt(hex.slice(3, 5), 16),
+            parseInt(hex.slice(5, 7), 16),
+        ];
+        const from = parse(palette[index]);
+        const to = parse(palette[(index + 1) % palette.length]);
+        const rgb = from.map((value, channel) => Math.round(value + (to[channel] - value) * t));
+        return `#${rgb.map(value => value.toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    spawnMagicBookEntity(owner, kind, options = {}) {
+        if (!owner || owner.isDead?.()) return null;
+        const entity = new Entity({ x: options.x ?? owner.x, y: options.y ?? owner.y });
+        entity.define(kind === "slash" ? "craftrasGuardianSlashProjectile" : kind === "anchor" || kind === "parry" ? "craftrasMagicBookOrb" : "craftrasMagicBookBullet");
+        // Rendering must use the spell's own color instead of the owner's team color.
+        entity.team = entity.id;
+        entity.alwaysActive = true;
+        entity.craftrasMagicBookKind = kind;
+        entity.craftrasMagicBookOwner = owner;
+        entity.craftrasMagicBookDamage = Math.max(0, Number(options.damage) || 0);
+        entity.craftrasMagicBookVelocity = options.velocity || { x: 0, y: 0 };
+        entity.craftrasMagicBookTarget = options.target || null;
+        entity.craftrasMagicBookOffset = Number(options.offset) || 0;
+        entity.craftrasMagicBookSpawnedAt = Date.now();
+        entity.craftrasMagicBookActiveUntil = options.activeUntil ?? entity.craftrasMagicBookSpawnedAt + 8_000;
+        entity.craftrasMagicBookExpiresAt = options.expiresAt ?? entity.craftrasMagicBookSpawnedAt + 8_000;
+        entity.craftrasMagicBookHitIds = new Set();
+        entity.craftrasMagicBookSide = Number(options.side) || 0;
+        entity.facing = Math.atan2(entity.craftrasMagicBookVelocity.y, entity.craftrasMagicBookVelocity.x);
+        entity.vfacing = entity.facing;
+        const size = Math.max(5, Number(options.size) || owner.realSize || owner.size || 12);
+        entity.SIZE = size;
+        entity.coreSize = size;
+        entity.refreshBodyAttributes?.();
+        entity.on("dead", () => this.magicBookEntities.delete(entity));
+        this.magicBookEntities.add(entity);
+        return entity;
+    }
+
+    spawnMagicBookParryOrbs(body, now = Date.now()) {
+        const target = this.findMagicBookTarget(body);
+        const baseFacing = Math.atan2(body.control?.target?.y || 0, body.control?.target?.x || 1);
+        const spawnDistance = Math.max(18, body.realSize || body.size || 12) * 1.35;
+        for (let index = 0; index < 3; index++) {
+            const angle = baseFacing + Math.PI + (index - 1) * 0.28;
+            this.spawnMagicBookEntity(body, "parry", {
+                x: body.x + Math.cos(angle) * spawnDistance,
+                y: body.y + Math.sin(angle) * spawnDistance,
+                velocity: { x: Math.cos(angle) * 18, y: Math.sin(angle) * 18 },
+                target,
+                damage: this.getMagicBookLevel(body) * 5,
+                size: Math.max(12, body.realSize || body.size || 12),
+                offset: index * 0.7,
+                expiresAt: now + 10_000,
+            });
+        }
+    }
+
+    spawnMagicBookSlash(body, now = Date.now()) {
+        const facing = Math.atan2(body.control?.target?.y || 0, body.control?.target?.x || 1);
+        const damage = this.getMagicBookSwordDamage(body) * (body.craftrasHeldItem === "the_great_friend" ? 10 : 5);
+        const radius = Math.max(18, body.realSize || body.size || 12);
+        this.spawnMagicBookEntity(body, "slash", {
+            x: body.x + Math.cos(facing) * radius * 1.6,
+            y: body.y + Math.sin(facing) * radius * 1.6,
+            velocity: {
+                x: Math.cos(facing) * CRAFTRAS_GUARDIAN_SLASH_SPEED,
+                y: Math.sin(facing) * CRAFTRAS_GUARDIAN_SLASH_SPEED,
+            },
+            damage,
+            size: 36,
+            activeUntil: now + CRAFTRAS_GUARDIAN_SLASH_LIFE,
+            expiresAt: now + CRAFTRAS_GUARDIAN_SLASH_LIFE + CRAFTRAS_GUARDIAN_SLASH_FADE,
+        });
+        this.getSocketForBody(body)?.talk?.("SH", JSON.stringify({
+            type: "camera",
+            duration: 260,
+            amount: 9,
+            keepShake: false,
+        }));
+    }
+
+    requestMagicBookBarrage(socket, now = Date.now()) {
+        const body = socket?.player?.body;
+        if (!body || body.isDead?.() || body.craftrasSpectator || !this.hasMagicBook(body)) return false;
+        this.initializeMagicBookState(body, now);
+        if (now < body.craftrasMagicBookBarrageCooldownUntil) {
+            this.syncMagicBookState(body, now, true);
+            return false;
+        }
+        if (!this.spendMagicBookGauge(body, CRAFTRAS_MAGIC_BOOK_BARRAGE_COST, now)) return false;
+        body.craftrasMagicBookBarrageStartedAt = now;
+        body.craftrasMagicBookBarrageUntil = now + CRAFTRAS_MAGIC_BOOK_BARRAGE_DURATION;
+        body.craftrasMagicBookNextBarrageShotAt = now;
+        body.craftrasMagicBookBarrageCooldownUntil = now + CRAFTRAS_MAGIC_BOOK_BARRAGE_COOLDOWN;
+        const radius = Math.max(12, body.realSize || body.size || 12);
+        for (const side of [-1, 1]) {
+            this.spawnMagicBookEntity(body, "anchor", {
+                size: radius,
+                side,
+                offset: side > 0 ? 0.6 : 0,
+                expiresAt: body.craftrasMagicBookBarrageUntil,
+            });
+        }
+        this.syncMagicBookState(body, now, true);
+        return true;
+    }
+
+    updateMagicBookCombatInput(body, now = Date.now()) {
+        if (!body) return false;
+        const equipped = this.hasMagicBook(body);
+        const hasSword = this.hasPlayerParrySword(body);
+        const fireDown = !!body.control?.fire;
+        if (!equipped || !hasSword) {
+            body.craftrasMagicBookCharging = false;
+            body.craftrasMagicBookChargeStartedAt = 0;
+            body.craftrasMagicBookFireWasDown = fireDown;
+            body.craftrasMagicBookSuppressSwing = false;
+            return false;
+        }
+        this.initializeMagicBookState(body, now);
+        const pressed = fireDown && !body.craftrasMagicBookFireWasDown;
+        const released = !fireDown && body.craftrasMagicBookFireWasDown;
+        body.craftrasMagicBookFireWasDown = fireDown;
+        if (pressed && now >= body.craftrasMagicBookSlashCooldownUntil && body.craftrasMagicBookGauge >= CRAFTRAS_MAGIC_BOOK_SLASH_COST) {
+            body.craftrasMagicBookCharging = true;
+            body.craftrasMagicBookChargeStartedAt = now;
+            body.craftrasMagicBookChargedThisHold = false;
+        }
+        if (body.craftrasMagicBookCharging && fireDown) {
+            body.craftrasMagicBookSuppressSwing = true;
+            if (now >= (body.craftrasMagicBookNextChargeEffectAt || 0)) {
+                body.craftrasMagicBookNextChargeEffectAt = now + 100;
+                const progress = Math.max(0, Math.min(1, (now - body.craftrasMagicBookChargeStartedAt) / CRAFTRAS_MAGIC_BOOK_SLASH_CHARGE));
+                const angle = now / 170;
+                const distance = Math.max(12, body.realSize || body.size || 12) * (1.8 - progress * 0.7);
+                this.spawnExplosionEffect({
+                    x: body.x + Math.cos(angle) * distance,
+                    y: body.y + Math.sin(angle) * distance,
+                }, {
+                    duration: 420,
+                    startSize: 7 + progress * 5,
+                    endSize: 2,
+                    color: Math.floor(now / 100) % 2 ? "#a747ff" : "#ffffff",
+                    alpha: 0.4,
+                    fade: true,
+                });
+            }
+            if (now - body.craftrasMagicBookChargeStartedAt >= CRAFTRAS_MAGIC_BOOK_SLASH_CHARGE) {
+                if (this.spendMagicBookGauge(body, CRAFTRAS_MAGIC_BOOK_SLASH_COST, now)) {
+                    body.craftrasMagicBookSlashCooldownUntil = now + CRAFTRAS_MAGIC_BOOK_SLASH_COOLDOWN;
+                    body.craftrasMagicBookCastStartedAt = now;
+                    body.craftrasMagicBookCastUntil = now + 800;
+                    body.craftrasMagicBookChargedThisHold = true;
+                    this.spawnMagicBookSlash(body, now);
+                }
+                body.craftrasMagicBookCharging = false;
+            }
+        } else if (released) {
+            if (body.craftrasMagicBookCharging && !body.craftrasMagicBookChargedThisHold) {
+                body.slayerSwingPhase = 0;
+                body.slayerSwingActive = true;
+                body.craftrasMiningHitKeys = new Set();
+                body.craftrasCombatHitIds = new Set();
+                body.craftrasPreviousToolSegment = null;
+            }
+            body.craftrasMagicBookCharging = false;
+            body.craftrasMagicBookSuppressSwing = false;
+        } else if (!fireDown) {
+            body.craftrasMagicBookSuppressSwing = false;
+        }
+        this.syncMagicBookState(body, now);
+        return !!body.craftrasMagicBookSuppressSwing;
+    }
+
+    updateMagicBookPlayer(socket, body, now = Date.now()) {
+        if (!body) return;
+        this.initializeMagicBookState(body, now);
+        const equipped = this.hasMagicBook(body);
+        if (equipped && now >= body.craftrasMagicBookRegenLockedUntil) {
+            const elapsed = now - body.craftrasMagicBookGaugeUpdatedAt;
+            const steps = Math.floor(elapsed / CRAFTRAS_MAGIC_BOOK_RECHARGE_INTERVAL);
+            if (steps > 0) {
+                body.craftrasMagicBookGauge = Math.min(
+                    CRAFTRAS_MAGIC_BOOK_GAUGE_MAX,
+                    body.craftrasMagicBookGauge + steps * CRAFTRAS_MAGIC_BOOK_RECHARGE_STEP,
+                );
+                body.craftrasMagicBookGaugeUpdatedAt += steps * CRAFTRAS_MAGIC_BOOK_RECHARGE_INTERVAL;
+            }
+        } else {
+            body.craftrasMagicBookGaugeUpdatedAt = now;
+        }
+        const shiftActive = equipped
+            && body.craftrasMagicBookShiftRequested
+            && body.craftrasMagicBookGauge >= CRAFTRAS_MAGIC_BOOK_SHIFT_COST;
+        body.craftrasMagicBookShiftActive = shiftActive;
+        if (shiftActive) {
+            if (now >= (body.craftrasMagicBookNextShiftCostAt || 0)) {
+                body.craftrasMagicBookNextShiftCostAt = now + 100;
+                if (!this.spendMagicBookGauge(body, CRAFTRAS_MAGIC_BOOK_SHIFT_COST, now)) {
+                    body.craftrasMagicBookShiftActive = false;
+                    body.craftrasMagicBookShiftRequested = false;
+                }
+            }
+            if (body.craftrasMagicBookShiftActive) {
+                body.topSpeed *= 2;
+                const command = socket?.player?.command;
+                const moveX = (command?.right ? 1 : 0) - (command?.left ? 1 : 0);
+                const moveY = (command?.down ? 1 : 0) - (command?.up ? 1 : 0);
+                const distance = Math.hypot(moveX, moveY);
+                body.velocity.x = distance ? moveX / distance * body.topSpeed : 0;
+                body.velocity.y = distance ? moveY / distance * body.topSpeed : 0;
+                if (body.accel) {
+                    body.accel.x = 0;
+                    body.accel.y = 0;
+                }
+                body.alpha = 0.8;
+                if (now >= (body.craftrasMagicBookNextShiftTrailAt || 0)) {
+                    body.craftrasMagicBookNextShiftTrailAt = now + 70;
+                    this.spawnExplosionEffect(body, {
+                        duration: 350,
+                        startSize: Math.max(8, (body.realSize || body.size || 12) * 0.95),
+                        endSize: Math.max(4, (body.realSize || body.size || 12) * 0.35),
+                        color: "#a347ff",
+                        alpha: 0.28,
+                        fade: true,
+                    });
+                }
+            }
+        } else if (!body.craftrasSpectator && !body.craftrasInvisible) {
+            body.alpha = 1;
+        }
+        if (!equipped) {
+            body.craftrasMagicBookShiftRequested = false;
+            body.craftrasMagicBookShiftActive = false;
+            body.craftrasMagicBookCharging = false;
+        }
+        if (now < (body.craftrasMagicBookBarrageUntil || 0) && now >= (body.craftrasMagicBookNextBarrageShotAt || 0)) {
+            body.craftrasMagicBookNextBarrageShotAt += CRAFTRAS_MAGIC_BOOK_BARRAGE_INTERVAL;
+            const targetOffsetX = Number(body.control?.target?.x) || 0;
+            const targetOffsetY = Number(body.control?.target?.y) || 0;
+            const facing = targetOffsetX || targetOffsetY
+                ? Math.atan2(targetOffsetY, targetOffsetX)
+                : Number.isFinite(body.facing) ? body.facing : 0;
+            const mouseX = body.x + Math.cos(facing) * Math.max(1, Math.hypot(targetOffsetX, targetOffsetY));
+            const mouseY = body.y + Math.sin(facing) * Math.max(1, Math.hypot(targetOffsetX, targetOffsetY));
+            const radius = Math.max(12, body.realSize || body.size || 12);
+            for (const side of [-1, 1]) {
+                const sideAngle = facing + side * Math.PI / 2;
+                const spawnX = body.x + Math.cos(sideAngle) * radius * CRAFTRAS_MAGIC_BOOK_BARRAGE_ORBIT_DISTANCE;
+                const spawnY = body.y + Math.sin(sideAngle) * radius * CRAFTRAS_MAGIC_BOOK_BARRAGE_ORBIT_DISTANCE;
+                const aimX = mouseX - spawnX;
+                const aimY = mouseY - spawnY;
+                const aimDistance = Math.hypot(aimX, aimY) || 1;
+                this.spawnMagicBookEntity(body, "barrage", {
+                    x: spawnX,
+                    y: spawnY,
+                    velocity: {
+                        x: aimX / aimDistance * CRAFTRAS_MAGIC_BOOK_BARRAGE_SPEED,
+                        y: aimY / aimDistance * CRAFTRAS_MAGIC_BOOK_BARRAGE_SPEED,
+                    },
+                    damage: this.getMagicBookLevel(body) / 2,
+                    size: Math.max(6, radius * 0.45),
+                    offset: side > 0 ? 0.5 : 0,
+                    expiresAt: now + 4_000,
+                });
+            }
+        }
+        this.syncMagicBookState(body, now);
+    }
+
+    hasPlayerParrySword(body) {
+        const heldItem = body?.craftrasHeldItem;
+        return heldItem === "sword" || heldItem === "the_great_friend" || heldItem?.endsWith("_sword");
+    }
+
+    canPlayerParry(body) {
+        return Date.now() >= (body?.craftrasParryBrokenUntil || 0)
+            && this.hasPlayerParryTool(body)
+            && (this.isPlayerAutoParryTool(body) || this.hasPlayerParrySword(body));
+    }
+
+    isPlayerParryGuarding(body) {
+        return Date.now() >= (body?.craftrasParryBrokenUntil || 0)
+            && this.hasPlayerParryTool(body)
+            && this.hasPlayerParrySword(body)
+            && !!body.control?.alt;
+    }
+
+    initializePlayerParryState(body, now = Date.now()) {
+        if (!body) return;
+        if (!Number.isFinite(body.craftrasParryReduction)) body.craftrasParryReduction = 100;
+        if (!Number.isFinite(body.craftrasParryCounter)) body.craftrasParryCounter = 0;
+        if (!Number.isFinite(body.craftrasParryChargeUpdatedAt)) body.craftrasParryChargeUpdatedAt = now;
+        if (!Array.isArray(body.craftrasParryPendingHits)) body.craftrasParryPendingHits = [];
+        if (!Number.isFinite(body.craftrasParryPrimedUntil)) body.craftrasParryPrimedUntil = 0;
+        if (!Number.isFinite(body.craftrasParryPrimedReduction)) body.craftrasParryPrimedReduction = null;
+    }
+
+    syncPlayerParryState(body, force = false) {
+        if (!body) return;
+        const equipped = this.hasPlayerParryTool(body);
+        const reduction = Math.max(0, Math.min(100, Math.floor(body.craftrasParryReduction || 0)));
+        const counter = Math.max(0, Math.min(CRAFTRAS_PARRY_COUNTER_MAX, Math.floor(body.craftrasParryCounter || 0)));
+        const signature = `${equipped ? 1 : 0}:${reduction}:${counter}`;
+        if (!force && signature === body.craftrasParryLastSync) return;
+        body.craftrasParryLastSync = signature;
+        this.getSocketForBody(body)?.talk?.("PY", reduction, counter, equipped ? 1 : 0);
+    }
+
+    resetPlayerParryCounter(body) {
+        if (!body || !body.craftrasParryCounter) return;
+        body.craftrasParryCounter = 0;
+        this.syncPlayerParryState(body);
+    }
+
+    isOrdinaryParryBullet(tool) {
+        if (!tool || tool.type !== "bullet") return false;
+        if (
+            tool.craftrasGuardianSlashOwner
+            || tool.craftrasTheGreatKind
+            || tool.craftrasMagicKind
+            || tool.craftrasSpikerOwner
+            || tool.craftrasRocketOwner
+            || tool.craftrasBoneBombOwner
+            || tool.craftrasPhoenixOwner
+        ) return false;
+        const label = String(tool.label || "");
+        return !/Slash|Friend|Spike|Rocket|Bomb|Magic|Phoenix/i.test(label);
+    }
+
+    isMovingParryContact(source, body) {
+        if (!source || !body || source.craftrasMobFamily === "npc") return false;
+        if (["spiker", "the_nuclear"].includes(source.craftrasMobType)) return false;
+        const velocityX = Number(source.velocity?.x ?? source.xMotion ?? 0);
+        const velocityY = Number(source.velocity?.y ?? source.yMotion ?? 0);
+        const speed = Math.hypot(velocityX, velocityY);
+        if (speed < 0.35) return false;
+        return velocityX * (body.x - source.x) + velocityY * (body.y - source.y) > 0;
+    }
+
+    holdParryBullet(tool, source) {
+        if (!tool || tool.isDead?.()) return null;
+        const velocityX = Number(tool.velocity?.x || 0);
+        const velocityY = Number(tool.velocity?.y || 0);
+        const speed = Math.max(1, Math.hypot(velocityX, velocityY), Number(tool.topSpeed) || 0);
+        const configuredDamage = Number(source?.craftrasSkeletonBulletDamage);
+        const reflectedDamage = Number.isFinite(configuredDamage) && configuredDamage > 0
+            ? configuredDamage
+            : Math.max(0, Number(tool.craftrasParryReflectedDamage ?? tool.damage) || 0);
+        const held = {
+            entity: tool,
+            source: source || tool.master || tool.source || null,
+            speed,
+            damage: reflectedDamage,
+            velocityX,
+            velocityY,
+            alpha: tool.alpha,
+            intangibility: tool.intangibility,
+            noCollisions: tool.settings?.no_collisions,
+            range: tool.range,
+        };
+        if (tool.health) tool.health.amount = Math.max(tool.health.amount || 0, tool.health.max || 1);
+        tool.damageReceived = 0;
+        tool.readyToDie = false;
+        tool.alwaysActive = true;
+        tool.alpha = 0;
+        tool.intangibility = true;
+        if (tool.settings) tool.settings.no_collisions = true;
+        if (Number.isFinite(tool.range)) tool.range = Math.max(tool.range, 2_000);
+        if (tool.velocity) {
+            tool.velocity.x = 0;
+            tool.velocity.y = 0;
+        }
+        if (Array.isArray(tool.collisionArray)) tool.collisionArray.length = 0;
+        return held;
+    }
+
+    capturePlayerParryCollisionDamage(body, amount, damageInflictor = [], damageTool = [], now = Date.now()) {
+        if (!body || amount <= 0) return false;
+        if (now < (body.craftrasParryInvulnerableUntil || 0)) return true;
+        if (!this.canPlayerParry(body)) return false;
+        const automatic = this.isPlayerAutoParryTool(body);
+        const preInputActive = now <= (body.craftrasParryPrimedUntil || 0);
+        if (
+            !automatic
+            && !preInputActive
+            && this.isPlayerParryGuarding(body)
+            && body.craftrasParryAltWasDown
+        ) return false;
+        this.initializePlayerParryState(body, now);
+
+        const bullets = [];
+        const contacts = [];
+        for (let index = 0; index < damageTool.length; index++) {
+            const tool = damageTool[index];
+            const source = damageInflictor[index] || tool?.master || tool?.source || null;
+            if (this.isOrdinaryParryBullet(tool)) {
+                const held = this.holdParryBullet(tool, source);
+                if (held) bullets.push(held);
+            } else if (this.isMovingParryContact(source || tool, body)) {
+                contacts.push(source || tool);
+            }
+        }
+        if (!bullets.length && !contacts.length && !automatic) return false;
+        const duplicate = body.craftrasParryPendingHits.some(hit =>
+            hit.contacts?.some(source => contacts.includes(source))
+            || hit.bullets?.some(entry => bullets.some(next => next.entity === entry.entity))
+        );
+        if (duplicate) return true;
+        const hit = {
+            amount,
+            bullets,
+            contacts,
+            source: contacts[0] || bullets[0]?.source || null,
+            parryReduction: preInputActive ? body.craftrasParryPrimedReduction : null,
+            receivedAt: now,
+            expiresAt: now + CRAFTRAS_PARRY_WINDOW,
+        };
+        if (automatic || preInputActive) {
+            body.craftrasParryPrimedUntil = 0;
+            this.resolvePlayerParrySuccess(body, [hit], now);
+        }
+        else body.craftrasParryPendingHits.push(hit);
+        return true;
+    }
+
+    queuePlayerParryDamage(body, amount, source, options = {}, now = Date.now()) {
+        if (
+            !body
+            || !source
+            || options.ignoreShield
+            || !this.canPlayerParry(body)
+        ) return false;
+        const playerSource = this.getPlayerBodyFromDamageSource(source);
+        if (!playerSource && !source.craftrasMobType && !source.craftrasMobFamily && !options.parryExplosion) return false;
+        this.initializePlayerParryState(body, now);
+        const preInputActive = now <= (body.craftrasParryPrimedUntil || 0);
+        const forcedParryReduction = Number.isFinite(Number(options.forceParryReduction))
+            ? Math.max(0, Math.min(100, Number(options.forceParryReduction)))
+            : null;
+        if (this.isPlayerAutoParryTool(body)) {
+            this.resolvePlayerParrySuccess(body, [{
+                amount,
+                bullets: [],
+                contacts: this.isMovingParryContact(source, body) ? [source] : [],
+                source,
+                parryReduction: forcedParryReduction,
+                receivedAt: now,
+                expiresAt: now,
+            }], now);
+            return true;
+        }
+        if (
+            (!preInputActive && this.isPlayerParryGuarding(body) && body.craftrasParryAltWasDown)
+            || ["spiker", "the_nuclear", "spiker_spike", "spiker_giant_spike"].includes(source.craftrasMobType)
+        ) return false;
+        if (body.craftrasParryPendingHits.some(hit => hit.source === source)) return true;
+        const hit = {
+            amount,
+            bullets: [],
+            contacts: [],
+            source,
+            parryReduction: forcedParryReduction ?? (preInputActive ? body.craftrasParryPrimedReduction : null),
+            failedKnockbackForce: options.noKnockback ? 0 : Math.max(0, Number(options.knockbackForce) || 12),
+            receivedAt: now,
+            expiresAt: now + CRAFTRAS_PARRY_WINDOW,
+        };
+        if (preInputActive) {
+            body.craftrasParryPrimedUntil = 0;
+            this.resolvePlayerParrySuccess(body, [hit], now);
+        } else {
+            body.craftrasParryPendingHits.push(hit);
+        }
+        return true;
+    }
+
+    releaseHeldParryBullet(entry, reflected, body) {
+        const bullet = entry?.entity;
+        if (!bullet) return false;
+        if (!reflected) {
+            bullet.destroy?.();
+            return false;
+        }
+        if (bullet.health) bullet.health.amount = Math.max(1, bullet.health.max || 1);
+        bullet.damageReceived = 0;
+        bullet.readyToDie = false;
+        bullet.alpha = Number.isFinite(entry.alpha) ? entry.alpha : 1;
+        bullet.intangibility = entry.intangibility;
+        if (bullet.settings) bullet.settings.no_collisions = entry.noCollisions;
+        const target = entry.source;
+        let dx = target && target !== body ? target.x - body.x : -entry.velocityX;
+        let dy = target && target !== body ? target.y - body.y : -entry.velocityY;
+        const distance = Math.hypot(dx, dy) || 1;
+        dx /= distance;
+        dy /= distance;
+        const startDistance = Math.max(18, (body.realSize || body.size || 12) + (bullet.realSize || bullet.size || 4) + 4);
+        bullet.x = body.x + dx * startDistance;
+        bullet.y = body.y + dy * startDistance;
+        bullet.team = body.team;
+        if (bullet.color && body.color?.base) bullet.color.base = body.color.base;
+        try {
+            bullet.master = body;
+            bullet.source = body;
+            bullet.parent = body;
+        } catch {}
+        bullet.craftrasParryReflected = true;
+        bullet.craftrasParryReflectedDamage = Math.max(0, Number(entry.damage) || 0);
+        if (bullet.craftrasParryReflectedDamage > 0) {
+            bullet.DAMAGE = bullet.craftrasParryReflectedDamage;
+            bullet.damage = bullet.craftrasParryReflectedDamage;
+        }
+        bullet.facing = Math.atan2(dy, dx);
+        bullet.vfacing = bullet.facing;
+        if (bullet.velocity) {
+            bullet.velocity.x = dx * entry.speed;
+            bullet.velocity.y = dy * entry.speed;
+        }
+        if (Number.isFinite(bullet.range)) bullet.range = Math.max(entry.range || 0, bullet.range, 2_000);
+        if (Array.isArray(bullet.collisionArray)) bullet.collisionArray.length = 0;
+        return true;
+    }
+
+    applyParrySlow(source, now = Date.now()) {
+        if (!source || ["spiker", "the_nuclear"].includes(source.craftrasMobType)) return;
+        if (!source.craftrasParrySlowBase) {
+            source.craftrasParrySlowBase = {
+                topSpeed: source.topSpeed,
+                acceleration: source.acceleration,
+                speed: source.SPEED,
+                color: source.color?.base,
+            };
+        }
+        source.craftrasParrySlowUntil = Math.max(source.craftrasParrySlowUntil || 0, now + CRAFTRAS_PARRY_SLOW_DURATION);
+        const base = source.craftrasParrySlowBase;
+        if (Number.isFinite(base.topSpeed)) source.topSpeed = base.topSpeed * 0.2;
+        if (Number.isFinite(base.acceleration)) source.acceleration = base.acceleration * 0.2;
+        if (Number.isFinite(base.speed)) source.SPEED = base.speed * 0.2;
+        if (source.color?.base && /^#[0-9a-f]{6}$/i.test(base.color || "")) {
+            const channels = [1, 3, 5].map(index => parseInt(base.color.slice(index, index + 2), 16));
+            const mixed = channels.map((value, index) => Math.round(value * 0.72 + [92, 178, 255][index] * 0.28));
+            source.color.base = `#${mixed.map(value => value.toString(16).padStart(2, "0")).join("")}`;
+        }
+    }
+
+    updateParrySlowedMob(mob, now = Date.now()) {
+        const base = mob?.craftrasParrySlowBase;
+        if (!base) return;
+        if (now < (mob.craftrasParrySlowUntil || 0)) {
+            if (Number.isFinite(base.topSpeed)) mob.topSpeed = base.topSpeed * 0.2;
+            if (Number.isFinite(base.acceleration)) mob.acceleration = base.acceleration * 0.2;
+            if (Number.isFinite(base.speed)) mob.SPEED = base.speed * 0.2;
+            return;
+        }
+        if (Number.isFinite(base.topSpeed)) mob.topSpeed = base.topSpeed;
+        if (Number.isFinite(base.acceleration)) mob.acceleration = base.acceleration;
+        if (Number.isFinite(base.speed)) mob.SPEED = base.speed;
+        if (base.color && mob.color) mob.color.base = base.color;
+        mob.craftrasParrySlowBase = null;
+        mob.craftrasParrySlowUntil = 0;
+    }
+
+    spawnParryEffect(location, options = {}) {
+        const effect = new Entity(location);
+        effect.define("craftrasParryEffect");
+        effect.team = TEAM_ROOM;
+        effect.craftrasExplosionStarted = Date.now();
+        effect.craftrasExplosionDuration = options.duration || 500;
+        effect.craftrasExplosionStartSize = options.startSize || 16;
+        effect.craftrasExplosionEndSize = options.endSize || effect.craftrasExplosionStartSize * 1.8;
+        effect.craftrasExplosionStartAlpha = 1;
+        effect.craftrasExplosionFade = true;
+        effect.SIZE = effect.craftrasExplosionStartSize;
+        effect.coreSize = effect.craftrasExplosionStartSize;
+        effect.sizeMultiplier = 1;
+        effect.alpha = 1;
+        this.explosionEffects.add(effect);
+        return effect;
+    }
+
+    triggerPlayerParryFeedback(body) {
+        const now = Date.now();
+        if (this.isPlayerAutoParryTool(body) && now < (body.craftrasNextAutoParryFeedbackAt || 0)) return;
+        if (this.isPlayerAutoParryTool(body)) body.craftrasNextAutoParryFeedbackAt = now + 100;
+        body.say?.("PARRY SUCCESS", 1_000);
+        const socket = this.getSocketForBody(body);
+        socket?.talk?.("PF", 200);
+        socket?.talk?.("SH", JSON.stringify({ type: "camera", duration: 200, amount: 7, keepShake: false }));
+        const size = Math.max(12, body.realSize || body.size || 12);
+        this.spawnParryEffect(body, { duration: 500, startSize: size * 1.25, endSize: size * 2.3 });
+    }
+
+    applyDeferredParryDamage(body, amount, source) {
+        if (!body || amount <= 0 || body.isDead?.()) return;
+        this.applyPlayerDamage(body, amount, source, { bypassParry: true, noKnockback: true });
+    }
+
+    resolvePlayerParrySuccess(body, hits, now = Date.now()) {
+        const snapshottedReduction = hits.reduce((best, hit) => (
+            Number.isFinite(hit?.parryReduction) ? Math.max(best, hit.parryReduction) : best
+        ), Number(body.craftrasParryReduction) || 0);
+        const reduction = Math.max(0, Math.min(100, snapshottedReduction));
+        let totalDamage = 0;
+        const contacts = new Set();
+        for (const hit of hits) {
+            totalDamage += Math.max(0, hit.amount || 0);
+            for (const entry of hit.bullets || []) this.releaseHeldParryBullet(entry, true, body);
+            for (const source of hit.contacts || []) contacts.add(source);
+            hit.source?.craftrasOnParrySuccess?.(body, now, hit);
+        }
+        body.craftrasParryPrimedUntil = 0;
+        body.craftrasParryPrimedReduction = null;
+        for (const source of contacts) this.applyParrySlow(source, now);
+        const firstContact = contacts.values().next().value;
+        const residualDamage = totalDamage * (1 - reduction / 100);
+        if (residualDamage > 0) this.applyDeferredParryDamage(body, residualDamage, hits[0]?.source || firstContact);
+        if (firstContact) {
+            const dx = body.x - firstContact.x;
+            const dy = body.y - firstContact.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const sourceKnockback = Math.max(12, Number(firstContact.craftrasAttackKnockback) || 12);
+            body.velocity.x += dx / distance * sourceKnockback * 2;
+            body.velocity.y += dy / distance * sourceKnockback * 2;
+            body.craftrasParryInvulnerableUntil = now + CRAFTRAS_PARRY_CONTACT_IMMUNITY;
+            this.resolveEntityOutOfWall(body);
+        }
+        body.craftrasParryReduction = 100;
+        body.craftrasParryChargeUpdatedAt = now;
+        body.craftrasParryCounter = Math.min(
+            CRAFTRAS_PARRY_COUNTER_MAX,
+            (body.craftrasParryCounter || 0) + CRAFTRAS_PARRY_COUNTER_STEP,
+        );
+        if (this.hasMagicBook(body)) {
+            this.initializeMagicBookState(body, now);
+            body.craftrasMagicBookGauge = Math.min(
+                CRAFTRAS_MAGIC_BOOK_GAUGE_MAX,
+                body.craftrasMagicBookGauge + 500,
+            );
+            body.craftrasMagicBookGaugeUpdatedAt = now;
+            this.spawnMagicBookParryOrbs(body, now);
+            this.syncMagicBookState(body, now, true);
+        }
+        this.triggerPlayerParryFeedback(body);
+        this.syncPlayerParryState(body, true);
+    }
+
+    expirePlayerParryHits(body, hits) {
+        for (const hit of hits) {
+            for (const entry of hit.bullets || []) this.releaseHeldParryBullet(entry, false, body);
+            this.applyDeferredParryDamage(body, hit.amount || 0, hit.source);
+            hit.source?.craftrasOnParryFail?.(body, Date.now(), hit);
+            if (hit.failedKnockbackForce > 0 && hit.source) {
+                this.knockCombatTargetFromSource(body, hit.source, hit.failedKnockbackForce);
+            }
+        }
+    }
+
+    getGreatFriendLevelDamage(body, multiplier) {
+        const level = Math.max(1, Math.floor(Number(body?.skill?.level) || 1));
+        return level * multiplier;
+    }
+
+    spawnGreatFriendSlashEffect(body, facing, slashIndex = 0) {
+        const finishingSlash = slashIndex === 2;
+        const bodyRadius = Math.max(10, body.realSize || body.size || 12);
+        const centerDistance = finishingSlash ? 0 : bodyRadius + BLOCK_SIZE * 0.7;
+        const effectSize = finishingSlash ? BLOCK_SIZE * 2 : BLOCK_SIZE;
+        const effect = new Entity({
+            x: body.x + Math.cos(facing) * centerDistance,
+            y: body.y + Math.sin(facing) * centerDistance,
+        });
+        effect.define("craftrasGreatFriendSlashEffect");
+        effect.team = body.team;
+        effect.facing = facing + Math.PI / 4;
+        effect.vfacing = effect.facing;
+        effect.craftrasExplosionStarted = Date.now();
+        effect.craftrasExplosionDuration = 500;
+        effect.craftrasExplosionStartSize = effectSize;
+        effect.craftrasExplosionEndSize = effectSize * 1.08;
+        effect.craftrasExplosionGrowth = 0;
+        effect.craftrasExplosionStartAlpha = 0.4;
+        effect.craftrasExplosionFade = true;
+        effect.SIZE = effectSize;
+        effect.coreSize = effectSize;
+        effect.sizeMultiplier = 1;
+        effect.alpha = 0.4;
+        this.explosionEffects.add(effect);
+        return effect;
+    }
+
+    isTargetInsideGreatFriendSlash(body, target, facing, slashIndex = 0) {
+        if (!target || target.isDead?.()) return false;
+        const finishingSlash = slashIndex === 2;
+        const bodyRadius = Math.max(10, body.realSize || body.size || 12);
+        const centerDistance = finishingSlash ? 0 : bodyRadius + BLOCK_SIZE * 0.7;
+        const centerX = body.x + Math.cos(facing) * centerDistance;
+        const centerY = body.y + Math.sin(facing) * centerDistance;
+        const dx = target.x - centerX;
+        const dy = target.y - centerY;
+        const forward = dx * Math.cos(facing) + dy * Math.sin(facing);
+        const side = -dx * Math.sin(facing) + dy * Math.cos(facing);
+        const radius = Math.max(5, target.realSize || target.size || 10);
+        const halfSize = CRAFTRAS_GREAT_FRIEND_COMBO_HITBOX_SIZE * (finishingSlash ? 1 : 0.5);
+        return Math.abs(forward) <= halfSize + radius && Math.abs(side) <= halfSize + radius;
+    }
+
+    performGreatFriendComboSlash(body, slashIndex, now = Date.now()) {
+        const facing = Number.isFinite(body.facing) ? body.facing : 0;
+        const multiplier = CRAFTRAS_GREAT_FRIEND_COMBO_DAMAGE_MULTIPLIERS[slashIndex] || 5;
+        const damage = this.getGreatFriendLevelDamage(body, multiplier);
+        this.spawnGreatFriendSlashEffect(body, facing, slashIndex);
+
+        for (const mob of this.mobs) {
+            if (!this.isValidGreatFriendMonsterTarget(mob)) continue;
+            if (!this.isTargetInsideGreatFriendSlash(body, mob, facing, slashIndex)) continue;
+            this.damageMobFromGreatFriend(mob, body, damage, now);
+        }
+        for (const { body: target } of this.getLivingPlayers()) {
+            if (!target || target === body || this.areCraftrasPlayerAllies(body, target)) continue;
+            if (!this.isTargetInsideGreatFriendSlash(body, target, facing, slashIndex)) continue;
+            this.applyPlayerDamage(target, damage, body);
+        }
+    }
+
+    requestGreatFriendCombo(socket, now = Date.now()) {
+        const body = socket?.player?.body;
+        if (
+            !body
+            || body.isDead?.()
+            || body.craftrasSpectator
+            || body.craftrasHeldItem !== CRAFTRAS_GREAT_FRIEND_ITEM_ID
+            || body.craftrasGreatFriendCombo
+        ) return false;
+        const cooldownRemaining = Math.max(0, (body.craftrasNextGreatFriendComboAt || 0) - now);
+        if (cooldownRemaining > 0) {
+            socket.talk?.("FC", cooldownRemaining);
+            return false;
+        }
+        body.craftrasGreatFriendCombo = {
+            startedAt: now,
+            nextSlashAt: now,
+            slashCount: 0,
+            activeSlashIndex: 0,
+            lastSlashAt: now,
+            spinStartFacing: body.facing || 0,
+            spinUntil: 0,
+        };
+        body.craftrasNextGreatFriendComboAt = now + CRAFTRAS_GREAT_FRIEND_COMBO_COOLDOWN;
+        socket.talk?.("FC", CRAFTRAS_GREAT_FRIEND_COMBO_COOLDOWN);
+        return true;
+    }
+
+    updateGreatFriendComboInput(body, now = Date.now()) {
+        if (!body) return;
+        const equipped = body.craftrasHeldItem === CRAFTRAS_GREAT_FRIEND_ITEM_ID
+            && !body.craftrasSpectator
+            && !body.isDead?.();
+        if (!equipped) {
+            body.craftrasGreatFriendCombo = null;
+            return;
+        }
+
+        const combo = body.craftrasGreatFriendCombo;
+        if (!combo) return;
+
+        if (combo.slashCount < CRAFTRAS_GREAT_FRIEND_COMBO_DAMAGE_MULTIPLIERS.length && now >= combo.nextSlashAt) {
+            const slashIndex = combo.slashCount;
+            combo.activeSlashIndex = slashIndex;
+            combo.lastSlashAt = now;
+            if (slashIndex === 2) {
+                combo.spinStartFacing = body.facing || 0;
+                combo.spinAngle = combo.spinStartFacing;
+                combo.spinUntil = now + CRAFTRAS_GREAT_FRIEND_COMBO_SPIN_DURATION;
+            }
+            this.performGreatFriendComboSlash(body, slashIndex, now);
+            combo.slashCount++;
+            combo.nextSlashAt = combo.startedAt + combo.slashCount * CRAFTRAS_GREAT_FRIEND_COMBO_SLASH_INTERVAL;
+        }
+        if (
+            combo.slashCount >= CRAFTRAS_GREAT_FRIEND_COMBO_DAMAGE_MULTIPLIERS.length
+            && now >= combo.lastSlashAt + CRAFTRAS_GREAT_FRIEND_COMBO_FINISH_DELAY
+        ) {
+            body.craftrasGreatFriendCombo = null;
+        }
+    }
+
+    updatePlayerParryInput(body, now = Date.now()) {
+        if (!body) return;
+        this.initializePlayerParryState(body, now);
+        const altDown = !!body.control.alt;
+        const altPressed = altDown && !body.craftrasParryAltWasDown;
+        body.craftrasParryAltWasDown = altDown;
+        if (now < (body.craftrasParryBrokenUntil || 0)) {
+            if (body.craftrasParryPendingHits.length) this.expirePlayerParryHits(body, body.craftrasParryPendingHits.splice(0));
+            body.craftrasParryPrimedUntil = 0;
+            body.craftrasParryPrimedReduction = null;
+            body.craftrasParryReduction = 0;
+            this.syncPlayerParryState(body, true);
+            return;
+        }
+
+        const equipped = this.hasPlayerParryTool(body);
+        const hasSword = this.hasPlayerParrySword(body);
+        const automatic = this.isPlayerAutoParryTool(body);
+        if (body.craftrasParryPrimedUntil && now > body.craftrasParryPrimedUntil) {
+            body.craftrasParryPrimedUntil = 0;
+            body.craftrasParryPrimedReduction = null;
+        }
+        if (!equipped || (!hasSword && !automatic)) {
+            if (body.craftrasParryPendingHits.length) {
+                this.expirePlayerParryHits(body, body.craftrasParryPendingHits.splice(0));
+            }
+            body.craftrasParryPrimedUntil = 0;
+            body.craftrasParryPrimedReduction = null;
+            if (!equipped) body.craftrasParryCounter = 0;
+            if (altPressed && equipped && !hasSword && now >= (body.craftrasNextParrySwordMessageAt || 0)) {
+                body.craftrasNextParrySwordMessageAt = now + 1_000;
+                body.sendMessage?.("You must be holding a sword to parry.");
+            }
+            this.syncPlayerParryState(body);
+            return;
+        }
+        if (automatic) {
+            if (body.craftrasParryPendingHits.length) {
+                this.resolvePlayerParrySuccess(body, body.craftrasParryPendingHits.splice(0), now);
+            }
+            body.craftrasParryPrimedUntil = 0;
+            body.craftrasParryPrimedReduction = null;
+            body.craftrasParryReduction = 100;
+            body.craftrasParryChargeUpdatedAt = now;
+            this.syncPlayerParryState(body);
+            return;
+        }
+
+        const rechargeSteps = Math.floor((now - body.craftrasParryChargeUpdatedAt) / CRAFTRAS_PARRY_RECHARGE_INTERVAL);
+        if (rechargeSteps > 0) {
+            body.craftrasParryReduction = Math.min(100, body.craftrasParryReduction + rechargeSteps);
+            body.craftrasParryChargeUpdatedAt += rechargeSteps * CRAFTRAS_PARRY_RECHARGE_INTERVAL;
+        }
+        const valid = body.craftrasParryPendingHits.filter(hit => now <= hit.expiresAt);
+        const expired = body.craftrasParryPendingHits.filter(hit => now > hit.expiresAt);
+        body.craftrasParryPendingHits = valid;
+        if (expired.length) this.expirePlayerParryHits(body, expired);
+
+        if (altPressed) {
+            if (valid.length) {
+                body.craftrasParryPendingHits = [];
+                body.craftrasParryPrimedReduction = null;
+                this.resolvePlayerParrySuccess(body, valid, now);
+            } else {
+                body.craftrasParryPrimedReduction = body.craftrasParryReduction;
+                body.craftrasParryPrimedUntil = now + (
+                    this.hasMagicBook(body) ? CRAFTRAS_PARRY_WINDOW : CRAFTRAS_PARRY_PRE_INPUT_WINDOW
+                );
+                body.craftrasParryReduction = 0;
+                body.craftrasParryChargeUpdatedAt = now;
+                this.syncPlayerParryState(body, true);
+            }
+        } else {
+            for (const hit of valid) {
+                for (const entry of hit.bullets || []) {
+                    if (!entry.entity || entry.entity.isDead?.()) continue;
+                    entry.entity.x = body.x;
+                    entry.entity.y = body.y;
+                }
+            }
+            this.syncPlayerParryState(body);
+        }
+    }
+
+    prepareParrySwordAttack(body, hasSword, baseDamage, now = Date.now()) {
+        if (!body || !hasSword || !this.hasPlayerParryTool(body)) return 1;
+        this.initializePlayerParryState(body, now);
+        const counter = Math.max(0, Math.min(CRAFTRAS_PARRY_COUNTER_MAX, body.craftrasParryCounter || 0));
+        body.craftrasParryCounter = 0;
+        this.syncPlayerParryState(body, true);
+        if (counter >= CRAFTRAS_PARRY_SPECIAL_THRESHOLD) {
+            this.activatePlayerParryShockwave(body, baseDamage, now);
+            return 1;
+        }
+        return counter >= 200 ? counter / 100 : 1;
+    }
+
+    activatePlayerParryShockwave(body, baseDamage, now = Date.now()) {
+        const heldItem = body.craftrasHeldItem;
+        const weaponDamage = Number.isFinite(ITEMS[heldItem]?.damage) ? ITEMS[heldItem].damage : baseDamage;
+        const damage = this.scalePlayerProgressionDamage(body, Math.max(1, weaponDamage) * 5);
+        const radius = CRAFTRAS_PARRY_SHOCKWAVE_RADIUS;
+        for (const mob of this.mobs) {
+            if (!mob || mob.isDead?.() || mob.craftrasMobFamily === "npc" || mob.craftrasInvulnerableNpc) continue;
+            const dx = mob.x - body.x;
+            const dy = mob.y - body.y;
+            if (dx * dx + dy * dy > radius * radius) continue;
+            if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) continue;
+            let dealt = this.capKingDamageByGuardian(mob, damage);
+            if (mob.craftrasGuardian) dealt = this.absorbGuardianShieldDamage(mob, dealt, now);
+            if (dealt <= 0 || this.tryGuardianDodge(mob, body, now)) continue;
+            if (this.tryGuardianLastStand(mob, dealt)) continue;
+            mob.health.amount -= dealt;
+            this.markBossHealthHit(mob, body, now);
+            this.setMobAggro(mob, body, now);
+            this.handleSwordGuyDamaged(mob, dealt, body, now);
+            this.flashEntity(mob);
+            this.applyCraftrasMobKnockback(mob, dx, dy, 52);
+            if (mob.health.amount <= 0) {
+                if (mob.craftrasMagicBoss) {
+                    mob.health.amount = 1;
+                    this.finishChallengeMagicalBoss(mob, now);
+                } else {
+                    this.awardCraftrasScore(body, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
+                    mob.kill?.();
+                }
+            }
+        }
+        for (const { body: target } of this.getLivingPlayers()) {
+            if (!target || target === body || this.areCraftrasPlayerAllies(body, target)) continue;
+            const dx = target.x - body.x;
+            const dy = target.y - body.y;
+            const distance = Math.hypot(dx, dy);
+            if (distance > radius) continue;
+            this.applyPlayerDamage(target, damage, body, { noKnockback: true });
+            const unit = distance || 1;
+            target.velocity.x += dx / unit * 52;
+            target.velocity.y += dy / unit * 52;
+        }
+        const size = Math.max(12, body.realSize || body.size || 12);
+        this.spawnParryEffect(body, { duration: 650, startSize: size * 1.8, endSize: radius * 0.55 });
+        this.spawnExplosionEffect(body, {
+            duration: 520,
+            startSize: size * 0.9,
+            endSize: radius * 0.72,
+            color: "#61c7ff",
+            alpha: 0.72,
+            fade: true,
+        });
+        this.spawnExplosionEffect(body, {
+            duration: 360,
+            startSize: size * 0.55,
+            endSize: radius * 0.38,
+            color: "#ffffff",
+            alpha: 0.9,
+            fade: true,
+        });
+        const socket = this.getSocketForBody(body);
+        socket?.talk?.("PF", 240);
+        socket?.talk?.("SH", JSON.stringify({ type: "camera", duration: 340, amount: 18, keepShake: false }));
+    }
+
+    updateWhiteInfernoPlayers(players, now = Date.now()) {
+        const active = this.whiteInfernoState === "active";
+        for (const { body } of players) {
+            if (!body || body.isDead?.()) continue;
+            const block = worldToBlock(body.x, body.y);
+            const exposed = active
+                && isInsideWorld2(block.x, block.y)
+                && this.getCell(block.x, block.y)?.region === "surface";
+            if (!exposed) {
+                body.craftrasWhiteInfernoNextDamageAt = 0;
+                continue;
+            }
+            if (!body.craftrasWhiteInfernoNextDamageAt) {
+                body.craftrasWhiteInfernoNextDamageAt = now + WHITE_INFERNO_DAMAGE_INTERVAL;
+                continue;
+            }
+            if (now < body.craftrasWhiteInfernoNextDamageAt) continue;
+            body.craftrasWhiteInfernoNextDamageAt = now + WHITE_INFERNO_DAMAGE_INTERVAL;
+            const damage = Math.min(
+                WHITE_INFERNO_MAX_DAMAGE,
+                Math.max(1, (body.health?.max || 100) * WHITE_INFERNO_HEALTH_DAMAGE_RATIO),
+            );
+            this.applyPlayerDamage(body, damage, null, { noKnockback: true, ignoreShield: true });
+        }
+    }
+
     applyCombatTargetDamage(target, amount, source) {
         if (!target || target.isDead?.() || amount <= 0) return false;
         if (target.craftrasMobFamily === "npc") return this.applyVillageCombatNpcDamage(target, amount, source);
-        return this.applyPlayerDamage(target, amount, source, { noKnockback: !!source?.craftrasNoAttackKnockback });
+        return this.applyPlayerDamage(target, amount, source, {
+            noKnockback: !!source?.craftrasNoAttackKnockback,
+            swordGuyAttack: source?.craftrasMobType === "sword_guy",
+        });
+    }
+
+
+    spawnJaneEncounterAt(location) {
+        if (!location) return null;
+        const host = this.spawnMobAt(location, {
+            type: "sword_guy",
+            className: "craftrasTheSword",
+            label: "Sword Guy",
+            health: CRAFTRAS_JANE_INTRO_SWORD_GUY_HEALTH,
+            sword: "the_great",
+            swordDamage: 0,
+            contactDamage: 0,
+            scoreMultiplier: 0,
+            noKnockback: true,
+            fixedEquipment: true,
+        });
+        if (!host) return null;
+        host.craftrasJaneEncounterHost = true;
+        host.craftrasJaneEncounterState = "waiting";
+        host.craftrasSwordGuyPhase = "jane_waiting";
+        host.craftrasDeathLocked = true;
+        host.craftrasSwordGuyHostile = false;
+        host.craftrasHeldItem = "the_great";
+        host.craftrasSwordMaterial = "the_great";
+        host.craftrasMainHandStack = makeItem("the_great");
+        host.craftrasControl.goal = { x: host.x, y: host.y };
+        host.craftrasControl.power = 0;
+        host.alwaysActive = true;
+        return host;
+    }
+
+    getJaneTarget(jane) {
+        const id = jane?.craftrasJaneTargetId;
+        if (!id) return null;
+        for (const { body } of this.getLivingPlayers()) if (body?.id === id) return body;
+        return null;
+    }
+
+    handleJaneEncounterSwordGuyDamaged(mob, damage = 1, source = null, now = Date.now()) {
+        if (!mob?.craftrasJaneEncounterHost) return false;
+        const attacker = this.getPlayerBodyFromDamageSource(source) || source;
+        if (mob.craftrasJaneEncounterState === "waiting" && attacker && this.getSocketForBody(attacker)) {
+            mob.damageReceived = 0;
+            mob.health.amount = CRAFTRAS_JANE_INTRO_SWORD_GUY_HEALTH;
+            mob.readyToDie = false;
+            mob.craftrasJaneChallengerId = attacker.id;
+            mob.craftrasJaneChallengerSocket = this.getSocketForBody(attacker);
+            mob.craftrasJaneEncounterState = "opening_dialogue";
+            mob.craftrasJaneDialogueIndex = 0;
+            mob.craftrasJaneNextDialogueAt = now;
+            mob.craftrasSwordGuyPhase = "jane_intro";
+            mob.craftrasControl.goal = { x: mob.x, y: mob.y };
+            mob.craftrasControl.power = 0;
+            return true;
+        }
+        mob.damageReceived = 0;
+        mob.health.amount = Math.max(1, mob.health.amount || 1);
+        mob.readyToDie = false;
+        return true;
+    }
+
+    sendJaneSystemMessage(target, speaker, text, duration = Config.popup_message_duration) {
+        if (!target || !text) return;
+        const socket = this.getSocketForBody(target);
+        if (!socket?.talk) return;
+        const normalizedSpeaker = String(speaker || "").trim().toUpperCase();
+        const prefix = normalizedSpeaker ? `${normalizedSpeaker}: ` : "";
+        const messageColor = normalizedSpeaker === "JANE"
+            ? "#ff62c8"
+            : normalizedSpeaker === "SWORD GUY"
+                ? "#59a9ff"
+                : "#ffffff";
+        socket.talk("BM", duration, `${prefix}${text}`, messageColor, "jane");
+        if (normalizedSpeaker === "SYSTEM") return;
+        let actor = null;
+        if (normalizedSpeaker === "JANE") {
+            for (const mob of this.mobs) {
+                if (!mob || mob.isDead?.() || mob.craftrasMobType !== "jane") continue;
+                if (this.getJaneTarget(mob) === target) { actor = mob; break; }
+            }
+        } else if (normalizedSpeaker === "SWORD GUY") {
+            for (const mob of this.mobs) {
+                if (!mob || mob.isDead?.()) continue;
+                if (mob.craftrasJaneEncounterHost && mob.craftrasJaneChallengerId === target.id) { actor = mob; break; }
+                if (mob.craftrasMobType === "jane" && mob.craftrasJaneSwordGuy && this.getJaneTarget(mob) === target) {
+                    actor = mob.craftrasJaneSwordGuy;
+                    break;
+                }
+            }
+        }
+        actor?.say?.(text, duration);
+    }
+
+    setJaneActorIdle(actor, target = null) {
+        if (!actor) return;
+        actor.velocity.x *= 0.25;
+        actor.velocity.y *= 0.25;
+        if (actor.accel) { actor.accel.x = 0; actor.accel.y = 0; }
+        actor.craftrasControl.goal = { x: actor.x, y: actor.y };
+        actor.craftrasControl.target = target ? { x: target.x - actor.x, y: target.y - actor.y } : actor.craftrasControl.target || { x: 1, y: 0 };
+        actor.craftrasControl.fire = false;
+        actor.craftrasControl.power = 0;
+    }
+
+    updateJaneEncounterSwordGuy(mob, now = Date.now()) {
+        const target = this.getLivingPlayers().find(({ body }) => body?.id === mob.craftrasJaneChallengerId)?.body || null;
+        if (mob.craftrasJaneEncounterState === "waiting") {
+            this.setJaneActorIdle(mob);
+            mob.health.amount = mob.health.max;
+            return;
+        }
+        if (!target || target.isDead?.()) {
+            this.cleanupJaneEncounter(mob.craftrasJaneBoss, target);
+            mob.destroy?.();
+            this.mobs.delete(mob);
+            return;
+        }
+        if (mob.craftrasJaneEncounterState === "opening_dialogue") {
+            this.setJaneActorIdle(mob, target);
+            if (now < (mob.craftrasJaneNextDialogueAt || 0)) return;
+            const line = CRAFTRAS_JANE_INTRO_LINES[mob.craftrasJaneDialogueIndex || 0];
+            if (line) {
+                const duration = this.getDialogueDuration(mob, line.duration);
+                this.sendJaneSystemMessage(target, line.speaker || "SWORD GUY", line.text, duration);
+                mob.craftrasJaneDialogueIndex = (mob.craftrasJaneDialogueIndex || 0) + 1;
+                mob.craftrasJaneNextDialogueAt = now + duration;
+                return;
+            }
+            mob.craftrasJaneEncounterState = "approaching";
+            mob.craftrasJaneApproachStartedAt = now;
+        }
+        if (mob.craftrasJaneEncounterState === "approaching") {
+            this.setJaneActorIdle(mob, target);
+            if (now < (mob.craftrasJaneApproachStartedAt || now) + 1_000) return;
+            mob.health.amount = Math.max(1, mob.health.amount - 10_000);
+            const duration = this.getDialogueDuration(mob, 3_000);
+            this.sendJaneSystemMessage(target, "SWORD GUY", "Ouch!!", duration);
+            mob.craftrasJaneEncounterState = "ankle_line_one";
+            mob.craftrasJaneNextDialogueAt = now + duration;
+            return;
+        }
+        if (mob.craftrasJaneEncounterState === "ankle_line_one") {
+            this.setJaneActorIdle(mob, target);
+            if (now < mob.craftrasJaneNextDialogueAt) return;
+            const duration = this.getDialogueDuration(mob, 4_000);
+            this.sendJaneSystemMessage(target, "SWORD GUY", "I twisted my ankle...", duration);
+            mob.craftrasJaneEncounterState = "ankle_line_two";
+            mob.craftrasJaneNextDialogueAt = now + duration;
+            return;
+        }
+        if (mob.craftrasJaneEncounterState === "ankle_line_two") {
+            this.setJaneActorIdle(mob, target);
+            if (now < mob.craftrasJaneNextDialogueAt) return;
+            const duration = this.getDialogueDuration(mob, 2_000);
+            this.sendJaneSystemMessage(target, "SWORD GUY", "Nvm, I'm ok", duration);
+            mob.craftrasJaneEncounterState = "pre_red_impact";
+            mob.craftrasJaneNextDialogueAt = now + duration;
+            return;
+        }
+        if (mob.craftrasJaneEncounterState === "pre_red_impact") {
+            this.setJaneActorIdle(mob, target);
+            if (now < mob.craftrasJaneNextDialogueAt) return;
+            const duration = this.getDialogueDuration(mob, 4_000);
+            mob.health.amount = 1;
+            mob.damageReceived = 0;
+            mob.craftrasJaneEncounterState = "red_impact";
+            mob.craftrasJaneNextDialogueAt = now + duration;
+            return;
+        }
+        if (mob.craftrasJaneEncounterState === "red_impact") {
+            this.setJaneActorIdle(mob, target);
+            if (now < mob.craftrasJaneNextDialogueAt) return;
+            const duration = this.getDialogueDuration(mob, 4_000);
+            this.sendJaneSystemMessage(target, "SWORD GUY", "WHAT THE HELL.....!?", duration);
+            mob.craftrasJaneEncounterState = "summon_jane";
+            mob.craftrasJaneNextDialogueAt = now + duration;
+            return;
+        }
+        if (mob.craftrasJaneEncounterState === "summon_jane") {
+            this.setJaneActorIdle(mob, target);
+            if (now < mob.craftrasJaneNextDialogueAt) return;
+            const angle = Math.atan2(target.y - mob.y, target.x - mob.x) + Math.PI * 0.65;
+            const jane = this.spawnMobAt({ x: mob.x + Math.cos(angle) * 115, y: mob.y + Math.sin(angle) * 115 }, {
+                type: "jane",
+                className: "craftrasJane",
+                label: "Jane",
+                health: CRAFTRAS_JANE_PHASE_HEALTH,
+                contactDamage: 0,
+                scoreMultiplier: 0,
+                noKnockback: true,
+                fixedEquipment: true,
+            });
+            if (!jane) return;
+            jane.craftrasJaneState = "intro";
+            jane.craftrasJaneTargetId = target.id;
+            jane.craftrasJaneTargetSocket = mob.craftrasJaneChallengerSocket;
+            jane.craftrasJaneSwordGuy = mob;
+            jane.craftrasJaneDialogueIndex = 0;
+            jane.craftrasDialogueSpeed = mob.craftrasDialogueSpeed || 1;
+            jane.craftrasJaneNextDialogueAt = now;
+            jane.craftrasDeathLocked = true;
+            jane.invuln = true;
+            mob.craftrasJaneBoss = jane;
+            mob.craftrasJaneEncounterState = "jane_dialogue";
+            return;
+        }
+        this.setJaneActorIdle(mob, target);
+    }
+
+    finishJaneDialogue(jane, now = Date.now()) {
+        const target = this.getJaneTarget(jane);
+        if (!target) return false;
+        const sword = jane.craftrasJaneSwordGuy;
+        if (sword) {
+            sword.craftrasDeathLocked = false;
+            sword.destroy?.();
+            this.mobs.delete(sword);
+            jane.craftrasJaneSwordGuy = null;
+        }
+        jane.craftrasDialogueSpeed = 1;
+        jane.craftrasJaneState = "combat";
+        jane.invuln = false;
+        jane.godmode = false;
+        jane.craftrasDeathLocked = false;
+        jane.health.set(CRAFTRAS_JANE_PHASE_HEALTH);
+        jane.health.amount = CRAFTRAS_JANE_PHASE_HEALTH;
+        jane.damageReceived = 0;
+        jane.craftrasJanePhase = 1;
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = "skill_one";
+        jane.craftrasJaneNextSkillAt = now + 1_500;
+        this.setJaneActorIdle(jane, target);
+        return true;
+    }
+
+    startJanePhaseTwoDialogue(jane, now = Date.now()) {
+        const target = this.getJaneTarget(jane);
+        if (!jane || !target || jane.craftrasJanePhase >= 2) return false;
+        for (const entity of [...this.janeSkillEntities]) {
+            if (entity?.craftrasJaneOwner !== jane && entity?.craftrasJaneRootOwner !== jane) continue;
+            entity.destroy?.();
+            this.janeSkillEntities.delete(entity);
+        }
+        jane.craftrasJanePhase = 2;
+        jane.craftrasJaneState = "phase_two_dialogue";
+        jane.craftrasJaneDialogueIndex = 0;
+        jane.craftrasJaneNextDialogueAt = now;
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneDash = null;
+        jane.craftrasJaneNextSkill = "skill_one";
+        jane.craftrasDeathLocked = true;
+        jane.invuln = true;
+        jane.godmode = true;
+        jane.health.amount = 1;
+        jane.damageReceived = 0;
+        jane.readyToDie = false;
+        this.setJaneActorIdle(jane, target);
+        return true;
+    }
+
+    finishJanePhaseTwoDialogue(jane, now = Date.now()) {
+        const target = this.getJaneTarget(jane);
+        if (!jane || !target) return false;
+        jane.craftrasJaneState = "combat";
+        jane.craftrasDeathLocked = false;
+        jane.invuln = false;
+        jane.godmode = false;
+        jane.health.set(CRAFTRAS_JANE_PHASE_HEALTH);
+        jane.health.amount = CRAFTRAS_JANE_PHASE_HEALTH;
+        jane.damageReceived = 0;
+        jane.readyToDie = false;
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = "skill_one";
+        jane.craftrasJaneNextSkillAt = now + 1_500;
+        this.setJaneActorIdle(jane, target);
+        return true;
+    }
+
+    cleanupJaneEncounter(jane) {
+        if (!jane) return;
+        for (const entity of [...this.janeSkillEntities]) {
+            if (entity?.craftrasJaneOwner !== jane && entity?.craftrasJaneRootOwner !== jane) continue;
+            entity.destroy?.();
+            this.janeSkillEntities.delete(entity);
+        }
+        jane.craftrasDeathLocked = false;
+        jane.destroy?.();
+        this.mobs.delete(jane);
+    }
+
+    setJaneSwordPose(jane, angleDegrees, size = 1, offset = 0.94) {
+        for (const turret of jane?.turrets?.values?.() || []) {
+            if (turret.label !== "Craftras Tool:jane_sword") continue;
+            turret.bound.angle = angleDegrees * Math.PI / 180;
+            turret.bound.size = size;
+            turret.bound.offset = offset;
+        }
+    }
+
+    setJaneSkillTwoVisible(jane, visible) {
+        if (!jane) return;
+        jane.alpha = visible ? 1 : 0;
+        jane.craftrasInvisible = !visible;
+        jane.invisible = [0, 0];
+        if (jane.settings) jane.settings.fullyInvisible = !visible;
+        for (const turret of jane.turrets?.values?.() || []) {
+            if (
+                jane.craftrasBossFormType === "jane"
+                && turret.label !== "Craftras Tool:jane_sword"
+                && turret.label !== "Craftras Player Hat:jane_hat"
+            ) continue;
+            turret.alpha = visible ? 1 : 0;
+            turret.invisible = [0, 0];
+            if (turret.settings) turret.settings.fullyInvisible = !visible;
+        }
+    }
+
+    setJaneSawMode(saw, mode) {
+        saw.craftrasJaneSawMode = mode === "blue" ? "blue" : "red";
+        if (saw.color) saw.color.base = saw.craftrasJaneSawMode === "blue" ? "#3f9cff" : "#ff3038";
+    }
+
+    spawnJaneSkillOneSaw(jane, target, slot = 0) {
+        const existing = [...this.janeSkillEntities].find(entity =>
+            entity?.craftrasJaneSaw
+            && entity.craftrasJaneOwner === jane
+            && (entity.craftrasJaneSawSlot || 0) === slot
+            && !entity.isDead?.()
+        );
+        if (existing) return existing;
+        const facing = Math.atan2(target.y - jane.y, target.x - jane.x);
+        const side = slot === 0 ? -1 : 1;
+        const spawnAngle = facing + side * 0.38;
+        const saw = new Entity({
+            x: jane.x + Math.cos(spawnAngle) * BLOCK_SIZE * 2.6,
+            y: jane.y + Math.sin(spawnAngle) * BLOCK_SIZE * 2.6,
+        });
+        saw.define("craftrasJaneSawProjectile");
+        saw.name = "";
+        saw.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        saw.alwaysActive = true;
+        saw.craftrasMobType = "jane_saw";
+        saw.craftrasJaneSaw = true;
+        saw.craftrasJaneSawSlot = slot;
+        saw.craftrasJaneOwner = jane;
+        saw.craftrasJaneRootOwner = jane.craftrasJaneRootOwner || jane;
+        saw.craftrasJaneTarget = target;
+        const speedMultiplier = Math.max(0.1, Number(jane.craftrasJaneSkillOneSpeedMultiplier) || 1);
+        saw.craftrasJaneSpeed = CRAFTRAS_JANE_SAW_SPEED * speedMultiplier;
+        saw.craftrasJaneDamageMultiplier = Math.max(0, Number(jane.craftrasJaneSkillOneDamageMultiplier) || 1);
+        saw.craftrasJaneVelocity = {
+            x: Math.cos(spawnAngle) * saw.craftrasJaneSpeed,
+            y: Math.sin(spawnAngle) * saw.craftrasJaneSpeed,
+        };
+        saw.craftrasJaneHomingResumeAt = 0;
+        saw.craftrasJaneNoHitUntil = 0;
+        this.setJaneSawMode(saw, "red");
+        this.janeSkillEntities.add(saw);
+        return saw;
+    }
+
+    spawnJaneSkillOneSlash(jane, target, angle) {
+        const slash = new Entity({
+            x: jane.x + Math.cos(angle) * BLOCK_SIZE * 1.25,
+            y: jane.y + Math.sin(angle) * BLOCK_SIZE * 1.25,
+        });
+        slash.define("craftrasJaneSlashProjectile");
+        slash.name = "";
+        slash.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        slash.alwaysActive = true;
+        slash.craftrasMobType = "jane_slash";
+        slash.craftrasJaneSlash = true;
+        slash.craftrasJaneOwner = jane;
+        slash.craftrasJaneRootOwner = jane.craftrasJaneRootOwner || jane;
+        slash.craftrasJaneTarget = target;
+        const speedMultiplier = Math.max(0.1, Number(jane.craftrasJaneSkillOneSpeedMultiplier) || 1);
+        const damageMultiplier = Math.max(0, Number(jane.craftrasJaneSkillOneDamageMultiplier) || 1);
+        slash.craftrasJaneDamageRatio = (jane.craftrasJanePhase >= 2
+            ? CRAFTRAS_JANE_PHASE_TWO_SLASH_DAMAGE_RATIO
+            : CRAFTRAS_JANE_SLASH_DAMAGE_RATIO) * damageMultiplier;
+        slash.craftrasJaneVelocity = {
+            x: Math.cos(angle) * CRAFTRAS_JANE_SLASH_SPEED * speedMultiplier,
+            y: Math.sin(angle) * CRAFTRAS_JANE_SLASH_SPEED * speedMultiplier,
+        };
+        slash.craftrasJaneExpiresAt = Date.now() + 1_400;
+        slash.facing = angle;
+        slash.vfacing = angle;
+        if (slash.color) slash.color.base = "#ff62c8";
+        this.janeSkillEntities.add(slash);
+        return slash;
+    }
+
+    startJanePhaseTwoScreenCut(jane, target, now = Date.now()) {
+        if (!jane || !target || target.isDead?.()) return false;
+        const socket = this.getSocketForBody(target);
+        const attack = {
+            x: jane.x,
+            y: jane.y,
+            craftrasMobType: "jane_screen_cut",
+            craftrasJaneOwner: jane,
+            craftrasOnParrySuccess: body => {
+                if (body === target) jane.craftrasJaneScreenCutParried = true;
+            },
+        };
+        jane.craftrasJaneScreenCutParried = false;
+        socket?.talk?.(
+            "JSC",
+            CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_DURATION,
+            CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_WARNING_DURATION,
+            CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_PARRY_WINDOW,
+            CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_SHIFT,
+        );
+        socket?.talk?.("SH", JSON.stringify({
+            type: "camera",
+            duration: CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_DURATION,
+            amount: 22,
+            keepShake: false,
+        }));
+        jane.craftrasJaneScreenCutAttack = {
+            target,
+            attack,
+            impactAt: now + CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_WARNING_DURATION,
+            endsAt: now + CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_DURATION,
+            resolved: false,
+        };
+        this.setJaneActorIdle(jane, target);
+        return true;
+    }
+
+    updateJanePhaseTwoScreenCut(jane, now = Date.now()) {
+        const state = jane?.craftrasJaneScreenCutAttack;
+        if (!state) return false;
+        if (!state.target || state.target.isDead?.() || now >= state.endsAt) {
+            jane.craftrasJaneScreenCutAttack = null;
+            return false;
+        }
+        if (!state.resolved && now >= state.impactAt) {
+            state.resolved = true;
+            this.applyPlayerDamage(
+                state.target,
+                Math.max(1, state.target.health.max * CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_DAMAGE_RATIO),
+                state.attack,
+                { noKnockback: true, forceParryReduction: 100 },
+            );
+        }
+        return true;
+    }
+
+    fireJaneSkillOneSlashFan(jane, target) {
+        const facing = Math.atan2(target.y - jane.y, target.x - jane.x);
+        for (const offset of [-0.22, 0, 0.22]) this.spawnJaneSkillOneSlash(jane, target, facing + offset);
+    }
+
+    teleportJaneForPhaseTwoDash(jane, target) {
+        if (!jane || !target || jane.craftrasJanePhase < 2) return false;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = CRAFTRAS_JANE_PHASE_TWO_TELEPORT_MIN_RADIUS
+            + Math.random() * (CRAFTRAS_JANE_PHASE_TWO_TELEPORT_MAX_RADIUS - CRAFTRAS_JANE_PHASE_TWO_TELEPORT_MIN_RADIUS);
+        jane.x = target.x + Math.cos(angle) * radius;
+        jane.y = target.y + Math.sin(angle) * radius;
+        jane.velocity.x = 0;
+        jane.velocity.y = 0;
+        this.resolveEntityOutOfWall(jane, 8);
+        return true;
+    }
+
+    startJaneSkillOneDash(jane, target, dashIndex, now = Date.now()) {
+        if (!jane || !target || target.isDead?.()) return;
+        this.teleportJaneForPhaseTwoDash(jane, target);
+        const dx = target.x - jane.x;
+        const dy = target.y - jane.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const direction = { x: dx / distance, y: dy / distance };
+        jane.craftrasJaneDash = {
+            startedAt: now,
+            endsAt: now + CRAFTRAS_JANE_DASH_DURATION,
+            startX: jane.x,
+            startY: jane.y,
+            direction,
+            dashIndex,
+        };
+        jane.facing = Math.atan2(direction.y, direction.x);
+        jane.vfacing = jane.facing;
+        this.fireJaneSkillOneSlashFan(jane, target);
+    }
+
+    updateJaneSkillOneDash(jane, now = Date.now()) {
+        const dash = jane?.craftrasJaneDash;
+        if (!dash) return false;
+        const travelled = Math.hypot(jane.x - dash.startX, jane.y - dash.startY);
+        const active = now < dash.endsAt && travelled < CRAFTRAS_JANE_DASH_DISTANCE;
+        const progress = Math.max(0, Math.min(1, (now - dash.startedAt) / CRAFTRAS_JANE_DASH_DURATION));
+        const reverse = dash.dashIndex % 2 === 1;
+        this.setJaneSwordPose(jane, (reverse ? 125 - progress * 250 : -125 + progress * 250), 1.08, 1.02);
+        if (active) {
+            const speed = 28;
+            jane.velocity.x += dash.direction.x * 7;
+            jane.velocity.y += dash.direction.y * 7;
+            const velocityLength = Math.hypot(jane.velocity.x, jane.velocity.y) || 1;
+            if (velocityLength > speed) {
+                jane.velocity.x = jane.velocity.x / velocityLength * speed;
+                jane.velocity.y = jane.velocity.y / velocityLength * speed;
+            }
+            jane.craftrasControl.goal = {
+                x: jane.x + dash.direction.x * BLOCK_SIZE * 2,
+                y: jane.y + dash.direction.y * BLOCK_SIZE * 2,
+            };
+            jane.craftrasControl.target = { ...dash.direction };
+            jane.craftrasControl.power = 1;
+            return true;
+        }
+        jane.velocity.x *= 0.45;
+        jane.velocity.y *= 0.45;
+        jane.craftrasJaneDash = null;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        return false;
+    }
+
+    startJaneSkillOne(jane, target, now = Date.now()) {
+        const phaseTwo = jane.craftrasJanePhase >= 2;
+        const sawCount = phaseTwo ? CRAFTRAS_JANE_PHASE_TWO_SAW_COUNT : 1;
+        for (let slot = 0; slot < sawCount; slot++) this.spawnJaneSkillOneSaw(jane, target, slot);
+        const events = [];
+        const dashSets = Math.max(1, Math.min(3, Math.floor(Number(jane.craftrasJaneSkillOneDashSets) || 3)));
+        const dashesPerSet = Math.max(1, Math.min(3, Math.floor(Number(jane.craftrasJaneSkillOneDashesPerSet) || 3)));
+        for (let set = 0; set < dashSets; set++) {
+            for (let step = 0; step < dashesPerSet; step++) {
+                events.push({ type: "dash", at: now + set * CRAFTRAS_JANE_DASH_SET_INTERVAL + step * CRAFTRAS_JANE_DASH_STEP_INTERVAL, dashIndex: set * dashesPerSet + step });
+            }
+        }
+        const finalDashAt = now + CRAFTRAS_JANE_DASH_SET_INTERVAL * (dashSets - 1)
+            + CRAFTRAS_JANE_DASH_STEP_INTERVAL * (dashesPerSet - 1);
+        const screenCutAt = finalDashAt + CRAFTRAS_JANE_DASH_DURATION + 250;
+        if (phaseTwo) {
+            events.push({ type: "screen_cut", at: screenCutAt });
+        }
+        jane.craftrasJaneActiveSkill = {
+            type: "skill_one",
+            startedAt: now,
+            events,
+            endsAt: phaseTwo
+                ? screenCutAt + CRAFTRAS_JANE_PHASE_TWO_SCREEN_CUT_DURATION
+                : finalDashAt + CRAFTRAS_JANE_DASH_DURATION,
+        };
+    }
+
+    updateJaneSkillOne(jane, target, now = Date.now()) {
+        const skill = jane.craftrasJaneActiveSkill;
+        if (!skill || skill.type !== "skill_one") return false;
+        while (skill.events.length && now >= skill.events[0].at) {
+            const event = skill.events.shift();
+            if (event.type === "screen_cut") {
+                this.startJanePhaseTwoScreenCut(jane, target, now);
+            } else {
+                this.startJaneSkillOneDash(jane, target, event.dashIndex, now);
+            }
+        }
+        this.updateJaneSkillOneDash(jane, now);
+        this.updateJanePhaseTwoScreenCut(jane, now);
+        if (skill.events.length || jane.craftrasJaneDash || now < skill.endsAt) return true;
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = "skill_two";
+        jane.craftrasJaneNextSkillAt = jane.craftrasJaneSkillOneCycleInterval
+            ? skill.startedAt + jane.craftrasJaneSkillOneCycleInterval
+            : now + CRAFTRAS_JANE_SKILL_ONE_REST;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        return false;
+    }
+
+    setJaneSkillTwoProjectileMode(projectile, mode) {
+        projectile.craftrasJaneAttackMode = mode === "blue" ? "blue" : mode === "black" ? "black" : "red";
+        if (projectile.color) {
+            projectile.color.base = projectile.craftrasJaneAttackMode === "blue"
+                ? "#3296ff"
+                : projectile.craftrasJaneAttackMode === "black"
+                    ? "#08080d"
+                    : "#ff3048";
+        }
+    }
+
+    spawnJaneSkillTwoProjectile(jane, target, options = {}, now = Date.now()) {
+        const kind = options.kind === "bullet" ? "bullet" : "sword";
+        const angle = Number(options.angle) || 0;
+        const defaultRadius = kind === "bullet" ? CRAFTRAS_JANE_SKILL_TWO_BULLET_RADIUS : CRAFTRAS_JANE_SKILL_TWO_SWORD_RADIUS;
+        const radius = Math.max(1, Number(options.radius) || defaultRadius);
+        const speed = kind === "bullet" ? CRAFTRAS_JANE_SKILL_TWO_BULLET_SPEED : CRAFTRAS_JANE_SKILL_TWO_SWORD_SPEED;
+        const projectile = new Entity({
+            x: target.x + Math.cos(angle) * radius,
+            y: target.y + Math.sin(angle) * radius,
+        });
+        projectile.define(kind === "bullet" ? "craftrasJaneSkillTwoBulletProjectile" : "craftrasJaneSkillTwoSwordProjectile");
+        projectile.name = "";
+        projectile.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        projectile.alwaysActive = true;
+        projectile.craftrasMobType = `jane_skill_two_${kind}`;
+        projectile.craftrasJaneSkillTwoProjectile = true;
+        projectile.craftrasJaneSkillTwoKind = kind;
+        projectile.craftrasJaneOwner = jane;
+        projectile.craftrasJaneTarget = target;
+        projectile.craftrasJaneDamageRatio = kind === "bullet"
+            ? CRAFTRAS_JANE_SKILL_TWO_BULLET_DAMAGE_RATIO
+            : CRAFTRAS_JANE_SKILL_TWO_SWORD_DAMAGE_RATIO;
+        projectile.craftrasJaneSpeed = speed;
+        projectile.craftrasJaneVelocity = {
+            x: -Math.cos(angle) * speed,
+            y: -Math.sin(angle) * speed,
+        };
+        if (kind === "sword") {
+            projectile.craftrasJaneRingCenterX = Number(options.centerX) || target.x;
+            projectile.craftrasJaneRingCenterY = Number(options.centerY) || target.y;
+            projectile.craftrasJaneRingAngle = angle;
+            projectile.craftrasJaneRingRadius = radius;
+            projectile.craftrasJaneRingDirection = options.ringDirection < 0 ? -1 : 1;
+            projectile.craftrasJanePhaseTwoRing = !!options.phaseTwoRing;
+            if (projectile.craftrasJanePhaseTwoRing) {
+                projectile.craftrasJaneRingStartedAt = now;
+                projectile.craftrasJaneRingEndsAt = Number(options.endsAt) || now + CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_DURATION;
+                projectile.craftrasJaneRingStartRadius = radius;
+                projectile.craftrasJaneRingEndRadius = Math.max(1, Number(options.endRadius) || CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_END_RADIUS);
+                projectile.craftrasJaneRingLastUpdateAt = now;
+                projectile.craftrasJaneRingRotateUntil = projectile.craftrasJaneRingEndsAt;
+            } else {
+                projectile.craftrasJaneRingRotateUntil = now + CRAFTRAS_JANE_SKILL_TWO_ROTATE_DURATION;
+            }
+        }
+        projectile.craftrasJaneNoHitUntil = now + 250;
+        projectile.craftrasJaneExpiresAt = projectile.craftrasJanePhaseTwoRing
+            ? projectile.craftrasJaneRingEndsAt
+            : now + (kind === "bullet" ? 8_000 : 10_500);
+        projectile.facing = Math.atan2(projectile.craftrasJaneVelocity.y, projectile.craftrasJaneVelocity.x);
+        projectile.vfacing = projectile.facing;
+        if (kind === "bullet") {
+            const size = Math.max(12, target.realSize || target.size || 12);
+            projectile.SIZE = size;
+            projectile.coreSize = size;
+            projectile.refreshBodyAttributes?.();
+        }
+        this.setJaneSkillTwoProjectileMode(projectile, options.mode);
+        this.janeSkillEntities.add(projectile);
+        return projectile;
+    }
+
+    spawnJaneSkillTwoSwordRing(jane, target, now = Date.now(), options = {}) {
+        const blueIndexes = new Set();
+        if (!options.allBlack) while (blueIndexes.size < CRAFTRAS_JANE_SKILL_TWO_BLUE_SWORDS) {
+            blueIndexes.add(Math.floor(Math.random() * CRAFTRAS_JANE_SKILL_TWO_SWORD_COUNT));
+        }
+        const phase = Math.random() * Math.PI * 2;
+        const ringDirection = Math.random() < 0.5 ? -1 : 1;
+        const centerX = target.x;
+        const centerY = target.y;
+        for (let index = 0; index < CRAFTRAS_JANE_SKILL_TWO_SWORD_COUNT; index++) {
+            this.spawnJaneSkillTwoProjectile(jane, target, {
+                kind: "sword",
+                angle: phase + index * Math.PI * 2 / CRAFTRAS_JANE_SKILL_TWO_SWORD_COUNT,
+                mode: blueIndexes.has(index) ? "blue" : "black",
+                ringDirection,
+                centerX,
+                centerY,
+                phaseTwoRing: !!options.phaseTwoRing,
+                radius: options.radius,
+                endRadius: options.endRadius,
+                endsAt: options.endsAt,
+            }, now);
+        }
+    }
+
+    spawnJaneSkillTwoBullet(jane, target, now = Date.now()) {
+        return this.spawnJaneSkillTwoProjectile(jane, target, {
+            kind: "bullet",
+            angle: Math.random() * Math.PI * 2,
+            mode: Math.random() < 0.5 ? "blue" : "red",
+        }, now);
+    }
+
+    fireJanePhaseTwoSkillTwoFlowerVolley(jane, target, skill, now = Date.now()) {
+        if (!jane || !target || !skill?.center) return false;
+        const volleyIndex = skill.flowerVolleyIndex || 0;
+        const phase = skill.flowerPhase + volleyIndex * 0.43;
+        const direction = Math.floor(volleyIndex / 3) % 2 ? -1 : 1;
+        const layers = [
+            { count: 7, speed: 8.4, spin: direction * 0.022, size: 14, color: "#ffb0e3" },
+            { count: 11, speed: 12.2, spin: -direction * 0.014, size: 18, color: "#ff48bd" },
+        ];
+        for (const layer of layers) for (let index = 0; index < layer.count; index++) {
+            this.spawnJaneSkillFourBullet(
+                jane,
+                target,
+                skill.center,
+                phase + index * Math.PI * 2 / layer.count,
+                layer,
+                now,
+            );
+        }
+        skill.flowerVolleyIndex = volleyIndex + 1;
+        return true;
+    }
+
+    startJanePhaseTwoSkillTwo(jane, target, now = Date.now()) {
+        const endsAt = now + CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_DURATION;
+        const center = { x: target.x, y: target.y };
+        this.spawnJaneSkillTwoSwordRing(jane, target, now, {
+            phaseTwoRing: true,
+            allBlack: true,
+            radius: CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_START_RADIUS,
+            endRadius: CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_END_RADIUS,
+            endsAt,
+        });
+        const circle = this.spawnJaneSkillFourCircle(
+            jane,
+            center,
+            3,
+            108,
+            CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_DURATION,
+            now,
+        );
+        if (circle) circle.craftrasExplosionFade = false;
+        jane.craftrasJaneSkillTwoLockedHealth = Math.max(1, jane.health?.amount || jane.health?.max || CRAFTRAS_JANE_PHASE_HEALTH);
+        jane.invuln = true;
+        jane.craftrasJaneSkillTwoHidden = false;
+        this.setJaneSkillTwoVisible(jane, true);
+        this.getSocketForBody(target)?.talk?.(
+            "J2S",
+            CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_DURATION,
+            CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_SCREEN_SHIFT,
+        );
+        jane.craftrasJaneActiveSkill = {
+            type: "skill_two",
+            phaseTwoVariant: true,
+            startedAt: now,
+            endsAt,
+            center,
+            circle,
+            flowerPhase: Math.random() * Math.PI * 2,
+            flowerVolleyIndex: 0,
+            nextFlowerVolleyAt: now + 650,
+        };
+        this.setJaneSwordPose(jane, 165, 1.14, 1.06);
+        return true;
+    }
+
+    startJaneSkillTwo(jane, target, now = Date.now()) {
+        if (jane.craftrasJanePhase >= 2) return this.startJanePhaseTwoSkillTwo(jane, target, now);
+        this.spawnJaneSkillTwoSwordRing(jane, target, now);
+        jane.craftrasJaneSkillTwoLockedHealth = Math.max(1, jane.health?.amount || jane.health?.max || CRAFTRAS_JANE_PHASE_HEALTH);
+        this.setJaneSkillTwoVisible(jane, false);
+        jane.invuln = true;
+        jane.craftrasJaneSkillTwoHidden = true;
+        jane.craftrasJaneActiveSkill = {
+            type: "skill_two",
+            startedAt: now,
+            endsAt: now + CRAFTRAS_JANE_SKILL_TWO_DURATION,
+            ringsSpawned: 1,
+            nextRingAt: now + CRAFTRAS_JANE_SKILL_TWO_RING_INTERVAL,
+            nextBulletAt: now + CRAFTRAS_JANE_SKILL_TWO_BULLET_INTERVAL,
+            shoveEvents: Array.from({ length: CRAFTRAS_JANE_SKILL_TWO_RING_COUNT }, (_, index) => ({
+                warningAt: now + index * CRAFTRAS_JANE_SKILL_TWO_RING_INTERVAL + CRAFTRAS_JANE_SKILL_TWO_ROTATE_DURATION,
+                shoveAt: now + index * CRAFTRAS_JANE_SKILL_TWO_RING_INTERVAL + CRAFTRAS_JANE_SKILL_TWO_ROTATE_DURATION + CRAFTRAS_JANE_SKILL_TWO_SHOVE_WARNING,
+                warned: false,
+                resolved: false,
+            })),
+        };
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+    }
+
+    updateJaneSkillTwo(jane, target, now = Date.now()) {
+        const skill = jane.craftrasJaneActiveSkill;
+        if (!skill || skill.type !== "skill_two") return false;
+        if (skill.phaseTwoVariant) {
+            if (jane.health) jane.health.amount = Math.min(jane.health.max, jane.craftrasJaneSkillTwoLockedHealth || jane.health.max);
+            jane.damageReceived = 0;
+            jane.readyToDie = false;
+            jane.invuln = true;
+            this.setJaneSkillTwoVisible(jane, true);
+            this.setJaneActorIdle(jane, target);
+            while (skill.nextFlowerVolleyAt < skill.endsAt && now >= skill.nextFlowerVolleyAt) {
+                this.fireJanePhaseTwoSkillTwoFlowerVolley(jane, target, skill, skill.nextFlowerVolleyAt);
+                skill.nextFlowerVolleyAt += CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_VOLLEY_INTERVAL;
+            }
+            if (now < skill.endsAt) return true;
+            if (skill.circle && !skill.circle.isDead?.()) skill.circle.destroy?.();
+            this.explosionEffects.delete(skill.circle);
+            jane.invuln = false;
+            jane.craftrasJaneSkillTwoLockedHealth = null;
+            jane.craftrasJaneActiveSkill = null;
+            jane.craftrasJaneNextSkill = "skill_three";
+            jane.craftrasJaneNextSkillAt = now + CRAFTRAS_JANE_SKILL_ONE_REST;
+            this.setJaneSwordPose(jane, -35, 1, 0.94);
+            return false;
+        }
+        if (jane.health) jane.health.amount = Math.min(jane.health.max, jane.craftrasJaneSkillTwoLockedHealth || jane.health.max);
+        jane.damageReceived = 0;
+        jane.readyToDie = false;
+        this.setJaneSkillTwoVisible(jane, !!jane.craftrasJaneSkillTwoShove);
+        this.updateJaneSkillTwoShove(jane, now);
+        while (skill.ringsSpawned < CRAFTRAS_JANE_SKILL_TWO_RING_COUNT && now >= skill.nextRingAt) {
+            this.spawnJaneSkillTwoSwordRing(jane, target, skill.nextRingAt);
+            skill.ringsSpawned++;
+            skill.nextRingAt += CRAFTRAS_JANE_SKILL_TWO_RING_INTERVAL;
+        }
+        for (const event of skill.shoveEvents || []) {
+            if (!event.warned && now >= event.warningAt) {
+                event.warned = true;
+                this.getSocketForBody(target)?.talk?.("SG3", CRAFTRAS_JANE_SKILL_TWO_SHOVE_WARNING, CRAFTRAS_JANE_SKILL_TWO_SHOVE_WARNING);
+            }
+            if (!event.resolved && now >= event.shoveAt) {
+                event.resolved = true;
+                this.performJaneSkillTwoShove(jane, target, now);
+            }
+        }
+        while (skill.nextBulletAt <= skill.endsAt && now >= skill.nextBulletAt) {
+            this.spawnJaneSkillTwoBullet(jane, target, skill.nextBulletAt);
+            skill.nextBulletAt += CRAFTRAS_JANE_SKILL_TWO_BULLET_INTERVAL;
+        }
+        if (now < skill.endsAt) return true;
+        this.setJaneSkillTwoVisible(jane, true);
+        jane.invuln = false;
+        jane.craftrasJaneSkillTwoHidden = false;
+        jane.craftrasJaneSkillTwoLockedHealth = null;
+        jane.craftrasJaneSkillTwoShove = null;
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = "skill_three";
+        jane.craftrasJaneNextSkillAt = now + CRAFTRAS_JANE_SKILL_ONE_REST;
+        return false;
+    }
+
+    performJaneSkillTwoShove(jane, target, now = Date.now()) {
+        if (!jane || !target || target.isDead?.()) return false;
+        const facing = Number.isFinite(target.facing) ? target.facing : 0;
+        const safeDistance = Math.max(
+            BLOCK_SIZE * 2.8,
+            (jane.realSize || jane.size || 45) + (target.realSize || target.size || 12) + BLOCK_SIZE * 0.8,
+        );
+        jane.x = target.x - Math.cos(facing) * safeDistance;
+        jane.y = target.y - Math.sin(facing) * safeDistance;
+        jane.velocity.x = 0;
+        jane.velocity.y = 0;
+        this.resolveEntityOutOfWall(jane);
+        jane.facing = Math.atan2(target.y - jane.y, target.x - jane.x);
+        jane.vfacing = jane.facing;
+        this.setJaneActorIdle(jane, target);
+        this.setJaneSkillTwoVisible(jane, true);
+        this.getSocketForBody(target)?.talk?.("JPF", 420, 0.24);
+        jane.craftrasOnParrySuccess = null;
+        jane.craftrasOnParryFail = null;
+        jane.craftrasJaneSkillTwoShove = {
+            target,
+            startedAt: now,
+            impactAt: now + CRAFTRAS_JANE_SKILL_TWO_SHOVE_IMPACT_DELAY,
+            endsAt: now + CRAFTRAS_JANE_SKILL_TWO_SHOVE_SWING_DURATION,
+            pendingParry: null,
+            impactStarted: false,
+        };
+        this.setJaneSwordPose(jane, -125, 1.12, 1.04);
+        return true;
+    }
+
+    updateJaneSkillTwoShove(jane, now = Date.now()) {
+        const shove = jane?.craftrasJaneSkillTwoShove;
+        if (!shove) return false;
+        const target = shove.target;
+        if (!target || target.isDead?.()) {
+            jane.craftrasJaneSkillTwoShove = null;
+            this.setJaneSwordPose(jane, -35, 1, 0.94);
+            if (jane.craftrasJaneSkillTwoHidden) this.setJaneSkillTwoVisible(jane, false);
+            return false;
+        }
+        const swingProgress = Math.max(0, Math.min(1, (now - shove.startedAt) / CRAFTRAS_JANE_SKILL_TWO_SHOVE_SWING_DURATION));
+        let swordAngle;
+        if (swingProgress < 0.25) {
+            const anticipation = swingProgress / 0.25;
+            swordAngle = -35 - anticipation * 110;
+        } else if (swingProgress < 0.71) {
+            const rawSwing = (swingProgress - 0.25) / 0.46;
+            const easedSwing = rawSwing < 0.5
+                ? 4 * rawSwing ** 3
+                : 1 - (-2 * rawSwing + 2) ** 3 / 2;
+            swordAngle = -145 + easedSwing * 310;
+        } else {
+            const recovery = (swingProgress - 0.71) / 0.29;
+            swordAngle = 165 + (-35 - 165) * recovery;
+        }
+        const swordScale = 1.1 + Math.sin(swingProgress * Math.PI) * 0.18;
+        const swordOffset = 1.02 + Math.sin(swingProgress * Math.PI) * 0.16;
+        this.setJaneSwordPose(jane, swordAngle, swordScale, swordOffset);
+        jane.facing = Math.atan2(target.y - jane.y, target.x - jane.x);
+        jane.vfacing = jane.facing;
+
+        if (!shove.impactStarted && now >= shove.impactAt) {
+            shove.impactStarted = true;
+            shove.pendingParry = {
+                startedAt: now,
+                expiresAt: now + CRAFTRAS_PARRY_WINDOW,
+            };
+        }
+        if (shove.pendingParry) {
+            const canParry = this.canPlayerParry(target);
+            const parryPressed = this.isPlayerAutoParryTool(target)
+                || now <= (target.craftrasParryPrimedUntil || 0);
+            if (canParry && parryPressed) {
+                shove.pendingParry = null;
+                this.resolvePlayerParrySuccess(target, [{
+                    amount: 0,
+                    bullets: [],
+                    contacts: [],
+                    source: null,
+                    receivedAt: now,
+                    expiresAt: now,
+                }], now);
+            } else if (now >= shove.pendingParry.expiresAt) {
+                shove.pendingParry = null;
+                this.knockCombatTargetFromSource(target, jane, CRAFTRAS_JANE_SKILL_TWO_SHOVE_KNOCKBACK);
+            }
+        }
+        if (now < shove.endsAt || shove.pendingParry) return true;
+        jane.craftrasJaneSkillTwoShove = null;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        if (jane.craftrasJaneSkillTwoHidden) this.setJaneSkillTwoVisible(jane, false);
+        return false;
+    }
+
+    spawnJaneSkillThreeClone(jane, target, index, now = Date.now()) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = BLOCK_SIZE * (4.5 + Math.random() * 1.5);
+        const clone = new Entity({
+            x: jane.x + Math.cos(angle) * radius,
+            y: jane.y + Math.sin(angle) * radius,
+        });
+        clone.define("craftrasJane");
+        clone.name = "Jane Clone";
+        clone.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        clone.alwaysActive = true;
+        clone.craftrasMobType = "jane_skill_three_clone";
+        clone.craftrasMobFamily = "jane_clone";
+        clone.craftrasJaneSkillThreeEntity = true;
+        clone.craftrasJaneSkillThreeClone = true;
+        clone.craftrasJaneOwner = jane;
+        clone.craftrasJaneTarget = target;
+        clone.craftrasJaneCloneIndex = index;
+        clone.craftrasJaneNoHitUntil = now + 350;
+        clone.craftrasJaneSkillThreeRearmAt = now;
+        clone.craftrasJaneSkillThreeNextTrailAt = now;
+        clone.craftrasNoKnockback = true;
+        clone.craftrasContactDamage = 0;
+        const size = Math.max(12, (jane.SIZE || jane.size || 44.8) / 1.2);
+        clone.SIZE = size;
+        clone.coreSize = size;
+        clone.refreshBodyAttributes?.();
+        clone.health.set(1);
+        clone.health.amount = 1;
+        if (clone.color) clone.color.base = "#ff8ed8";
+        if (clone.settings) clone.settings.drawHealth = false;
+        clone.on("dead", () => this.janeSkillEntities.delete(clone));
+        this.janeSkillEntities.add(clone);
+        return clone;
+    }
+
+    spawnJaneSkillOneMimic(jane, target, now = Date.now()) {
+        const existing = [...this.janeSkillEntities].find(entity =>
+            entity?.craftrasJanePersistentSkillOneClone
+            && entity.craftrasJaneOwner === jane
+            && !entity.isDead?.()
+        );
+        if (existing) return existing;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = BLOCK_SIZE * 6;
+        const clone = new Entity({
+            x: jane.x + Math.cos(angle) * radius,
+            y: jane.y + Math.sin(angle) * radius,
+        });
+        clone.define("craftrasJane");
+        clone.name = "Jane Clone";
+        clone.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        clone.alwaysActive = true;
+        clone.craftrasMobType = "jane_skill_one_clone";
+        clone.craftrasMobFamily = "jane_clone";
+        clone.craftrasJanePersistentSkillOneClone = true;
+        clone.craftrasJaneOwner = jane;
+        clone.craftrasJaneRootOwner = jane;
+        clone.craftrasJaneTarget = target;
+        clone.craftrasJaneActiveSkill = null;
+        clone.craftrasJaneNextSkillAt = now + 500;
+        clone.craftrasJaneNextSkill = "skill_one";
+        clone.craftrasJaneSkillOneDashSets = 1;
+        clone.craftrasJaneSkillOneDashesPerSet = 1;
+        clone.craftrasJaneSkillOneCycleInterval = 3_000;
+        clone.craftrasJaneSkillOneDamageMultiplier = 0.5;
+        clone.craftrasJaneSkillOneSpeedMultiplier = 0.8;
+        clone.craftrasControl = {
+            goal: { x: clone.x, y: clone.y },
+            target: { x: 1, y: 0 },
+            fire: false,
+            power: 0,
+        };
+        clone.craftrasNoKnockback = true;
+        clone.craftrasContactDamage = 0;
+        clone.craftrasSunImmune = true;
+        clone.invuln = false;
+        clone.godmode = false;
+        clone.craftrasDeathLocked = false;
+        clone.refreshBodyAttributes?.();
+        clone.health.set(CRAFTRAS_JANE_SKILL_THREE_MIMIC_HEALTH);
+        clone.health.amount = CRAFTRAS_JANE_SKILL_THREE_MIMIC_HEALTH;
+        if (clone.color) clone.color.base = "#ffd0ee";
+        clone.on("dead", () => {
+            for (const entity of [...this.janeSkillEntities]) {
+                if (entity?.craftrasJaneOwner !== clone) continue;
+                entity.destroy?.();
+                this.janeSkillEntities.delete(entity);
+            }
+            this.janeSkillEntities.delete(clone);
+            this.mobs.delete(clone);
+        });
+        this.janeSkillEntities.add(clone);
+        this.mobs.add(clone);
+        return clone;
+    }
+
+    updateJaneSkillOneMimic(clone, now = Date.now()) {
+        const jane = clone?.craftrasJaneOwner;
+        const target = clone?.craftrasJaneTarget;
+        if (!clone || clone.isDead?.() || !jane || jane.isDead?.() || !target || target.isDead?.()) return false;
+        if (clone.craftrasJaneActiveSkill?.type === "skill_one") {
+            this.updateJaneSkillOne(clone, target, now);
+            return true;
+        }
+        this.setJaneActorIdle(clone, target);
+        if (now >= (clone.craftrasJaneNextSkillAt || 0)) this.startJaneSkillOne(clone, target, now);
+        return true;
+    }
+
+    spawnJaneSkillThreeTrail(entity, now = Date.now()) {
+        if (now < (entity.craftrasJaneSkillThreeNextTrailAt || 0)) return;
+        entity.craftrasJaneSkillThreeNextTrailAt = now + CRAFTRAS_JANE_SKILL_THREE_TRAIL_INTERVAL;
+        const size = Math.max(12, entity.realSize || entity.size || entity.SIZE || 24);
+        this.spawnExplosionEffect(entity, {
+            duration: 500,
+            startSize: size * 1.08,
+            endSize: size * 0.25,
+            color: "#ff35bd",
+            alpha: 0.58,
+            fade: true,
+        });
+    }
+
+    explodeJaneSkillThreeCharger(entity, target, now = Date.now()) {
+        const jane = entity.craftrasJaneOwner || entity;
+        const isClone = !!entity.craftrasJaneSkillThreeClone;
+        const size = Math.max(18, entity.realSize || entity.size || entity.SIZE || 30);
+        this.spawnExplosionEffect(entity, {
+            duration: 650,
+            startSize: size * 0.9,
+            endSize: size * 3.5,
+            color: "#ff3fbf",
+            alpha: 0.62,
+            fade: true,
+        });
+        this.getSocketForBody(target)?.talk?.("SH", JSON.stringify({
+            type: "camera",
+            duration: 450,
+            amount: 16,
+            keepShake: false,
+        }));
+        this.getSocketForBody(target)?.talk?.("JPF", 650, 0.46);
+        entity.craftrasJaneSkillThreeParried = false;
+        entity.craftrasOnParrySuccess = body => {
+            if (body !== target || entity.craftrasJaneSkillThreeParried) return;
+            entity.craftrasJaneSkillThreeParried = true;
+            if (!isClone) return;
+            entity.destroy?.();
+            this.janeSkillEntities.delete(entity);
+        };
+        this.applyPlayerDamage(
+            target,
+            Math.max(1, target.health.max * CRAFTRAS_JANE_SKILL_THREE_EXPLOSION_DAMAGE_RATIO),
+            entity,
+            { noKnockback: true, parryExplosion: true, forceParryReduction: 100 },
+        );
+        if (isClone && entity.craftrasJaneSkillThreeParried) return false;
+        if (isClone && entity.craftrasJaneOneUseClone) {
+            entity.destroy?.();
+            this.janeSkillEntities.delete(entity);
+            this.mobs.delete(entity);
+            return false;
+        }
+        entity.craftrasJaneSkillThreeRearmAt = now + CRAFTRAS_JANE_SKILL_THREE_REARM_DELAY;
+        entity.craftrasJaneNoHitUntil = entity.craftrasJaneSkillThreeRearmAt + 150;
+        entity.velocity.x = 0;
+        entity.velocity.y = 0;
+        if (entity.accel) {
+            entity.accel.x = 0;
+            entity.accel.y = 0;
+        }
+        this.setJaneSwordPose(entity, -35, 1, 0.94);
+        return !entity.isDead?.();
+    }
+
+    updateJaneSkillThreeCharger(entity, target, now = Date.now()) {
+        const jane = entity.craftrasJaneOwner || entity;
+        if (!entity || entity.isDead?.() || !jane || jane.isDead?.() || !target || target.isDead?.()) return false;
+        if (now < (entity.craftrasJaneSkillThreeRearmAt || 0)) {
+            entity.velocity.x = 0;
+            entity.velocity.y = 0;
+            return true;
+        }
+        const dx = target.x - entity.x;
+        const dy = target.y - entity.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const directionX = dx / distance;
+        const directionY = dy / distance;
+        const step = Math.min(distance, CRAFTRAS_JANE_SKILL_THREE_SPEED);
+        entity.x += directionX * step;
+        entity.y += directionY * step;
+        entity.facing = Math.atan2(directionY, directionX);
+        entity.vfacing = entity.facing;
+        entity.velocity.x = 0;
+        entity.velocity.y = 0;
+        entity.craftrasControl = {
+            goal: { x: target.x, y: target.y },
+            target: { x: directionX, y: directionY },
+            fire: false,
+            power: 0,
+        };
+        this.setJaneSwordPose(entity, 8, 1.08, 1.02);
+        this.spawnJaneSkillThreeTrail(entity, now);
+        if (now < (entity.craftrasJaneNoHitUntil || 0)) return true;
+        const hitRadius = Math.max(16, entity.realSize || entity.size || 24)
+            + Math.max(8, target.realSize || target.size || 12)
+            + BLOCK_SIZE * 0.3;
+        if (Math.hypot(target.x - entity.x, target.y - entity.y) > hitRadius) return true;
+        return this.explodeJaneSkillThreeCharger(entity, target, now);
+    }
+
+    cleanupJaneSkillThree(jane) {
+        for (const entity of [...this.janeSkillEntities]) {
+            if (entity?.craftrasJaneOwner !== jane || !entity.craftrasJaneSkillThreeEntity) continue;
+            entity.destroy?.();
+            this.janeSkillEntities.delete(entity);
+            this.mobs.delete(entity);
+        }
+    }
+
+    spawnJanePhaseTwoSkillThreeClone(jane, target, kind, now = Date.now()) {
+        if (!jane || !target) return null;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = BLOCK_SIZE * (3.5 + Math.random() * 2.5);
+        const clone = new Entity({
+            x: jane.x + Math.cos(angle) * radius,
+            y: jane.y + Math.sin(angle) * radius,
+        });
+        clone.define("craftrasJane");
+        clone.name = kind === "escape" ? "Jane Escape Clone" : "Jane Laser Clone";
+        clone.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        clone.alwaysActive = true;
+        clone.craftrasMobType = kind === "escape" ? "jane_escape_clone" : "jane_laser_clone";
+        clone.craftrasMobFamily = "jane_clone";
+        clone.craftrasJaneSkillThreeEntity = true;
+        clone.craftrasJaneOwner = jane;
+        clone.craftrasJaneRootOwner = jane;
+        clone.craftrasJaneTarget = target;
+        clone.craftrasNoKnockback = true;
+        clone.craftrasNoLoot = true;
+        clone.craftrasContactDamage = 0;
+        clone.craftrasControl = {
+            goal: { x: clone.x, y: clone.y },
+            target: { x: 1, y: 0 },
+            fire: false,
+            power: 0,
+        };
+        clone.health.set(CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_CLONE_HEALTH);
+        clone.health.amount = CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_CLONE_HEALTH;
+        clone.craftrasJanePhaseTwoCloneLastUpdateAt = now;
+        if (kind === "escape") {
+            clone.craftrasJanePhaseTwoEscapeClone = true;
+            clone.craftrasJaneEscapeDeadlineAt = now + CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ESCAPE_DEADLINE;
+            if (clone.color) clone.color.base = "#f4f4f4";
+        } else {
+            clone.craftrasJanePhaseTwoLaserClone = true;
+            clone.craftrasJaneNextLaserAt = now + 400;
+            clone.facing = Math.atan2(target.y - clone.y, target.x - clone.x);
+            clone.vfacing = clone.facing;
+            if (clone.color) clone.color.base = "#b44cff";
+        }
+        clone.on("dead", () => {
+            this.janeSkillEntities.delete(clone);
+            this.mobs.delete(clone);
+        });
+        this.janeSkillEntities.add(clone);
+        this.mobs.add(clone);
+        return clone;
+    }
+
+    moveJanePhaseTwoEscapeClone(clone, target, elapsed) {
+        const awayAngle = Math.atan2(clone.y - target.y, clone.x - target.x)
+            + Math.sin(Date.now() / 620 + clone.id) * 0.24;
+        const step = CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ESCAPE_SPEED * elapsed / 1000;
+        const tryMove = angle => {
+            const nextX = clone.x + Math.cos(angle) * step;
+            const nextY = clone.y + Math.sin(angle) * step;
+            const cell = worldToBlock(nextX, nextY);
+            if (this.isBodyCollisionBlockForEntity(this.getBlock(cell.x, cell.y), clone)) return false;
+            clone.x = nextX;
+            clone.y = nextY;
+            clone.facing = angle;
+            clone.vfacing = angle;
+            return true;
+        };
+        if (!tryMove(awayAngle)) {
+            const side = Math.sin(Date.now() / 900 + clone.id) < 0 ? -1 : 1;
+            if (!tryMove(awayAngle + side * Math.PI / 2)) tryMove(awayAngle - side * Math.PI / 2);
+        }
+        clone.velocity.x = 0;
+        clone.velocity.y = 0;
+        clone.craftrasControl.goal = { x: clone.x, y: clone.y };
+        clone.craftrasControl.target = { x: Math.cos(clone.facing), y: Math.sin(clone.facing) };
+        clone.craftrasControl.power = 0;
+    }
+
+    triggerJanePhaseTwoEscapeCloneFailure(clone, target, now = Date.now()) {
+        if (!clone || clone.craftrasJaneEscapeFailureTriggered) return false;
+        clone.craftrasJaneEscapeFailureTriggered = true;
+        this.getSocketForBody(target)?.talk?.(
+            "BIF",
+            CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_INFERNO_DURATION - 500,
+            500,
+        );
+        this.applyPlayerDamage(
+            target,
+            Math.max(1, target.health.max * CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_INFERNO_DAMAGE_RATIO),
+            clone,
+            { bypassParry: true, noKnockback: true },
+        );
+        clone.destroy?.();
+        this.janeSkillEntities.delete(clone);
+        this.mobs.delete(clone);
+        return true;
+    }
+
+    updateJanePhaseTwoEscapeClone(clone, now = Date.now()) {
+        const jane = clone?.craftrasJaneOwner;
+        const target = clone?.craftrasJaneTarget;
+        if (!clone || clone.isDead?.() || !jane || jane.isDead?.() || !target || target.isDead?.()) return false;
+        if (now >= (clone.craftrasJaneEscapeDeadlineAt || 0)) {
+            this.triggerJanePhaseTwoEscapeCloneFailure(clone, target, now);
+            return false;
+        }
+        const elapsed = Math.max(8, Math.min(50, now - (clone.craftrasJanePhaseTwoCloneLastUpdateAt || now - 16)));
+        clone.craftrasJanePhaseTwoCloneLastUpdateAt = now;
+        clone.color.base = this.getMagicBookColor(now, clone.id * 0.17, ["#f8f8fb", "#09090d"]);
+        this.moveJanePhaseTwoEscapeClone(clone, target, elapsed);
+        return true;
+    }
+
+    fireJanePhaseTwoCloneLaser(clone, target, now = Date.now()) {
+        const aim = Number.isFinite(clone.facing)
+            ? clone.facing
+            : Math.atan2(target.y - clone.y, target.x - clone.x);
+        const muzzleDistance = Math.max(42, (clone.realSize || clone.size || 44.8) * 1.35);
+        this.spawnCraftrasLaser(clone, {
+            start: {
+                x: clone.x + Math.cos(aim) * muzzleDistance,
+                y: clone.y + Math.sin(aim) * muzzleDistance,
+            },
+            angle: aim,
+            angularVelocity: 0,
+            trackingTarget: target,
+            trackingTurnRate: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_TURN_RATE,
+            length: 3_200,
+            width: 310,
+            hitboxWidth: 145,
+            activeDelay: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_WARNING,
+            duration: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_DURATION,
+            damageRatio: 0.10,
+            damageInterval: 250,
+            playersOnly: jane.craftrasBossFormType !== "jane",
+            targetId: jane.craftrasBossFormType === "jane" ? null : target.id,
+            bypassParry: true,
+            shakeRange: 1_000,
+            shakeAmount: 9,
+            fadeOutStart: 0.90,
+            colorMode: "pink",
+        }, now);
+        return true;
+    }
+
+    updateJanePhaseTwoLaserClone(clone, now = Date.now()) {
+        const jane = clone?.craftrasJaneOwner;
+        const target = clone?.craftrasJaneTarget;
+        if (!clone || clone.isDead?.() || !jane || jane.isDead?.() || !target || target.isDead?.()) return false;
+        const elapsed = Math.max(8, Math.min(50, now - (clone.craftrasJanePhaseTwoCloneLastUpdateAt || now - 16)));
+        clone.craftrasJanePhaseTwoCloneLastUpdateAt = now;
+        const desired = Math.atan2(target.y - clone.y, target.x - clone.x);
+        const current = Number.isFinite(clone.facing) ? clone.facing : desired;
+        const difference = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
+        const maxTurn = 0.0007 * elapsed;
+        clone.facing = current + Math.max(-maxTurn, Math.min(maxTurn, difference));
+        clone.vfacing = clone.facing;
+        clone.velocity.x = 0;
+        clone.velocity.y = 0;
+        clone.craftrasControl.goal = { x: clone.x, y: clone.y };
+        clone.craftrasControl.target = { x: Math.cos(clone.facing), y: Math.sin(clone.facing) };
+        clone.craftrasControl.power = 0;
+        clone.color.base = this.getMagicBookColor(now, clone.id * 0.13, ["#7d32d9", "#ff4bc8"]);
+        if (now >= (clone.craftrasJaneNextLaserAt || 0)) {
+            this.fireJanePhaseTwoCloneLaser(clone, target, now);
+            clone.craftrasJaneNextLaserAt = now + CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_LASER_INTERVAL;
+        }
+        return true;
+    }
+
+    startJanePhaseTwoSkillThree(jane, target, now = Date.now()) {
+        this.setJaneSkillTwoVisible(jane, true);
+        jane.invuln = false;
+        jane.craftrasJaneActiveSkill = {
+            type: "skill_three",
+            phaseTwoVariant: true,
+            stage: "charge",
+            startedAt: now,
+            endsAt: Infinity,
+        };
+        jane.craftrasJaneSkillThreeRearmAt = 0;
+        jane.craftrasJaneNoHitUntil = now + 250;
+        jane.craftrasJaneSkillThreeNextTrailAt = now;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        return true;
+    }
+
+    startJanePhaseTwoSkillThreeLaser(jane, target, skill, now = Date.now()) {
+        const angle = Math.atan2(target.y - jane.y, target.x - jane.x);
+        const muzzleDistance = Math.max(29, (jane.realSize || jane.size || 44.8) * 0.725);
+        const giantLaser = this.spawnCraftrasLaser(jane, {
+            start: {
+                x: jane.x + Math.cos(angle) * muzzleDistance,
+                y: jane.y + Math.sin(angle) * muzzleDistance,
+            },
+            angle,
+            trackingTarget: target,
+            trackingResponsiveness: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_TRACKING,
+            length: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_LENGTH,
+            width: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_WIDTH,
+            hitboxWidth: 435,
+            hitboxDefinition: CRAFTRAS_GIANT_LASER_HITBOX,
+            duration: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_DURATION,
+            damageRatio: 0.10,
+            damageInterval: 250,
+            playersOnly: jane.craftrasBossFormType !== "jane",
+            targetId: jane.craftrasBossFormType === "jane" ? null : target.id,
+            bypassParry: true,
+            shakeRange: 1_800,
+            shakeAmount: 4,
+            shakeDuration: CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_DURATION,
+            fadeOutStart: 0.94,
+            colorMode: "pink",
+            visualVariant: "giant",
+        }, now);
+        skill.stage = "laser";
+        skill.laserStartedAt = now;
+        skill.endsAt = now + CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_GIANT_LASER_DURATION;
+        skill.giantLaser = giantLaser;
+        skill.clonesSpawned = 0;
+        skill.nextCloneAt = now;
+        jane.craftrasJaneSkillThreeRearmAt = 0;
+        jane.velocity.x = 0;
+        jane.velocity.y = 0;
+        this.setJaneActorIdle(jane, target);
+        return true;
+    }
+
+    spawnJanePhaseTwoSkillThreeOneUseClone(jane, target, index, now = Date.now()) {
+        const clone = this.spawnJaneSkillThreeClone(jane, target, index, now);
+        if (!clone) return null;
+        clone.name = "Jane Suicide Clone";
+        clone.craftrasJaneOneUseClone = true;
+        clone.craftrasJaneNoHitUntil = now + 250;
+        clone.facing = Math.atan2(target.y - clone.y, target.x - clone.x);
+        clone.vfacing = clone.facing;
+        if (clone.craftrasControl) {
+            clone.craftrasControl.target = {
+                x: Math.cos(clone.facing),
+                y: Math.sin(clone.facing),
+            };
+        }
+        return clone;
+    }
+
+    updateJanePhaseTwoSkillThree(jane, target, skill, now = Date.now()) {
+        if (skill.stage === "charge") {
+            const previousRearmAt = jane.craftrasJaneSkillThreeRearmAt || 0;
+            if (!this.updateJaneSkillThreeCharger(jane, target, now)) return false;
+            if ((jane.craftrasJaneSkillThreeRearmAt || 0) > now && jane.craftrasJaneSkillThreeRearmAt !== previousRearmAt) {
+                this.startJanePhaseTwoSkillThreeLaser(jane, target, skill, now);
+            }
+            return true;
+        }
+        while (
+            skill.clonesSpawned < CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ONE_USE_CLONE_COUNT
+            && now >= skill.nextCloneAt
+            && skill.nextCloneAt < skill.endsAt
+        ) {
+            this.spawnJanePhaseTwoSkillThreeOneUseClone(jane, target, skill.clonesSpawned, skill.nextCloneAt);
+            skill.clonesSpawned++;
+            skill.nextCloneAt += CRAFTRAS_JANE_PHASE_TWO_SKILL_THREE_ONE_USE_CLONE_INTERVAL;
+        }
+        jane.velocity.x = 0;
+        jane.velocity.y = 0;
+        this.setJaneActorIdle(jane, target);
+        if (now < skill.endsAt) return true;
+        this.cleanupJaneSkillThree(jane);
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = "skill_one";
+        jane.craftrasJaneNextSkillAt = now + CRAFTRAS_JANE_SKILL_ONE_REST;
+        jane.craftrasJaneSkillThreeRearmAt = 0;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        return false;
+    }
+
+    startJaneSkillThree(jane, target, now = Date.now()) {
+        if (jane.craftrasJanePhase >= 2) return this.startJanePhaseTwoSkillThree(jane, target, now);
+        this.setJaneSkillTwoVisible(jane, true);
+        jane.invuln = false;
+        this.spawnJaneSkillOneMimic(jane, target, now);
+        jane.craftrasJaneActiveSkill = {
+            type: "skill_three",
+            startedAt: now,
+            endsAt: now + CRAFTRAS_JANE_SKILL_THREE_DURATION,
+            clonesSpawned: 0,
+            nextCloneAt: now,
+            janeDashesStarted: 0,
+            nextJaneDashAt: now,
+            janeDashActive: false,
+        };
+        jane.craftrasJaneSkillThreeRearmAt = 0;
+        jane.craftrasJaneSkillThreeNextTrailAt = now;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+    }
+
+    updateJaneSkillThree(jane, target, now = Date.now()) {
+        const skill = jane.craftrasJaneActiveSkill;
+        if (!skill || skill.type !== "skill_three") return false;
+        if (skill.phaseTwoVariant) return this.updateJanePhaseTwoSkillThree(jane, target, skill, now);
+        if (!skill.phaseTwoVariant) {
+            while (skill.clonesSpawned < CRAFTRAS_JANE_SKILL_THREE_CLONE_COUNT && now >= skill.nextCloneAt) {
+                this.spawnJaneSkillThreeClone(jane, target, skill.clonesSpawned, now);
+                skill.clonesSpawned++;
+                skill.nextCloneAt += CRAFTRAS_JANE_SKILL_THREE_CLONE_INTERVAL;
+            }
+        }
+        while (skill.janeDashesStarted < CRAFTRAS_JANE_SKILL_THREE_JANE_DASH_COUNT && now >= skill.nextJaneDashAt) {
+            skill.janeDashActive = true;
+            jane.craftrasJaneSkillThreeRearmAt = now;
+            jane.craftrasJaneNoHitUntil = now + 250;
+            skill.janeDashesStarted++;
+            skill.nextJaneDashAt += CRAFTRAS_JANE_SKILL_THREE_JANE_DASH_INTERVAL;
+        }
+        if (skill.janeDashActive) {
+            const keepDashing = this.updateJaneSkillThreeCharger(jane, target, now);
+            if (!keepDashing || now < (jane.craftrasJaneSkillThreeRearmAt || 0)) skill.janeDashActive = false;
+        } else {
+            jane.velocity.x *= 0.3;
+            jane.velocity.y *= 0.3;
+            this.setJaneActorIdle(jane, target);
+        }
+        if (now < skill.endsAt) return true;
+        this.cleanupJaneSkillThree(jane);
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = skill.phaseTwoVariant ? "skill_one" : "skill_four";
+        jane.craftrasJaneNextSkillAt = now + CRAFTRAS_JANE_SKILL_ONE_REST;
+        jane.craftrasJaneSkillThreeRearmAt = 0;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        return false;
+    }
+
+    spawnJaneSkillFourCircle(jane, location, circleNumber, size = 34, duration = 4_500, now = Date.now()) {
+        if (!jane || !location) return null;
+        const circle = new Entity({ x: location.x, y: location.y });
+        circle.define(`craftrasJaneMagicCircle${Math.max(1, Math.min(3, circleNumber))}`);
+        circle.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        circle.alwaysActive = true;
+        circle.craftrasJaneOwner = jane;
+        circle.craftrasJaneRootOwner = jane;
+        circle.craftrasExplosionStarted = now;
+        circle.craftrasExplosionDuration = duration;
+        circle.craftrasExplosionStartSize = size * 0.88;
+        circle.craftrasExplosionEndSize = size;
+        circle.craftrasExplosionStartAlpha = 0.92;
+        circle.craftrasExplosionFade = true;
+        circle.SIZE = size;
+        circle.coreSize = size;
+        circle.sizeMultiplier = 1;
+        circle.alpha = 0.92;
+        this.explosionEffects.add(circle);
+        return circle;
+    }
+
+    spawnJaneSkillFourBullet(jane, target, location, angle, options = {}, now = Date.now()) {
+        if (!jane || !target || !location) return null;
+        const speed = Math.max(1, Number(options.speed) || 10);
+        const size = Math.max(6, Number(options.size) || 18);
+        const projectile = new Entity({ x: location.x, y: location.y });
+        projectile.define("craftrasJaneSkillTwoBulletProjectile");
+        projectile.name = "";
+        projectile.team = jane.craftrasBossFormType ? jane.team : TEAM_ENEMIES;
+        projectile.alwaysActive = true;
+        projectile.craftrasMobType = "jane_skill_four_bullet";
+        projectile.craftrasJaneSkillFourProjectile = true;
+        projectile.craftrasJaneOwner = jane;
+        projectile.craftrasJaneRootOwner = jane;
+        projectile.craftrasJaneTarget = target;
+        projectile.craftrasJaneDamageRatio = CRAFTRAS_JANE_SKILL_FOUR_BULLET_DAMAGE_RATIO;
+        projectile.craftrasJaneVelocity = {
+            x: Math.cos(angle) * speed,
+            y: Math.sin(angle) * speed,
+        };
+        projectile.craftrasJaneAngularVelocity = Number(options.spin) || 0;
+        projectile.craftrasJaneLastUpdateAt = now;
+        projectile.craftrasJaneNoHitUntil = now + 180;
+        projectile.craftrasJaneExpiresAt = now + CRAFTRAS_JANE_SKILL_FOUR_BULLET_LIFETIME;
+        projectile.facing = angle;
+        projectile.vfacing = angle;
+        projectile.SIZE = size;
+        projectile.coreSize = size;
+        projectile.refreshBodyAttributes?.();
+        if (projectile.color) projectile.color.base = options.color || "#ff62c8";
+        this.janeSkillEntities.add(projectile);
+        return projectile;
+    }
+
+    fireJaneSkillFourVolley(jane, target, event, now = Date.now()) {
+        if (!jane || !target || !event?.location) return false;
+        const phase = event.baseAngle + event.volleyIndex * 0.31;
+        const direction = Math.floor(event.volleyIndex / 6) % 2 ? -1 : 1;
+        const layers = [
+            {
+                count: CRAFTRAS_JANE_SKILL_FOUR_INNER_PETALS,
+                phase: phase + Math.PI / CRAFTRAS_JANE_SKILL_FOUR_INNER_PETALS,
+                speed: 9.5,
+                spin: direction * 0.018,
+                size: 16,
+                color: "#ff9add",
+            },
+            {
+                count: CRAFTRAS_JANE_SKILL_FOUR_OUTER_PETALS,
+                phase,
+                speed: 13,
+                spin: -direction * 0.011,
+                size: 20,
+                color: "#ff45b8",
+            },
+        ];
+        for (const layer of layers) for (let index = 0; index < layer.count; index++) {
+            this.spawnJaneSkillFourBullet(jane, target, event.location, layer.phase + index * Math.PI * 2 / layer.count, layer, now);
+        }
+        return true;
+    }
+
+    updateJaneSkillFourBullet(projectile, now = Date.now()) {
+        const jane = projectile?.craftrasJaneOwner;
+        const target = projectile?.craftrasJaneTarget;
+        if (!projectile || !jane || jane.isDead?.() || !target || target.isDead?.() || now >= (projectile.craftrasJaneExpiresAt || 0)) return false;
+        const elapsedScale = Math.max(0.25, Math.min(3, (now - (projectile.craftrasJaneLastUpdateAt || now)) / (1000 / 60)));
+        projectile.craftrasJaneLastUpdateAt = now;
+        const velocity = projectile.craftrasJaneVelocity;
+        const angle = Math.atan2(velocity.y, velocity.x) + projectile.craftrasJaneAngularVelocity * elapsedScale;
+        const speed = Math.hypot(velocity.x, velocity.y) || 10;
+        velocity.x = Math.cos(angle) * speed;
+        velocity.y = Math.sin(angle) * speed;
+        projectile.x += velocity.x * elapsedScale;
+        projectile.y += velocity.y * elapsedScale;
+        projectile.facing = angle;
+        projectile.vfacing = angle;
+        if (now < (projectile.craftrasJaneNoHitUntil || 0)) return true;
+        const hitRadius = Math.max(12, projectile.realSize || projectile.size || 18)
+            + Math.max(8, target.realSize || target.size || 12);
+        if ((projectile.x - target.x) ** 2 + (projectile.y - target.y) ** 2 > hitRadius ** 2) return true;
+        this.applyPlayerDamage(
+            target,
+            Math.max(1, target.health.max * projectile.craftrasJaneDamageRatio),
+            projectile,
+            { bypassParry: true, noKnockback: true },
+        );
+        return false;
+    }
+
+    beginJaneSkillFourPattern(jane, target, skill, patternAt, now = Date.now()) {
+        const placementAngle = Math.random() * Math.PI * 2;
+        const placementRadius = BLOCK_SIZE * 8;
+        jane.x = target.x + Math.cos(placementAngle) * placementRadius;
+        jane.y = target.y + Math.sin(placementAngle) * placementRadius;
+        jane.velocity.x = 0;
+        jane.velocity.y = 0;
+        this.resolveEntityOutOfWall(jane);
+        const aim = Math.atan2(target.y - jane.y, target.x - jane.x);
+        jane.facing = aim;
+        jane.vfacing = aim;
+        this.setJaneActorIdle(jane, target);
+        this.setJaneSwordPose(jane, 18, 1.12, 1.02);
+        const direction = Math.random() < 0.5 ? -1 : 1;
+        const muzzleDistance = Math.max(46, (jane.realSize || jane.size || 45) * 1.5);
+        this.spawnCraftrasLaser(jane, {
+            start: {
+                x: jane.x + Math.cos(aim) * muzzleDistance,
+                y: jane.y + Math.sin(aim) * muzzleDistance,
+            },
+            angle: aim,
+            angularVelocity: direction * CRAFTRAS_JANE_SKILL_FOUR_LASER_SWEEP,
+            length: 3_600,
+            width: CRAFTRAS_JANE_SKILL_FOUR_LASER_WIDTH,
+            hitboxWidth: CRAFTRAS_JANE_SKILL_FOUR_HITBOX_WIDTH,
+            activeDelay: CRAFTRAS_JANE_SKILL_FOUR_SCREEN_DELAY,
+            duration: CRAFTRAS_JANE_SKILL_FOUR_SCREEN_DELAY + CRAFTRAS_JANE_SKILL_FOUR_LASER_ACTIVE_DURATION,
+            damageRatio: CRAFTRAS_JANE_SKILL_FOUR_LASER_DAMAGE_RATIO,
+            damageInterval: CRAFTRAS_JANE_SKILL_FOUR_LASER_DAMAGE_INTERVAL,
+            playersOnly: jane.craftrasBossFormType !== "jane",
+            targetId: jane.craftrasBossFormType === "jane" ? null : target.id,
+            bypassParry: true,
+            shakeRange: 1_300,
+            shakeAmount: 16,
+            fadeOutStart: 0.94,
+        }, patternAt);
+        this.getSocketForBody(target)?.talk?.("J4C", 500, 200);
+        skill.events.push({ type: "screen", at: patternAt + CRAFTRAS_JANE_SKILL_FOUR_SCREEN_DELAY });
+        const circleLocation = { x: jane.x, y: jane.y };
+        this.spawnJaneSkillFourCircle(jane, circleLocation, 1, 66, CRAFTRAS_JANE_SKILL_FOUR_DURATION, now);
+        this.spawnJaneSkillFourCircle(jane, circleLocation, 2, 82, CRAFTRAS_JANE_SKILL_FOUR_DURATION, now);
+        this.spawnJaneSkillFourCircle(jane, circleLocation, 3, 102, CRAFTRAS_JANE_SKILL_FOUR_DURATION, now);
+        for (let volleyIndex = 0; volleyIndex < CRAFTRAS_JANE_SKILL_FOUR_VOLLEY_COUNT; volleyIndex++) {
+            skill.events.push({
+                type: "volley",
+                at: patternAt + CRAFTRAS_JANE_SKILL_FOUR_SCREEN_DELAY + volleyIndex * CRAFTRAS_JANE_SKILL_FOUR_VOLLEY_INTERVAL,
+                location: circleLocation,
+                baseAngle: aim + direction * Math.PI / 8,
+                volleyIndex,
+            });
+        }
+    }
+
+    startJaneSkillFour(jane, target, now = Date.now()) {
+        this.setJaneSkillTwoVisible(jane, true);
+        jane.invuln = true;
+        jane.craftrasJaneSkillFourLockedHealth = Math.max(1, jane.health?.amount || jane.health?.max || CRAFTRAS_JANE_PHASE_HEALTH);
+        jane.craftrasJaneActiveSkill = {
+            type: "skill_four",
+            startedAt: now,
+            endsAt: now + CRAFTRAS_JANE_SKILL_FOUR_DURATION,
+            patternStarted: false,
+            events: [],
+        };
+        this.setJaneSwordPose(jane, 18, 1.12, 1.02);
+    }
+
+    updateJaneSkillFour(jane, target, now = Date.now()) {
+        const skill = jane?.craftrasJaneActiveSkill;
+        if (!skill || skill.type !== "skill_four") return false;
+        jane.health.amount = Math.min(jane.health.max, jane.craftrasJaneSkillFourLockedHealth || jane.health.max);
+        jane.damageReceived = 0;
+        jane.readyToDie = false;
+        jane.invuln = true;
+        if (!skill.patternStarted) {
+            this.beginJaneSkillFourPattern(jane, target, skill, now, now);
+            skill.patternStarted = true;
+        }
+        const due = skill.events.filter(event => now >= event.at).sort((a, b) => a.at - b.at);
+        skill.events = skill.events.filter(event => now < event.at);
+        for (const event of due) {
+            if (event.type === "screen") {
+                this.applyPlayerDamage(
+                    target,
+                    Math.max(1, target.health.max * CRAFTRAS_JANE_SKILL_FOUR_SCREEN_DAMAGE_RATIO),
+                    jane,
+                    { noKnockback: true, forceParryReduction: 100 },
+                );
+                const socket = this.getSocketForBody(target);
+                socket?.talk?.("JPF", 420, 0.32);
+                socket?.talk?.("SH", JSON.stringify({ type: "camera", duration: 420, amount: 15, keepShake: false }));
+            } else if (event.type === "volley") {
+                this.fireJaneSkillFourVolley(jane, target, event, now);
+            }
+        }
+        this.setJaneActorIdle(jane, target);
+        if (now < skill.endsAt || skill.events.length) return true;
+        jane.invuln = false;
+        jane.craftrasJaneSkillFourLockedHealth = null;
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = "skill_five";
+        jane.craftrasJaneNextSkillAt = now + CRAFTRAS_JANE_SKILL_ONE_REST;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        return false;
+    }
+
+    startJaneSkillFive(jane, target, now = Date.now()) {
+        if (!jane || !target) return false;
+        this.setJaneSkillTwoVisible(jane, true);
+        jane.invuln = true;
+        jane.craftrasJaneSkillFiveLockedHealth = Math.max(1, jane.health?.amount || jane.health?.max || CRAFTRAS_JANE_PHASE_HEALTH);
+        const placementAngle = Math.random() * Math.PI * 2;
+        const placementRadius = BLOCK_SIZE * 8;
+        jane.x = target.x + Math.cos(placementAngle) * placementRadius;
+        jane.y = target.y + Math.sin(placementAngle) * placementRadius;
+        jane.velocity.x = 0;
+        jane.velocity.y = 0;
+        this.resolveEntityOutOfWall(jane);
+        const angle = Math.atan2(target.y - jane.y, target.x - jane.x);
+        const direction = Math.random() < 0.5 ? -1 : 1;
+        const muzzleDistance = Math.max(46, (jane.realSize || jane.size || 45) * 1.5);
+        const start = {
+            x: jane.x + Math.cos(angle) * muzzleDistance,
+            y: jane.y + Math.sin(angle) * muzzleDistance,
+        };
+        jane.facing = angle;
+        jane.vfacing = angle;
+        this.setJaneActorIdle(jane, target);
+        this.setJaneSwordPose(jane, 18, 1.12, 1.02);
+        this.spawnCraftrasLaser(jane, {
+            start,
+            angle,
+            angularVelocity: direction * Math.PI * 2 / CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION,
+            length: CRAFTRAS_JANE_SKILL_FIVE_LASER_LENGTH,
+            width: CRAFTRAS_JANE_SKILL_FIVE_LASER_WIDTH,
+            hitboxWidth: CRAFTRAS_JANE_SKILL_FIVE_HITBOX_WIDTH,
+            duration: CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION,
+            colorMode: "red",
+            alphaScale: 0.20,
+            fadeOutStart: 0.98,
+            shakeRange: 1,
+            shakeAmount: 0.01,
+        }, now);
+        jane.craftrasJaneActiveSkill = {
+            type: "skill_five",
+            startedAt: now,
+            endsAt: now + CRAFTRAS_JANE_SKILL_FIVE_DURATION,
+            nextRevealAt: now + CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION,
+            rotationsCompleted: 0,
+            angle,
+            direction,
+            start,
+            reactions: [],
+            lastPullAt: now,
+        };
+        return true;
+    }
+
+    revealJaneSkillFiveLaser(jane, target, skill, rotationIndex, now = Date.now()) {
+        if (!jane || !target || !skill) return false;
+        const mode = Math.random() < 0.5 ? "red" : "blue";
+        const rotationDuration = CRAFTRAS_JANE_SKILL_FIVE_ROTATION_DURATIONS[rotationIndex]
+            || CRAFTRAS_JANE_SKILL_FIVE_ROTATION_DURATIONS.at(-1)
+            || CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION;
+        const angularVelocity = skill.direction * Math.PI * 2 / rotationDuration;
+        this.spawnCraftrasLaser(jane, {
+            start: skill.start,
+            angle: skill.angle,
+            angularVelocity,
+            length: CRAFTRAS_JANE_SKILL_FIVE_LASER_LENGTH,
+            width: CRAFTRAS_JANE_SKILL_FIVE_LASER_WIDTH,
+            hitboxWidth: CRAFTRAS_JANE_SKILL_FIVE_HITBOX_WIDTH,
+            duration: rotationDuration,
+            colorMode: "red",
+            alphaScale: 0.20,
+            fadeOutStart: 0.98,
+            shakeRange: 1,
+            shakeAmount: 0.01,
+        }, now);
+        const actualBeam = this.spawnCraftrasLaser(jane, {
+            start: skill.start,
+            angle: skill.angle,
+            angularVelocity,
+            length: CRAFTRAS_JANE_SKILL_FIVE_LASER_LENGTH,
+            width: CRAFTRAS_JANE_SKILL_FIVE_LASER_WIDTH,
+            hitboxWidth: CRAFTRAS_JANE_SKILL_FIVE_HITBOX_WIDTH,
+            duration: rotationDuration,
+            colorMode: mode,
+            alphaScale: 1,
+            fadeOutStart: 0.98,
+            shakeRange: 1_800,
+            shakeAmount: 24,
+        }, now);
+        if (!actualBeam) return false;
+        skill.reactions.push({
+            mode,
+            actualBeam,
+            impactAt: now + CRAFTRAS_JANE_SKILL_FIVE_IMPACT_DELAY,
+            impactResolved: false,
+            revealPosition: { x: target.x, y: target.y },
+        });
+        return true;
+    }
+
+    pullPlayerTowardJaneSkillFive(jane, body, elapsed) {
+        if (!jane || !body || body.isDead?.()) return false;
+        const dx = jane.x - body.x;
+        const dy = jane.y - body.y;
+        const distance = Math.hypot(dx, dy);
+        if (!distance || distance > CRAFTRAS_JANE_SKILL_FIVE_PULL_RADIUS) return false;
+        const directionX = dx / distance;
+        const directionY = dy / distance;
+        const step = Math.min(distance, CRAFTRAS_JANE_SKILL_FIVE_PULL_SPEED * elapsed / 1000);
+        const tryMove = (nextX, nextY) => {
+            const cell = worldToBlock(nextX, nextY);
+            if (this.isBodyCollisionBlockForEntity(this.getBlock(cell.x, cell.y), body)) return false;
+            body.x = nextX;
+            body.y = nextY;
+            return true;
+        };
+        if (!tryMove(body.x + directionX * step, body.y + directionY * step)) {
+            if (!tryMove(body.x + directionX * step, body.y)) tryMove(body.x, body.y + directionY * step);
+        }
+        body.velocity.x += directionX * CRAFTRAS_JANE_SKILL_FIVE_PULL_VELOCITY;
+        body.velocity.y += directionY * CRAFTRAS_JANE_SKILL_FIVE_PULL_VELOCITY;
+        return true;
+    }
+
+    resolveJaneSkillFiveImpact(jane, target, reaction, now = Date.now()) {
+        if (!jane || !target || !reaction?.actualBeam || reaction.impactResolved) return false;
+        reaction.impactResolved = true;
+        const beam = reaction.actualBeam;
+        const activeElapsed = Math.max(0, now - (beam.activeAt || beam.startedAt || now));
+        beam.angle = (beam.initialAngle || 0) + (beam.angularVelocity || 0) * activeElapsed;
+        if (!this.laserTestBeamContains(beam, target)) return true;
+        const damage = Math.max(1, target.health.max * CRAFTRAS_JANE_SKILL_FIVE_DAMAGE_RATIO);
+        if (jane.craftrasBossFormType === "jane") {
+            this.applyPlayerDamage(target, damage, jane, { bypassParry: true, noKnockback: true });
+            return true;
+        }
+        if (reaction.mode === "blue") {
+            const source = {
+                x: jane.x,
+                y: jane.y,
+                craftrasMobType: "jane_skill_five_laser",
+                craftrasJaneOwner: jane,
+                craftrasOnParrySuccess: body => {
+                    if (body === target) reaction.parried = true;
+                },
+            };
+            this.applyPlayerDamage(target, damage, source, { noKnockback: true, forceParryReduction: 100 });
+            return true;
+        }
+        const parryAttempt = !this.isPlayerAutoParryTool(target) && (
+            now <= (target.craftrasParryPrimedUntil || 0)
+            || this.isPlayerParryGuarding(target)
+        );
+        const moved = Math.hypot(
+            target.x - (reaction.revealPosition?.x ?? target.x),
+            target.y - (reaction.revealPosition?.y ?? target.y),
+        ) > CRAFTRAS_JANE_SKILL_FIVE_MOVE_TOLERANCE;
+        if (parryAttempt) this.breakJaneParry(target, now);
+        if (parryAttempt || moved) {
+            this.applyPlayerDamage(target, damage, jane, { bypassParry: true, noKnockback: true });
+        }
+        return true;
+    }
+
+    updateJaneSkillFive(jane, target, now = Date.now()) {
+        const skill = jane?.craftrasJaneActiveSkill;
+        if (!skill || skill.type !== "skill_five") return false;
+        jane.health.amount = Math.min(jane.health.max, jane.craftrasJaneSkillFiveLockedHealth || jane.health.max);
+        jane.damageReceived = 0;
+        jane.readyToDie = false;
+        jane.invuln = true;
+        this.setJaneActorIdle(jane, target);
+        const pullElapsed = Math.max(8, Math.min(50, now - (skill.lastPullAt || now - 16)));
+        skill.lastPullAt = now;
+        this.pullPlayerTowardJaneSkillFive(jane, target, pullElapsed);
+        if (skill.rotationsCompleted < CRAFTRAS_JANE_SKILL_FIVE_ROTATION_COUNT && now >= skill.nextRevealAt) {
+            const rotationIndex = skill.rotationsCompleted;
+            this.revealJaneSkillFiveLaser(jane, target, skill, rotationIndex, now);
+            skill.rotationsCompleted++;
+            skill.nextRevealAt = now + (CRAFTRAS_JANE_SKILL_FIVE_ROTATION_DURATIONS[rotationIndex]
+                || CRAFTRAS_JANE_SKILL_FIVE_PREVIEW_DURATION);
+        }
+        for (const reaction of skill.reactions) {
+            if (!reaction.impactResolved && now >= reaction.impactAt) this.resolveJaneSkillFiveImpact(jane, target, reaction, now);
+        }
+        skill.reactions = skill.reactions.filter(reaction => !reaction.impactResolved || now < reaction.actualBeam.expiresAt);
+        if (now < skill.endsAt) return true;
+        jane.invuln = false;
+        jane.craftrasJaneSkillFiveLockedHealth = null;
+        jane.craftrasJaneActiveSkill = null;
+        jane.craftrasJaneNextSkill = "skill_one";
+        jane.craftrasJaneNextSkillAt = now + CRAFTRAS_JANE_SKILL_ONE_REST;
+        this.setJaneSwordPose(jane, -35, 1, 0.94);
+        return false;
+    }
+
+    repelJaneSkillTwoProjectile(projectile, body, now = Date.now()) {
+        let dx = projectile.x - body.x;
+        let dy = projectile.y - body.y;
+        let distance = Math.hypot(dx, dy);
+        if (distance < 0.01) {
+            dx = -(projectile.craftrasJaneVelocity?.x || 1);
+            dy = -(projectile.craftrasJaneVelocity?.y || 0);
+            distance = Math.hypot(dx, dy) || 1;
+        }
+        dx /= distance;
+        dy /= distance;
+        const separation = Math.max(18, (body.realSize || body.size || 12) + (projectile.realSize || projectile.size || 16) + 5);
+        projectile.x = body.x + dx * separation;
+        projectile.y = body.y + dy * separation;
+        projectile.craftrasJaneVelocity.x = dx * CRAFTRAS_JANE_SKILL_TWO_REPEL_SPEED;
+        projectile.craftrasJaneVelocity.y = dy * CRAFTRAS_JANE_SKILL_TWO_REPEL_SPEED;
+        projectile.craftrasJaneRepelled = true;
+        projectile.craftrasJaneNoHitUntil = Infinity;
+        projectile.craftrasJaneExpiresAt = now + CRAFTRAS_JANE_SKILL_TWO_REPEL_DURATION;
+    }
+
+    updateJaneSkillTwoProjectile(projectile, now = Date.now()) {
+        const jane = projectile.craftrasJaneOwner;
+        const target = projectile.craftrasJaneTarget;
+        if (!jane || jane.isDead?.() || !target || target.isDead?.() || now >= (projectile.craftrasJaneExpiresAt || 0)) return false;
+        if (!projectile.craftrasJaneRepelled && projectile.craftrasJanePhaseTwoRing) {
+            const previousX = projectile.x;
+            const previousY = projectile.y;
+            const startedAt = projectile.craftrasJaneRingStartedAt || now;
+            const endsAt = projectile.craftrasJaneRingEndsAt || projectile.craftrasJaneExpiresAt || now + 1;
+            const progress = Math.max(0, Math.min(1, (now - startedAt) / Math.max(1, endsAt - startedAt))) * 0.5;
+            const elapsedScale = Math.max(0.25, Math.min(3, (now - (projectile.craftrasJaneRingLastUpdateAt || now)) / (1000 / 60)));
+            projectile.craftrasJaneRingLastUpdateAt = now;
+            projectile.craftrasJaneRingRadius = projectile.craftrasJaneRingStartRadius
+                + (projectile.craftrasJaneRingEndRadius - projectile.craftrasJaneRingStartRadius) * progress;
+            projectile.craftrasJaneRingAngle += projectile.craftrasJaneRingDirection
+                * CRAFTRAS_JANE_PHASE_TWO_SKILL_TWO_ROTATION_SPEED * elapsedScale;
+            projectile.x = projectile.craftrasJaneRingCenterX + Math.cos(projectile.craftrasJaneRingAngle) * projectile.craftrasJaneRingRadius;
+            projectile.y = projectile.craftrasJaneRingCenterY + Math.sin(projectile.craftrasJaneRingAngle) * projectile.craftrasJaneRingRadius;
+            projectile.craftrasJaneVelocity.x = projectile.x - previousX;
+            projectile.craftrasJaneVelocity.y = projectile.y - previousY;
+        } else if (!projectile.craftrasJaneRepelled && projectile.craftrasJaneSkillTwoKind === "sword" && now < (projectile.craftrasJaneRingRotateUntil || 0)) {
+            const previousX = projectile.x;
+            const previousY = projectile.y;
+            projectile.craftrasJaneRingRadius = Math.max(0, projectile.craftrasJaneRingRadius - projectile.craftrasJaneSpeed);
+            projectile.craftrasJaneRingAngle += projectile.craftrasJaneRingDirection * CRAFTRAS_JANE_SKILL_TWO_ROTATION_SPEED;
+            projectile.x = projectile.craftrasJaneRingCenterX + Math.cos(projectile.craftrasJaneRingAngle) * projectile.craftrasJaneRingRadius;
+            projectile.y = projectile.craftrasJaneRingCenterY + Math.sin(projectile.craftrasJaneRingAngle) * projectile.craftrasJaneRingRadius;
+            projectile.craftrasJaneVelocity.x = projectile.x - previousX;
+            projectile.craftrasJaneVelocity.y = projectile.y - previousY;
+        } else if (!projectile.craftrasJaneRepelled && projectile.craftrasJaneSkillTwoKind === "sword" && projectile.craftrasJaneRingRotateUntil) {
+            projectile.craftrasJaneRingRotateUntil = 0;
+            projectile.craftrasJaneVelocity.x = -Math.cos(projectile.craftrasJaneRingAngle) * projectile.craftrasJaneSpeed;
+            projectile.craftrasJaneVelocity.y = -Math.sin(projectile.craftrasJaneRingAngle) * projectile.craftrasJaneSpeed;
+        } else if (!projectile.craftrasJaneRepelled && projectile.craftrasJaneSkillTwoKind === "bullet") {
+            const dx = target.x - projectile.x;
+            const dy = target.y - projectile.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const turn = 0.14;
+            const speed = projectile.craftrasJaneSpeed || CRAFTRAS_JANE_SKILL_TWO_BULLET_SPEED;
+            projectile.craftrasJaneVelocity.x = projectile.craftrasJaneVelocity.x * (1 - turn) + dx / distance * speed * turn;
+            projectile.craftrasJaneVelocity.y = projectile.craftrasJaneVelocity.y * (1 - turn) + dy / distance * speed * turn;
+            const velocityLength = Math.hypot(projectile.craftrasJaneVelocity.x, projectile.craftrasJaneVelocity.y) || 1;
+            projectile.craftrasJaneVelocity.x = projectile.craftrasJaneVelocity.x / velocityLength * speed;
+            projectile.craftrasJaneVelocity.y = projectile.craftrasJaneVelocity.y / velocityLength * speed;
+        }
+        if (projectile.craftrasJaneSkillTwoKind !== "sword" || projectile.craftrasJaneRepelled) {
+            projectile.x += projectile.craftrasJaneVelocity.x;
+            projectile.y += projectile.craftrasJaneVelocity.y;
+        } else if (!projectile.craftrasJaneRingRotateUntil) {
+            projectile.x += projectile.craftrasJaneVelocity.x;
+            projectile.y += projectile.craftrasJaneVelocity.y;
+        }
+        projectile.facing = Math.atan2(projectile.craftrasJaneVelocity.y, projectile.craftrasJaneVelocity.x);
+        projectile.vfacing = projectile.facing;
+        if (projectile.craftrasJaneRepelled || now < (projectile.craftrasJaneNoHitUntil || 0)) return true;
+        const hitRadius = Math.max(12, projectile.realSize || projectile.size || 16) + Math.max(8, target.realSize || target.size || 12);
+        if ((projectile.x - target.x) ** 2 + (projectile.y - target.y) ** 2 > hitRadius ** 2) return true;
+        const damage = Math.max(1, target.health.max * projectile.craftrasJaneDamageRatio);
+        if (jane.craftrasBossFormType === "jane") {
+            this.applyPlayerDamage(target, damage, projectile, { bypassParry: true, noKnockback: true });
+            return false;
+        }
+        if (projectile.craftrasJaneAttackMode === "blue") {
+            projectile.craftrasOnParrySuccess = body => {
+                if (body !== target || projectile.craftrasJaneParriedAway) return;
+                projectile.craftrasJaneParriedAway = true;
+                projectile.destroy?.();
+                this.janeSkillEntities.delete(projectile);
+            };
+            this.applyPlayerDamage(target, damage, projectile, { noKnockback: true });
+            if (projectile.craftrasJaneParriedAway) return false;
+        } else if (projectile.craftrasJaneAttackMode === "red") {
+            const parryAttempt = !this.isPlayerAutoParryTool(target) && (
+                now <= (target.craftrasParryPrimedUntil || 0)
+                || this.isPlayerParryGuarding(target)
+            );
+            if (parryAttempt) {
+                this.breakJaneParry(target, now);
+                this.applyPlayerDamage(target, damage, projectile, { bypassParry: true, noKnockback: true });
+            }
+        } else {
+            this.applyPlayerDamage(target, damage, projectile, { bypassParry: true, noKnockback: true });
+        }
+        this.repelJaneSkillTwoProjectile(projectile, target, now);
+        return true;
+    }
+
+    breakJaneParry(body, now = Date.now()) {
+        if (body.craftrasParryPendingHits?.length) this.expirePlayerParryHits(body, body.craftrasParryPendingHits.splice(0));
+        body.craftrasParryPrimedUntil = 0;
+        body.craftrasParryPrimedReduction = null;
+        body.craftrasParryReduction = 0;
+        body.craftrasParryCounter = 0;
+        body.craftrasParryBrokenUntil = now + CRAFTRAS_JANE_PARRY_BREAK_DURATION;
+        body.say?.("PARRY BROKEN", CRAFTRAS_JANE_PARRY_BREAK_DURATION);
+        this.syncPlayerParryState(body, true);
+    }
+
+    bounceJaneSaw(saw, body, now = Date.now()) {
+        let dx = saw.x - body.x;
+        let dy = saw.y - body.y;
+        let distance = Math.hypot(dx, dy);
+        if (distance < 0.01) {
+            dx = -(saw.craftrasJaneVelocity?.x || 1);
+            dy = -(saw.craftrasJaneVelocity?.y || 0);
+            distance = Math.hypot(dx, dy) || 1;
+        }
+        dx /= distance;
+        dy /= distance;
+        const separation = Math.max(18, (body.realSize || body.size || 12) + (saw.realSize || saw.size || 20) + 6);
+        saw.x = body.x + dx * separation;
+        saw.y = body.y + dy * separation;
+        saw.craftrasJaneVelocity.x = dx * CRAFTRAS_JANE_SAW_BOUNCE_SPEED;
+        saw.craftrasJaneVelocity.y = dy * CRAFTRAS_JANE_SAW_BOUNCE_SPEED;
+        saw.craftrasJaneHomingResumeAt = now + CRAFTRAS_JANE_SAW_REARM_DELAY;
+        saw.craftrasJaneNoHitUntil = now + CRAFTRAS_JANE_SAW_REARM_DELAY;
+        this.setJaneSawMode(saw, Math.random() < 0.5 ? "blue" : "red");
+    }
+
+    updateJaneSaw(saw, now = Date.now()) {
+        const jane = saw.craftrasJaneOwner;
+        const target = saw.craftrasJaneTarget;
+        if (!jane || jane.isDead?.() || !target || target.isDead?.()) return false;
+        if (now >= (saw.craftrasJaneHomingResumeAt || 0)) {
+            const dx = target.x - saw.x;
+            const dy = target.y - saw.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const turn = 0.10;
+            const speed = Math.max(0.1, Number(saw.craftrasJaneSpeed) || CRAFTRAS_JANE_SAW_SPEED);
+            saw.craftrasJaneVelocity.x = saw.craftrasJaneVelocity.x * (1 - turn) + dx / distance * speed * turn;
+            saw.craftrasJaneVelocity.y = saw.craftrasJaneVelocity.y * (1 - turn) + dy / distance * speed * turn;
+            const velocityLength = Math.hypot(saw.craftrasJaneVelocity.x, saw.craftrasJaneVelocity.y) || 1;
+            saw.craftrasJaneVelocity.x = saw.craftrasJaneVelocity.x / velocityLength * speed;
+            saw.craftrasJaneVelocity.y = saw.craftrasJaneVelocity.y / velocityLength * speed;
+        }
+        saw.x += saw.craftrasJaneVelocity.x;
+        saw.y += saw.craftrasJaneVelocity.y;
+        for (const other of this.janeSkillEntities) {
+            if (!other?.craftrasJaneSaw || other === saw || other.craftrasJaneOwner !== jane || other.isDead?.()) continue;
+            let dx = saw.x - other.x;
+            let dy = saw.y - other.y;
+            let distance = Math.hypot(dx, dy);
+            const separation = Math.max(24, (saw.realSize || saw.size || 20) + (other.realSize || other.size || 20) + 8);
+            if (distance >= separation) continue;
+            if (distance < 0.01) {
+                const direction = (saw.craftrasJaneSawSlot || 0) === 0 ? -1 : 1;
+                dx = Math.cos((saw.facing || 0) + Math.PI / 2) * direction;
+                dy = Math.sin((saw.facing || 0) + Math.PI / 2) * direction;
+                distance = 1;
+            }
+            const push = separation - distance;
+            saw.x += dx / distance * push;
+            saw.y += dy / distance * push;
+        }
+        saw.facing = Math.atan2(saw.craftrasJaneVelocity.y, saw.craftrasJaneVelocity.x);
+        saw.vfacing = saw.facing;
+        if (now < (saw.craftrasJaneNoHitUntil || 0)) return true;
+        const hitRadius = Math.max(16, saw.realSize || saw.size || 20) + Math.max(8, target.realSize || target.size || 12);
+        if ((saw.x - target.x) ** 2 + (saw.y - target.y) ** 2 > hitRadius ** 2) return true;
+        const damage = Math.max(1, target.health.max * CRAFTRAS_JANE_SAW_DAMAGE_RATIO * (saw.craftrasJaneDamageMultiplier ?? 1));
+        if (jane.craftrasBossFormType === "jane") {
+            this.applyPlayerDamage(target, damage, saw, { bypassParry: true, noKnockback: true });
+            this.bounceJaneSaw(saw, target, now);
+            return true;
+        }
+        if (saw.craftrasJaneSawMode === "blue") {
+            this.applyPlayerDamage(target, damage, saw, { noKnockback: true });
+        } else {
+            const parryAttempt = !this.isPlayerAutoParryTool(target) && (
+                now <= (target.craftrasParryPrimedUntil || 0)
+                || this.isPlayerParryGuarding(target)
+            );
+            if (parryAttempt) {
+                this.breakJaneParry(target, now);
+                this.applyPlayerDamage(target, damage, saw, { bypassParry: true, noKnockback: true });
+            }
+        }
+        this.bounceJaneSaw(saw, target, now);
+        return true;
+    }
+
+    updateJaneSlash(slash, players, now = Date.now()) {
+        const jane = slash.craftrasJaneOwner;
+        if (!jane || jane.isDead?.() || now >= (slash.craftrasJaneExpiresAt || 0)) return false;
+        slash.x += slash.craftrasJaneVelocity.x;
+        slash.y += slash.craftrasJaneVelocity.y;
+        const collisionTargets = jane.craftrasBossFormType === "jane"
+            ? [{ body: slash.craftrasJaneTarget }]
+            : players || [];
+        for (const { body } of collisionTargets) {
+            if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+            const radius = Math.max(12, slash.realSize || slash.size || 20) + Math.max(8, body.realSize || body.size || 12);
+            if ((slash.x - body.x) ** 2 + (slash.y - body.y) ** 2 > radius ** 2) continue;
+            const damage = Math.max(1, body.health.max * (slash.craftrasJaneDamageRatio ?? CRAFTRAS_JANE_SLASH_DAMAGE_RATIO));
+            this.applyPlayerDamage(body, damage, slash, { noKnockback: true });
+            return false;
+        }
+        return true;
+    }
+
+    updateJaneSkillEntities(players, now = Date.now()) {
+        for (const entity of [...this.janeSkillEntities]) {
+            const keep = entity?.craftrasJaneSaw
+                ? this.updateJaneSaw(entity, now)
+                : entity?.craftrasJaneSlash
+                    ? this.updateJaneSlash(entity, players, now)
+                    : entity?.craftrasJanePersistentSkillOneClone
+                        ? this.updateJaneSkillOneMimic(entity, now)
+                    : entity?.craftrasJanePhaseTwoEscapeClone
+                        ? this.updateJanePhaseTwoEscapeClone(entity, now)
+                        : entity?.craftrasJanePhaseTwoLaserClone
+                            ? this.updateJanePhaseTwoLaserClone(entity, now)
+                    : entity?.craftrasJaneSkillThreeClone
+                            ? this.updateJaneSkillThreeCharger(entity, entity.craftrasJaneTarget, now)
+                            : entity?.craftrasJaneSkillFourProjectile
+                                ? this.updateJaneSkillFourBullet(entity, now)
+                            : entity?.craftrasJaneSkillTwoProjectile
+                                ? this.updateJaneSkillTwoProjectile(entity, now)
+                                : false;
+            if (keep) continue;
+            entity?.destroy?.();
+            this.janeSkillEntities.delete(entity);
+        }
+    }
+
+    updateJaneBoss(jane, now = Date.now()) {
+        const target = this.getJaneTarget(jane);
+        if (!target || target.isDead?.()) {
+            this.cleanupJaneEncounter(jane);
+            return;
+        }
+        if (jane.craftrasJaneState === "combat") {
+            if (jane.craftrasJaneActiveSkill) {
+                if (jane.craftrasJaneActiveSkill.type === "skill_two") this.updateJaneSkillTwo(jane, target, now);
+                else if (jane.craftrasJaneActiveSkill.type === "skill_three") this.updateJaneSkillThree(jane, target, now);
+                else if (jane.craftrasJaneActiveSkill.type === "skill_four") this.updateJaneSkillFour(jane, target, now);
+                else if (jane.craftrasJaneActiveSkill.type === "skill_five") this.updateJaneSkillFive(jane, target, now);
+                else this.updateJaneSkillOne(jane, target, now);
+            } else {
+                this.setJaneActorIdle(jane, target);
+                if (now >= (jane.craftrasJaneNextSkillAt || 0)) {
+                    if (jane.craftrasJaneNextSkill === "skill_two") this.startJaneSkillTwo(jane, target, now);
+                    else if (jane.craftrasJaneNextSkill === "skill_three") this.startJaneSkillThree(jane, target, now);
+                    else if (jane.craftrasJaneNextSkill === "skill_four") this.startJaneSkillFour(jane, target, now);
+                    else if (jane.craftrasJaneNextSkill === "skill_five") this.startJaneSkillFive(jane, target, now);
+                    else this.startJaneSkillOne(jane, target, now);
+                }
+            }
+            return;
+        }
+        this.setJaneActorIdle(jane, target);
+        const sword = jane.craftrasJaneSwordGuy;
+        if (sword) this.setJaneActorIdle(sword, target);
+        if (now < (jane.craftrasJaneNextDialogueAt || 0)) return;
+        const phaseTwoDialogue = jane.craftrasJaneState === "phase_two_dialogue";
+        const dialogue = phaseTwoDialogue ? CRAFTRAS_JANE_PHASE_TWO_DIALOGUE : CRAFTRAS_JANE_APPEARANCE_DIALOGUE;
+        const line = dialogue[jane.craftrasJaneDialogueIndex || 0];
+        if (line) {
+            const speaker = line.speaker === "sword" ? "SWORD GUY" : "JANE";
+            const duration = this.getDialogueDuration(jane, line.duration);
+            this.sendJaneSystemMessage(target, speaker, line.text, duration);
+            jane.craftrasJaneDialogueIndex = (jane.craftrasJaneDialogueIndex || 0) + 1;
+            jane.craftrasJaneNextDialogueAt = now + duration;
+            return;
+        }
+        if (phaseTwoDialogue) this.finishJanePhaseTwoDialogue(jane, now);
+        else this.finishJaneDialogue(jane, now);
+    }
+
+    handleJaneDamaged(jane, damage = 1, source = null, now = Date.now()) {
+        if (!jane || jane.craftrasMobType !== "jane" || damage <= 0) return false;
+        if (["skill_two", "skill_four", "skill_five"].includes(jane.craftrasJaneActiveSkill?.type) || jane.craftrasJaneSkillTwoHidden) {
+            const activeType = jane.craftrasJaneActiveSkill?.type;
+            const lockedHealth = activeType === "skill_four"
+                ? jane.craftrasJaneSkillFourLockedHealth
+                : activeType === "skill_five"
+                    ? jane.craftrasJaneSkillFiveLockedHealth
+                    : jane.craftrasJaneSkillTwoLockedHealth;
+            jane.health.amount = Math.min(jane.health.max, lockedHealth || jane.health.max);
+            jane.damageReceived = 0;
+            jane.readyToDie = false;
+            return true;
+        }
+        if (jane.craftrasJaneState === "combat") {
+            if ((jane.craftrasJanePhase || 1) === 1 && (jane.health?.amount ?? 0) <= 0) {
+                return this.startJanePhaseTwoDialogue(jane, now);
+            }
+            return false;
+        }
+        jane.health.amount = jane.health.max;
+        jane.damageReceived = 0;
+        jane.readyToDie = false;
+        return true;
+    }
+    handleSwordGuy2Damaged(mob, damage = 1, source = null, now = Date.now()) {
+        if (!mob || mob.craftrasMobType !== "sword_guy_2" || damage <= 0) return false;
+        if (mob.craftrasSwordGuy2State === "idle" && source) {
+            mob.health.amount = mob.health.max;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            return this.startSwordGuy2Intro(mob, source, now);
+        }
+        if (mob.craftrasSwordGuy2State === "phase2_combat") {
+            if (mob.craftrasSwordGuy2BasicDefeated) {
+                mob.health.amount = 1;
+                mob.damageReceived = 0;
+                mob.readyToDie = false;
+                return true;
+            }
+            if ((mob.health?.amount ?? 0) <= 0) {
+                mob.health.amount = 1;
+                mob.damageReceived = 0;
+                mob.readyToDie = false;
+                mob.craftrasSwordGuy2BasicDefeated = true;
+                mob.invuln = true;
+                this.syncSwordGuy2DuoHealth(mob, true, now);
+                if (mob.craftrasSwordGuy2Bominik?.craftrasSwordGuy2Defeated) {
+                    mob.craftrasSwordGuy2State = "phase2_defeated";
+                    this.cleanupSwordGuy2Effects(mob);
+                }
+            }
+            return true;
+        }
+        if (mob.craftrasSwordGuy2State === "phase3_combat") {
+            if (this.trySwordGuy2PhaseThreeParry(mob, now)) {
+                mob.health.amount = Math.min(mob.health.max, mob.health.amount + damage);
+                mob.damageReceived = 0;
+                mob.readyToDie = false;
+                return true;
+            }
+            mob.craftrasSwordGuy2ParryChance = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_START;
+            mob.health.amount = Math.max(1, mob.health.amount);
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            if (mob.health.amount <= 1) this.startSwordGuy2PhaseThreeFinalSetup(mob, now);
+            this.syncSwordGuy2DuoHealth(mob, true, now);
+            return true;
+        }
+        if (mob.craftrasSwordGuy2State !== "combat") {
+            mob.health.amount = Math.max(1, mob.health.max || CRAFTRAS_SWORD_GUY_2_HEALTH);
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            return true;
+        }
+        if ((mob.health?.amount ?? 0) <= 0) {
+            this.startSwordGuy2PhaseTwoDialogue(mob, now);
+            return true;
+        }
+        return false;
     }
 
     handleSwordGuyDamaged(mob, damage = 1, source = null, now = Date.now()) {
+        if (mob?.craftrasMobType === "jane") return this.handleJaneDamaged(mob, damage, source, now);
+        if (mob?.craftrasJaneEncounterHost) return this.handleJaneEncounterSwordGuyDamaged(mob, damage, source, now);
+        if (mob?.craftrasMobType === "sword_guy_2") return this.handleSwordGuy2Damaged(mob, damage, source, now);
         if (!mob || mob.craftrasMobType !== "sword_guy" || damage <= 0) return false;
         if (mob.isDead?.() && mob.craftrasSwordGuyPhase !== 1) return false;
         if (mob.craftrasSwordGuyPhase === 2) {
-            mob.damageReceived = Math.min(mob.craftrasMaxIncomingDamage || 1e10, Math.max(0, damage));
+            mob.damageReceived = Math.min(CRAFTRAS_SWORD_GUY_MAX_INCOMING_DAMAGE, Math.max(0, damage));
             if (source && source.id) {
                 mob.craftrasSwordGuyParticipantIds ??= new Set();
                 mob.craftrasSwordGuyParticipantIds.add(source.id);
@@ -8547,7 +17223,3031 @@ class Craftras {
     applyTheSwordPlayerDamage(body, kind, source) {
         return this.applyPlayerDamage(body, this.getTheSwordDamage(body, kind), source, {
             noKnockback: kind === "friend" || kind === "bullet",
+            swordGuyAttack: true,
         });
+    }
+
+    getSwordGuy2Damage(body, kind) {
+        const maxHealth = Math.max(1, Number(body?.health?.max) || 100);
+        if (kind === "screen") {
+            return Math.max(
+                CRAFTRAS_SWORD_GUY_2_SCREEN_MIN_DAMAGE,
+                maxHealth * CRAFTRAS_SWORD_GUY_2_SCREEN_DAMAGE_RATIO,
+            );
+        }
+        if (kind === "sword") {
+            return Math.max(
+                CRAFTRAS_SWORD_GUY_2_SWORD_MIN_DAMAGE,
+                maxHealth * CRAFTRAS_SWORD_GUY_2_SWORD_DAMAGE_RATIO,
+            );
+        }
+        return Math.max(
+            CRAFTRAS_SWORD_GUY_2_FRIEND_MIN_DAMAGE,
+            maxHealth * CRAFTRAS_SWORD_GUY_2_FRIEND_DAMAGE_RATIO,
+        );
+    }
+
+    getSwordGuy2Target(mob) {
+        const socketBody = mob?.craftrasSwordGuy2TargetSocket?.player?.body;
+        if (socketBody && !socketBody.isDead?.() && !socketBody.craftrasSpectator) return socketBody;
+        if (!mob?.craftrasSwordGuy2TargetId) return null;
+        for (const { socket, body } of this.getLivingPlayers()) {
+            if (body?.id !== mob.craftrasSwordGuy2TargetId) continue;
+            mob.craftrasSwordGuy2TargetSocket = socket;
+            return body;
+        }
+        return null;
+    }
+
+    getSwordGuy2IncomingDamageCap(mob) {
+        return String(mob?.craftrasSwordGuy2State || "").startsWith("phase2")
+            ? CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAX_INCOMING_DAMAGE
+            : CRAFTRAS_SWORD_GUY_2_MAX_INCOMING_DAMAGE;
+    }
+
+    setSwordGuy2TargetFovMultiplier(mob, multiplier = 1) {
+        const body = mob?.craftrasSwordGuy2TargetSocket?.player?.body;
+        if (!body) return;
+        body.craftrasSwordGuy2FovMultiplier = Math.max(1, Number(multiplier) || 1);
+    }
+
+    setSwordGuy2IdleControl(mob, target = null) {
+        if (!mob) return;
+        const targetVector = target
+            ? { x: target.x - mob.x, y: target.y - mob.y }
+            : { x: Math.cos(mob.facing || 0), y: Math.sin(mob.facing || 0) };
+        if (target) {
+            mob.facing = Math.atan2(targetVector.y, targetVector.x);
+            mob.vfacing = mob.facing;
+        }
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
+        if (mob.accel) {
+            mob.accel.x = 0;
+            mob.accel.y = 0;
+        }
+        mob.craftrasControl = {
+            goal: { x: mob.x, y: mob.y },
+            target: targetVector,
+            fire: false,
+            power: 0,
+        };
+    }
+
+    getDialogueSpeed(owner) {
+        return Math.max(1, Math.min(10, Number(owner?.speedMultiplier ?? owner?.craftrasDialogueSpeed) || 1));
+    }
+
+    getDialogueDuration(owner, duration) {
+        return Math.max(20, Math.round((Number(duration) || 0) / this.getDialogueSpeed(owner)));
+    }
+
+    accelerateDialogueDeadline(owner, field, now = Date.now()) {
+        if (!owner || !field) return;
+        const remaining = Math.max(0, (Number(owner[field]) || now) - now);
+        owner[field] = now + remaining / 10;
+    }
+
+    handleDialogueSkip(socket, token, now = Date.now()) {
+        if (!socket || !token) return false;
+        if (token === "challenge") {
+            if (!Config.craftras_world1_challenge_builder) return false;
+            if (this.challengeStage === "intro" && this.challengeIntro) {
+                this.challengeIntro.speedMultiplier = 10;
+                this.accelerateDialogueDeadline(this.challengeIntro, "nextLineAt", now);
+                return true;
+            }
+            const encounter = this.challengeEncounter;
+            if (!encounter?.dialogue && !encounter?.dialogueQueue?.length) return false;
+            if (encounter.dialogue) {
+                encounter.dialogue.speedMultiplier = 10;
+                this.accelerateDialogueDeadline(encounter.dialogue, "nextAt", now);
+            }
+            for (const dialogue of encounter.dialogueQueue || []) dialogue.speedMultiplier = 10;
+            if (encounter.bossDefeatScene?.stage === "dialogue") {
+                this.accelerateDialogueDeadline(encounter.bossDefeatScene, "countdownAt", now);
+            }
+            return true;
+        }
+
+        if (token === "sword_guy") {
+            const mob = [...this.mobs].find(candidate => {
+                if (!candidate || candidate.craftrasMobType !== "sword_guy") return false;
+                return this.getSwordGuyParticipants(candidate)
+                    .some(participant => participant.socket === socket);
+            });
+            if (!mob) return false;
+            if (!["intro", "recovering", "dying"].includes(mob.craftrasSwordGuyPhase)) return false;
+            mob.craftrasDialogueSpeed = 10;
+            if (mob.craftrasSwordGuyPhase === "recovering") mob.craftrasSwordGuyRecoverSpeed = 10;
+            this.rescheduleSwordGuyDialogue(mob);
+            return true;
+        }
+
+        if (token === "jane") {
+            const host = [...this.mobs].find(candidate =>
+                candidate
+                && candidate.craftrasJaneEncounterHost
+                && candidate.craftrasJaneChallengerSocket === socket
+            );
+            const jane = [...this.mobs].find(candidate =>
+                candidate
+                && candidate.craftrasMobType === "jane"
+                && candidate.craftrasJaneTargetSocket === socket
+            );
+            if (jane) {
+                if (jane.craftrasJaneState === "intro") {
+                    jane.craftrasDialogueSpeed = 10;
+                    this.accelerateDialogueDeadline(jane, "craftrasJaneNextDialogueAt", now);
+                    return true;
+                }
+            }
+            if (host) {
+                host.craftrasDialogueSpeed = 10;
+                switch (host.craftrasJaneEncounterState) {
+                    case "opening_dialogue":
+                    case "ankle_line_one":
+                    case "ankle_line_two":
+                    case "pre_red_impact":
+                    case "red_impact":
+                    case "summon_jane":
+                        this.accelerateDialogueDeadline(host, "craftrasJaneNextDialogueAt", now);
+                        return true;
+                    case "approaching":
+                        host.craftrasJaneApproachStartedAt = now - 1_000;
+                        return true;
+                    case "jane_dialogue":
+                        if (host.craftrasJaneBoss) {
+                            host.craftrasJaneBoss.craftrasDialogueSpeed = 10;
+                            this.accelerateDialogueDeadline(host.craftrasJaneBoss, "craftrasJaneNextDialogueAt", now);
+                            return true;
+                        }
+                        return false;
+                    default:
+                        return false;
+                }
+            }
+            return false;
+        }
+
+        if (token !== "sword_guy_2") return false;
+        const mob = [...this.mobs].find(candidate =>
+            candidate
+            && candidate.craftrasMobType === "sword_guy_2"
+            && candidate.craftrasSwordGuy2TargetSocket === socket
+        );
+        if (!mob) return false;
+        const state = mob.craftrasSwordGuy2State;
+        const deadlineFields = {
+            dialogue: "craftrasSwordGuy2NextLineAt",
+            phase2_dialogue: "craftrasSwordGuy2PhaseTwoNextLineAt",
+            phase3_dialogue: "craftrasSwordGuy2PhaseThreeNextLineAt",
+            phase3_final_dialogue: "craftrasSwordGuy2FinalNextLineAt",
+            phase3_win_dialogue: "craftrasSwordGuy2EndingNextLineAt",
+            phase3_loss_dialogue: "craftrasSwordGuy2EndingNextLineAt",
+            farewell: "craftrasSwordGuy2EndingNextLineAt",
+        };
+        const deadlineField = deadlineFields[state];
+        if (!deadlineField) return false;
+        mob.craftrasDialogueSpeed = 10;
+        this.accelerateDialogueDeadline(mob, deadlineField, now);
+        return true;
+    }
+
+    skipSwordGuy2Phase(socket, now = Date.now()) {
+        if (!socket) return { ok: false, reason: "missing_socket" };
+        const body = socket.player?.body;
+        let mob = [...this.mobs].find(candidate =>
+            candidate
+            && candidate.craftrasMobType === "sword_guy_2"
+            && candidate.craftrasSwordGuy2TargetSocket === socket
+            && !["dismissed", "farewell", "replaced"].includes(candidate.craftrasSwordGuy2State)
+        );
+        if (!mob && body) {
+            mob = [...this.mobs]
+                .filter(candidate =>
+                    candidate
+                    && candidate.craftrasMobType === "sword_guy_2"
+                    && candidate.craftrasSwordGuy2State === "idle"
+                )
+                .sort((a, b) =>
+                    (a.x - body.x) ** 2 + (a.y - body.y) ** 2
+                    - (b.x - body.x) ** 2 - (b.y - body.y) ** 2
+                )[0];
+        }
+        if (!mob) return { ok: false, reason: "missing_boss" };
+
+        let state = mob.craftrasSwordGuy2State;
+        if (["idle", "dialogue", "combat"].includes(state)) {
+            if (state === "idle") {
+                if (!this.startSwordGuy2Intro(mob, body, now)) {
+                    return { ok: false, reason: "transition_failed" };
+                }
+                state = "dialogue";
+            }
+            if (state === "dialogue") {
+                mob = this.finishSwordGuy2Intro(mob, now);
+                if (!mob) return { ok: false, reason: "transition_failed" };
+            }
+            return this.startSwordGuy2PhaseTwoDialogue(mob, now)
+                ? { ok: true, phase: 2 }
+                : { ok: false, reason: "transition_failed" };
+        }
+
+        if (String(state || "").startsWith("phase2")) {
+            mob.craftrasOnParrySuccess = null;
+            mob.craftrasOnParryFail = null;
+            mob.craftrasSwordGuy2OpeningImpactAt = 0;
+            mob.craftrasSwordGuy2OpeningRecoveryEndsAt = 0;
+            this.spawnSwordGuy2Bominik(mob);
+            return this.startSwordGuy2PhaseThreeDialogue(mob, now)
+                ? { ok: true, phase: 3 }
+                : { ok: false, reason: "transition_failed" };
+        }
+
+        if (state === "phase3_dialogue") {
+            mob.craftrasSwordGuy2State = "phase3_combat";
+            mob.invuln = false;
+        }
+        if (mob.craftrasSwordGuy2State === "phase3_combat") {
+            return this.startSwordGuy2PhaseThreeFinalSetup(mob, now)
+                ? { ok: true, phase: "final" }
+                : { ok: false, reason: "transition_failed" };
+        }
+
+        if (state === "phase3_final_setup") {
+            this.cleanupSwordGuy2Effects(mob);
+            return this.startSwordGuy2PhaseThreeFinalDialogue(mob, now)
+                ? { ok: true, phase: "final_dialogue" }
+                : { ok: false, reason: "transition_failed" };
+        }
+
+        if (["phase3_final_dialogue", "phase3_final_pingpong"].includes(state)) {
+            return this.startSwordGuy2PhaseThreeWinDialogue(mob, now)
+                ? { ok: true, phase: "complete" }
+                : { ok: false, reason: "transition_failed" };
+        }
+
+        return { ok: false, reason: "not_skippable" };
+    }
+
+    speakSwordGuy2Line(mob, line) {
+        if (!mob || !line?.text) return;
+        const duration = this.getDialogueDuration(mob, line.duration);
+        mob.say?.(line.text, duration);
+        mob.craftrasSwordGuy2TargetSocket?.talk?.(
+            "BM",
+            duration,
+            line.text,
+            "#4aa3ff",
+            "sword_guy_2",
+        );
+    }
+
+    spawnSwordGuy2Bominik(mob) {
+        if (!mob) return null;
+        const existing = mob.craftrasSwordGuy2Bominik;
+        if (existing && !existing.isDead?.()) return existing;
+        const angle = (mob.facing || 0) + Math.PI / 2;
+        const bominik = new Entity({
+            x: mob.x + Math.cos(angle) * BLOCK_SIZE * 3.2,
+            y: mob.y + Math.sin(angle) * BLOCK_SIZE * 3.2,
+        });
+        bominik.define("craftrasBominik");
+        bominik.name = "???";
+        bominik.craftrasBaseName = "Bominik";
+        bominik.team = TEAM_ENEMIES;
+        bominik.invuln = true;
+        bominik.godmode = true;
+        bominik.alwaysActive = true;
+        bominik.craftrasSwordGuy2Bominik = true;
+        bominik.health.set(CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH);
+        bominik.health.amount = CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH;
+        bominik.craftrasSwordGuy2Defeated = false;
+        bominik.alpha = 1;
+        bominik.facing = Math.atan2(mob.y - bominik.y, mob.x - bominik.x);
+        bominik.vfacing = bominik.facing;
+        bominik.craftrasControl = {
+            goal: { x: bominik.x, y: bominik.y },
+            target: { x: mob.x - bominik.x, y: mob.y - bominik.y },
+            fire: false,
+            power: 0,
+        };
+        bominik.controllers = [{
+            acceptsFromTop: true,
+            think: () => bominik.craftrasControl,
+        }];
+        mob.craftrasSwordGuy2Bominik = bominik;
+        const infernoOuter = this.spawnExplosionEffect(bominik, {
+            duration: 1_550,
+            startSize: Math.max(34, (bominik.realSize || bominik.size || 24) * 1.8),
+            endSize: Math.max(86, (bominik.realSize || bominik.size || 24) * 4.8),
+            color: "#ff4b16",
+            alpha: 0.74,
+            fade: true,
+        });
+        const infernoCore = this.spawnExplosionEffect(bominik, {
+            duration: 1_150,
+            startSize: Math.max(24, (bominik.realSize || bominik.size || 24) * 1.25),
+            endSize: Math.max(62, (bominik.realSize || bominik.size || 24) * 3.2),
+            color: "#fff0a0",
+            alpha: 0.82,
+            fade: true,
+        });
+        infernoOuter.craftrasSwordGuy2Owner = mob;
+        infernoCore.craftrasSwordGuy2Owner = mob;
+        mob.craftrasSwordGuy2TargetSocket?.talk?.("BIF", 350, 1_250);
+        return bominik;
+    }
+
+    destroySwordGuy2Bominik(mob) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik) return;
+        bominik.destroy?.();
+        mob.craftrasSwordGuy2Bominik = null;
+    }
+
+    speakSwordGuy2PhaseTwoLine(mob, line) {
+        if (!mob || !line?.text) return;
+        const duration = this.getDialogueDuration(mob, line.duration);
+        if (line.spawnBominik) this.spawnSwordGuy2Bominik(mob);
+        const bominik = mob.craftrasSwordGuy2Bominik;
+        if (line.revealBominik && bominik) bominik.name = "Bominik";
+        if (bominik) {
+            bominik.facing = Math.atan2(mob.y - bominik.y, mob.x - bominik.x);
+            bominik.vfacing = bominik.facing;
+        }
+        const actor = line.speaker === "basic" ? mob : bominik;
+        actor?.say?.(line.text, duration);
+        const speaker = line.speaker === "basic"
+            ? "Basic"
+            : line.speaker === "unknown"
+                ? "???"
+                : "Bominik";
+        const color = line.speaker === "basic" ? "#4aa3ff" : "#ffd45b";
+        mob.craftrasSwordGuy2TargetSocket?.talk?.(
+            "BM",
+            duration,
+            `${speaker}: ${line.text}`,
+            color,
+            "sword_guy_2",
+        );
+    }
+
+    startSwordGuy2PhaseTwoDialogue(mob, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2State !== "combat") return false;
+        this.setSwordGuy2TargetFovMultiplier(mob, 2);
+        mob.craftrasSwordGuy2State = "phase2_dialogue";
+        mob.craftrasSwordGuy2Phase = 1;
+        mob.craftrasDialogueSpeed = 1;
+        mob.craftrasSwordGuy2PhaseTwoDialogueIndex = 0;
+        mob.craftrasSwordGuy2PhaseTwoNextLineAt = now;
+        mob.health.amount = 1;
+        mob.damageReceived = 0;
+        mob.readyToDie = false;
+        mob.invuln = true;
+        this.cleanupSwordGuy2Effects(mob);
+        this.setSwordGuy2IdleControl(mob, this.getSwordGuy2Target(mob));
+        return true;
+    }
+
+    updateSwordGuy2PhaseTwoDialogue(mob, now = Date.now()) {
+        if (!mob || now < (mob.craftrasSwordGuy2PhaseTwoNextLineAt || 0)) return;
+        const index = mob.craftrasSwordGuy2PhaseTwoDialogueIndex || 0;
+        if (index < CRAFTRAS_SWORD_GUY_2_PHASE_TWO_DIALOGUE.length) {
+            const line = CRAFTRAS_SWORD_GUY_2_PHASE_TWO_DIALOGUE[index];
+            const duration = this.getDialogueDuration(mob, line.duration);
+            if (line.startPhaseTwo) mob.craftrasSwordGuy2Phase = 2;
+            mob.craftrasSwordGuy2PhaseTwoDialogueIndex = index + 1;
+            mob.craftrasSwordGuy2PhaseTwoNextLineAt = now + duration;
+            this.speakSwordGuy2PhaseTwoLine(mob, line);
+            return;
+        }
+        mob.craftrasSwordGuy2Phase = 2;
+        mob.craftrasSwordGuy2TargetSocket?.talk?.(
+            "BM",
+            5_000,
+            CRAFTRAS_SWORD_GUY_2_TOKEN_STRIPPED_MESSAGE,
+            "#b96cff",
+        );
+        this.startSwordGuy2PhaseTwoOpening(mob, now);
+    }
+
+    syncSwordGuy2DuoHealth(mob, force = false, now = Date.now()) {
+        const socket = mob?.craftrasSwordGuy2TargetSocket;
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!socket || !bominik) return;
+        if (!force && now < (mob.craftrasSwordGuy2NextDuoHealthSyncAt || 0)) return;
+        mob.craftrasSwordGuy2NextDuoHealthSyncAt = now + 100;
+        const phaseThree = String(mob.craftrasSwordGuy2State || "").startsWith("phase3");
+        const maxHealth = phaseThree
+            ? CRAFTRAS_SWORD_GUY_2_PHASE_THREE_HEALTH
+            : CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH;
+        const recipients = new Set([socket]);
+        for (const client of this.gameManager.clients) {
+            const body = client?.player?.body;
+            if (!body || body.isDead?.()) continue;
+            if (Math.hypot(body.x - mob.x, body.y - mob.y) <= BLOCK_SIZE * 80) recipients.add(client);
+        }
+        for (const recipient of recipients) {
+            recipient?.talk?.(
+                "SDH",
+                1,
+                mob.id || 0,
+                "Basic",
+                mob.craftrasSwordGuy2BasicDefeated ? 0 : Math.max(0, mob.health?.amount || 0),
+                maxHealth,
+                bominik.id || 0,
+                "Bominik",
+                bominik.craftrasSwordGuy2Defeated ? 0 : Math.max(0, bominik.health?.amount || 0),
+                maxHealth,
+                3_000,
+            );
+        }
+    }
+
+    queueSwordGuy2PhaseTwoEvent(mob, at, action) {
+        if (!mob || typeof action !== "function") return;
+        mob.craftrasSwordGuy2PhaseTwoEvents ??= [];
+        mob.craftrasSwordGuy2PhaseTwoEvents.push({ at, action });
+    }
+
+    runSwordGuy2PhaseTwoEvents(mob, now = Date.now()) {
+        const events = mob?.craftrasSwordGuy2PhaseTwoEvents;
+        if (!Array.isArray(events) || !events.length) return;
+        const due = events.filter(event => now >= event.at).sort((a, b) => a.at - b.at);
+        mob.craftrasSwordGuy2PhaseTwoEvents = events.filter(event => now < event.at);
+        for (const { action } of due) action(now);
+    }
+
+    nextSwordGuy2BominikPatternRotation(mob, step = Math.PI / 10) {
+        if (!mob) return 0;
+        const rotation = Number.isFinite(mob.craftrasSwordGuy2BominikPatternRotation)
+            ? mob.craftrasSwordGuy2BominikPatternRotation
+            : 0;
+        mob.craftrasSwordGuy2BominikPatternRotation =
+            (rotation + step) % (Math.PI * 2);
+        return rotation;
+    }
+
+    spawnSwordGuy2PhaseTwoCircle(mob, circleNumber, location, duration = 1_400, size = 32) {
+        if (!mob || !location) return null;
+        const circle = new Entity({ x: location.x, y: location.y });
+        circle.define(`craftrasBominikMagicCircle${circleNumber}`);
+        circle.team = TEAM_ENEMIES;
+        circle.alwaysActive = true;
+        circle.craftrasSwordGuy2Owner = mob;
+        circle.craftrasExplosionStarted = Date.now();
+        circle.craftrasExplosionDuration = duration;
+        circle.craftrasExplosionStartSize = size;
+        circle.craftrasExplosionEndSize = size;
+        circle.craftrasExplosionStartAlpha = 1;
+        circle.craftrasExplosionFade = true;
+        circle.SIZE = size;
+        circle.coreSize = size;
+        circle.sizeMultiplier = 1;
+        circle.alpha = 1;
+        this.explosionEffects.add(circle);
+        return circle;
+    }
+
+    spawnSwordGuy2PhaseTwoBasicCircle(mob, location, duration = 1_400, size = 32) {
+        if (!mob || !location) return null;
+        const circle = new Entity({ x: location.x, y: location.y });
+        circle.define("craftrasBasicMagicCircle");
+        circle.team = TEAM_ENEMIES;
+        circle.alwaysActive = true;
+        circle.craftrasSwordGuy2Owner = mob;
+        circle.craftrasExplosionStarted = Date.now();
+        circle.craftrasExplosionDuration = duration;
+        circle.craftrasExplosionStartSize = size;
+        circle.craftrasExplosionEndSize = size;
+        circle.craftrasExplosionStartAlpha = 1;
+        circle.craftrasExplosionFade = true;
+        circle.SIZE = size;
+        circle.coreSize = size;
+        circle.sizeMultiplier = 1;
+        circle.alpha = 1;
+        this.explosionEffects.add(circle);
+        return circle;
+    }
+
+    beginSwordGuy2ProjectileLinger(projectile, now = Date.now()) {
+        if (!projectile || projectile.craftrasLingerUntil) return;
+        projectile.craftrasLingerStartedAt = now;
+        projectile.craftrasLingerUntil = now + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_PROJECTILE_LINGER;
+        projectile.craftrasVelocity = { x: 0, y: 0 };
+        projectile.craftrasAwaitingParry = false;
+        projectile.craftrasHarmless = true;
+    }
+
+    getSwordGuy2PhaseTwoReflectTarget(mob) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (bominik && !bominik.isDead?.() && !bominik.craftrasSwordGuy2Defeated) {
+            return bominik;
+        }
+        if (mob && !mob.isDead?.() && !mob.craftrasSwordGuy2BasicDefeated) return mob;
+        return null;
+    }
+
+    spawnSwordGuy2PhaseTwoProjectile(mob, options = {}) {
+        if (!mob) return null;
+        const location = options.location || mob;
+        const target = options.target || this.getSwordGuy2Target(mob);
+        const angle = Number.isFinite(options.angle)
+            ? options.angle
+            : Math.atan2((target?.y ?? location.y) - location.y, (target?.x ?? location.x + 1) - location.x);
+        const projectile = new Entity({ x: location.x, y: location.y });
+        projectile.define(
+            options.definition
+                || (options.slash
+                    ? "craftrasSwordGuy2SlashProjectile"
+                    : options.friend
+                        ? "craftrasTheGreatFriend"
+                        : "craftrasSwordGuy2Orb"),
+        );
+        // These are attack visuals; suppress all overhead projectile names.
+        projectile.name = "";
+        if (options.intangible) {
+            projectile.intangibility = true;
+            if (projectile.settings) projectile.settings.no_collisions = true;
+        }
+        projectile.team = TEAM_ENEMIES;
+        projectile.alwaysActive = true;
+        projectile.craftrasTheGreatKind = options.slash
+            ? "slash"
+            : options.friend
+                ? "friend"
+                : "phase2_orb";
+        projectile.craftrasMobType = "sword_guy_2_projectile";
+        projectile.craftrasSwordGuy2PhaseTwoProjectile = true;
+        projectile.craftrasOwner = mob;
+        if (mob.craftrasBossFormType === "world2_basic") {
+            projectile.craftrasBossFormOwner = mob;
+            projectile.team = mob.team;
+        }
+        projectile.craftrasTarget = target;
+        projectile.craftrasMotion = options.motion || "straight";
+        projectile.craftrasSpeed = options.speed || CRAFTRAS_SWORD_GUY_2_PHASE_TWO_ORB_SPEED;
+        projectile.craftrasTurn = options.turn ?? 0;
+        projectile.craftrasTurnGrowthInterval = options.turnGrowthInterval || 0;
+        projectile.craftrasTurnGrowthStep = options.turnGrowthStep || 0;
+        projectile.craftrasMaxTurn = options.maxTurn ?? 1;
+        projectile.craftrasDamageRatio = (options.damageRatio ?? 0.05)
+            * (mob.craftrasBossFormType === "world2_basic" ? 0.5 : 1);
+        projectile.craftrasCanParry = options.parryable !== false;
+        projectile.craftrasParryMode = options.parryMode || "vanish";
+        projectile.craftrasReflectTarget = options.reflectTarget || null;
+        projectile.craftrasReflectDuoTarget = !!options.reflectDuoTarget;
+        projectile.craftrasReflectDamage = options.reflectDamage || 0;
+        projectile.craftrasMultiParryRequired = Math.max(0, Math.trunc(options.multiParryRequired || 0));
+        projectile.craftrasMultiParryCount = 0;
+        projectile.craftrasBurst = options.burst || null;
+        projectile.craftrasTargetPoint = options.targetPoint || (target ? { x: target.x, y: target.y } : null);
+        projectile.craftrasVelocity = {
+            x: Math.cos(angle) * projectile.craftrasSpeed,
+            y: Math.sin(angle) * projectile.craftrasSpeed,
+        };
+        projectile.craftrasSpawnedAt = Date.now();
+        projectile.craftrasExpiresAt = projectile.craftrasSpawnedAt + (options.life || 8_000);
+        projectile.craftrasHitIds = new Set();
+        projectile.alpha = options.alpha ?? 0.94;
+        if (options.color) projectile.color.base = options.color;
+        if (options.size) {
+            projectile.SIZE = options.size;
+            projectile.coreSize = options.size;
+            projectile.sizeMultiplier = 1;
+            projectile.refreshBodyAttributes?.();
+        }
+        projectile.facing = angle;
+        projectile.vfacing = angle;
+        projectile.craftrasOnParrySuccess = (body, now = Date.now()) => {
+            if (projectile.craftrasParryResolved) return;
+            projectile.craftrasParryResolved = true;
+            if (
+                projectile.craftrasMultiParryRequired > 0
+                && projectile.craftrasMultiParryCount < projectile.craftrasMultiParryRequired
+            ) {
+                projectile.craftrasMultiParryCount++;
+                const colors = ["#ffd83d", "#ff3b3b", "#45a7ff"];
+                projectile.color.base = colors[
+                    Math.min(colors.length - 1, projectile.craftrasMultiParryCount - 1)
+                ];
+                if (projectile.craftrasMultiParryCount < projectile.craftrasMultiParryRequired) {
+                    const awayX = projectile.x - body.x;
+                    const awayY = projectile.y - body.y;
+                    const fallbackX = -(projectile.craftrasVelocity?.x || 1);
+                    const fallbackY = -(projectile.craftrasVelocity?.y || 0);
+                    const distance = Math.hypot(awayX, awayY) || Math.hypot(fallbackX, fallbackY) || 1;
+                    const directionX = (Math.hypot(awayX, awayY) > 0.01 ? awayX : fallbackX) / distance;
+                    const directionY = (Math.hypot(awayX, awayY) > 0.01 ? awayY : fallbackY) / distance;
+                    projectile.craftrasAwaitingParry = false;
+                    projectile.craftrasHarmless = false;
+                    projectile.craftrasReflected = false;
+                    projectile.craftrasHitIds.clear();
+                    projectile.craftrasTarget = body;
+                    projectile.craftrasMotion = "straight";
+                    projectile.craftrasParryRearmAt = now + 350;
+                    projectile.craftrasVelocity = {
+                        x: directionX * projectile.craftrasSpeed,
+                        y: directionY * projectile.craftrasSpeed,
+                    };
+                    return;
+                }
+            }
+            const reflectTarget = projectile.craftrasReflectDuoTarget
+                ? this.getSwordGuy2PhaseTwoReflectTarget(mob)
+                : projectile.craftrasReflectTarget;
+            if (projectile.craftrasParryMode !== "reflect" || !reflectTarget) {
+                this.beginSwordGuy2ProjectileLinger(projectile);
+                return;
+            }
+            projectile.craftrasReflected = true;
+            projectile.craftrasHarmless = false;
+            projectile.craftrasAwaitingParry = false;
+            projectile.team = body.team;
+            if (
+                projectile.craftrasTheGreatKind === "slash"
+                || projectile.craftrasTheGreatKind === "friend"
+            ) {
+                projectile.color.base = "#45a7ff";
+            }
+            if (projectile.craftrasTheGreatKind === "slash") {
+            }
+            projectile.craftrasReflectTarget = reflectTarget;
+            projectile.craftrasTarget = reflectTarget;
+            projectile.craftrasMotion = "homing";
+            projectile.craftrasTurn = 0.45;
+            projectile.craftrasTurnGrowthInterval = 0;
+            projectile.craftrasTurnGrowthStep = 0;
+            projectile.craftrasMaxTurn = 0.45;
+            projectile.craftrasSpeed = Math.max(projectile.craftrasSpeed, CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FAST_ORB_SPEED);
+            const dx = projectile.craftrasTarget.x - projectile.x;
+            const dy = projectile.craftrasTarget.y - projectile.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            projectile.craftrasVelocity = {
+                x: dx / distance * projectile.craftrasSpeed,
+                y: dy / distance * projectile.craftrasSpeed,
+            };
+        };
+        projectile.craftrasOnParryFail = () => {
+            if (projectile.craftrasParryResolved) return;
+            projectile.craftrasParryResolved = true;
+            this.beginSwordGuy2ProjectileLinger(projectile);
+        };
+        projectile.on("dead", () => this.theGreatProjectiles.delete(projectile));
+        this.theGreatProjectiles.add(projectile);
+        return projectile;
+    }
+
+    damageSwordGuy2PhaseTwoActor(mob, actor, amount, now = Date.now()) {
+        if (!mob || !actor || amount <= 0) return false;
+        if (mob.craftrasSwordGuy2State === "phase3_combat" && actor === mob) {
+            return this.damageSwordGuy2PhaseThreeBasic(
+                mob,
+                amount,
+                now,
+                { bypassParry: true },
+            );
+        }
+        if (actor === mob) {
+            if (mob.craftrasSwordGuy2BasicDefeated) return false;
+            mob.health.amount -= amount;
+            this.flashEntity(mob, 180);
+            if (mob.health.amount <= 0) {
+                mob.health.amount = 1;
+                mob.craftrasSwordGuy2BasicDefeated = true;
+                mob.invuln = true;
+                this.setSwordGuy2IdleControl(mob);
+            }
+        } else {
+            if (actor.craftrasSwordGuy2Defeated) return false;
+            actor.health.amount -= amount;
+            this.flashEntity(actor, 180);
+            if (actor.health.amount <= 0) {
+                actor.health.amount = 1;
+                actor.craftrasSwordGuy2Defeated = true;
+                actor.invuln = true;
+                actor.alpha = 0.35;
+            }
+        }
+        this.syncSwordGuy2DuoHealth(mob, true, now);
+        if (mob.craftrasSwordGuy2BasicDefeated && mob.craftrasSwordGuy2Bominik?.craftrasSwordGuy2Defeated) {
+            this.startSwordGuy2PhaseThreeDialogue(mob, now);
+        }
+        return true;
+    }
+
+    speakSwordGuy2PhaseThreeLine(mob, line) {
+        if (!mob || !line?.text) return;
+        const duration = this.getDialogueDuration(mob, line.duration);
+        const bominik = mob.craftrasSwordGuy2Bominik;
+        const actors = line.speaker === "both"
+            ? [mob, bominik]
+            : [line.speaker === "bominik" ? bominik : mob];
+        for (const actor of actors) actor?.say?.(line.text, duration);
+        const speaker = line.speaker === "both"
+            ? "Basic & Bominik"
+            : line.speaker === "bominik"
+                ? "Bominik"
+                : "Basic";
+        const color = line.speaker === "bominik" ? "#d26cff" : "#4aa3ff";
+        mob.craftrasSwordGuy2TargetSocket?.talk?.(
+            "BM",
+            duration,
+            `${speaker}: ${line.text}`,
+            color,
+            "sword_guy_2",
+        );
+    }
+
+    startSwordGuy2PhaseThreeDialogue(mob, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!mob || !bominik || mob.craftrasSwordGuy2State === "phase3_dialogue") return false;
+        this.cleanupSwordGuy2Effects(mob);
+        mob.craftrasSwordGuy2State = "phase3_dialogue";
+        mob.craftrasSwordGuy2Phase = 3;
+        mob.craftrasDialogueSpeed = 1;
+        mob.craftrasSwordGuy2PhaseThreeDialogueIndex = 0;
+        mob.craftrasSwordGuy2PhaseThreeNextLineAt = now;
+        mob.craftrasSwordGuy2PhaseTwoEvents = [];
+        mob.craftrasSwordGuy2Dash = null;
+        mob.craftrasSwordGuy2ActiveSkill = 0;
+        mob.craftrasSwordGuy2ActivePingPongOrb = null;
+        mob.craftrasMaxIncomingDamage = CRAFTRAS_SWORD_GUY_2_MAX_INCOMING_DAMAGE;
+        this.setSwordGuy2TargetFovMultiplier(mob, 3);
+        mob.craftrasSwordGuy2BasicDefeated = false;
+        mob.health.set(CRAFTRAS_SWORD_GUY_2_PHASE_THREE_HEALTH);
+        mob.health.amount = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_HEALTH;
+        mob.damageReceived = 0;
+        mob.readyToDie = false;
+        mob.invuln = true;
+        bominik.craftrasSwordGuy2Defeated = false;
+        bominik.health.set(CRAFTRAS_SWORD_GUY_2_PHASE_THREE_HEALTH);
+        bominik.health.amount = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_HEALTH;
+        bominik.damageReceived = 0;
+        bominik.readyToDie = false;
+        bominik.invuln = true;
+        bominik.godmode = true;
+        bominik.alpha = 1;
+        this.setSwordGuy2IdleControl(mob, this.getSwordGuy2Target(mob));
+        this.syncSwordGuy2DuoHealth(mob, true, now);
+        return true;
+    }
+
+    updateSwordGuy2PhaseThreeDialogue(mob, now = Date.now()) {
+        if (!mob || now < (mob.craftrasSwordGuy2PhaseThreeNextLineAt || 0)) return;
+        const index = mob.craftrasSwordGuy2PhaseThreeDialogueIndex || 0;
+        if (index < CRAFTRAS_SWORD_GUY_2_PHASE_THREE_DIALOGUE.length) {
+            const line = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_DIALOGUE[index];
+            const duration = this.getDialogueDuration(mob, line.duration);
+            mob.craftrasSwordGuy2PhaseThreeDialogueIndex = index + 1;
+            mob.craftrasSwordGuy2PhaseThreeNextLineAt = now + duration;
+            this.speakSwordGuy2PhaseThreeLine(mob, line);
+            return;
+        }
+        mob.craftrasSwordGuy2State = "phase3_combat";
+        mob.invuln = false;
+        mob.craftrasSwordGuy2ParryChance = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_START;
+        mob.craftrasSwordGuy2NextPhaseThreeGiantSwordAt = now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_SWORD_INTERVAL;
+        mob.craftrasSwordGuy2PhaseThreeSkillIndex = 2;
+        mob.craftrasSwordGuy2NextPhaseThreeSkillAt = now + 3_000;
+        mob.craftrasSwordGuy2PhaseThreeCycleMode = "storm";
+        mob.craftrasSwordGuy2PhaseThreePingPongAt = 0;
+        mob.craftrasSwordGuy2PhaseThreeStormResumeAt = 0;
+        mob.craftrasSwordGuy2ActivePingPongOrb = null;
+        mob.craftrasSwordGuy2NextPhaseThreeCloneAt = 0;
+        mob.craftrasSwordGuy2NextPhaseThreeOrbAt = 0;
+        mob.craftrasSwordGuy2PhaseThreeLastRainAngle = Math.random() * Math.PI * 2;
+        this.syncSwordGuy2DuoHealth(mob, true, now);
+    }
+
+    startSwordGuy2PhaseTwoOpening(mob, now = Date.now()) {
+        const target = this.getSwordGuy2Target(mob);
+        const bominik = this.spawnSwordGuy2Bominik(mob);
+        if (!target || !bominik) return false;
+        this.setSwordGuy2TargetFovMultiplier(mob, 2);
+        mob.craftrasSwordGuy2State = "phase2_opening";
+        mob.craftrasMaxIncomingDamage = CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAX_INCOMING_DAMAGE;
+        mob.craftrasSwordGuy2BasicDefeated = false;
+        mob.craftrasSwordGuy2PhaseTwoEvents = [];
+        mob.health.set(CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH);
+        mob.health.amount = CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH;
+        mob.damageReceived = 0;
+        mob.readyToDie = false;
+        mob.invuln = true;
+        bominik.health.set(CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH);
+        bominik.health.amount = CRAFTRAS_SWORD_GUY_2_PHASE_TWO_HEALTH;
+        bominik.craftrasSwordGuy2Defeated = false;
+        bominik.invuln = true;
+        bominik.godmode = true;
+        bominik.alpha = 1;
+        mob.craftrasSwordGuy2OpeningImpactAt = now + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_OPENING_CHARGE;
+        mob.craftrasSwordGuy2OpeningStartAt = now;
+        mob.craftrasSwordGuy2OpeningParried = false;
+        mob.craftrasSwordGuy2TargetSocket?.talk?.(
+            "SGO",
+            CRAFTRAS_SWORD_GUY_2_PHASE_TWO_OPENING_CHARGE,
+            500,
+            200,
+        );
+        mob.craftrasSwordGuy2TargetSocket?.talk?.("SH", JSON.stringify({
+            type: "camera",
+            duration: CRAFTRAS_SWORD_GUY_2_PHASE_TWO_OPENING_CHARGE + 200,
+            amount: 34,
+            keepShake: true,
+        }));
+        mob.craftrasOnParrySuccess = body => {
+            if (body !== target || mob.craftrasSwordGuy2State !== "phase2_opening") return;
+            mob.craftrasSwordGuy2OpeningParried = true;
+        };
+        mob.craftrasOnParryFail = body => {
+            if (body !== target || mob.craftrasSwordGuy2State !== "phase2_opening") return;
+            body.health.amount = 0;
+        };
+        this.syncSwordGuy2DuoHealth(mob, true, now);
+        return true;
+    }
+
+    startSwordGuy2PhaseTwoBasicDash(mob, target, options = {}, now = Date.now()) {
+        if (!mob || !target || mob.craftrasSwordGuy2BasicDefeated) return false;
+        const dx = target.x - mob.x;
+        const dy = target.y - mob.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const duration = options.duration || 300;
+        mob.craftrasSwordGuy2Dash = {
+            startedAt: now,
+            endsAt: now + duration,
+            startX: mob.x,
+            startY: mob.y,
+            maxDistance: Math.min(
+                options.maxDistance || BLOCK_SIZE * 2.6,
+                Math.max(BLOCK_SIZE * 0.8, distance),
+            ),
+            direction: { x: dx / distance, y: dy / distance },
+            speed: options.speed || 20,
+            acceleration: options.acceleration || Math.max(4, (options.speed || 20) * 0.22),
+            homing: !!options.homing,
+            hit: false,
+            damageRatio: options.damageRatio ?? 0.20,
+            noDamage: !!options.noDamage,
+            knockback: options.knockback || 0,
+            parryable: options.parryable !== false,
+            slashReverse: !!options.slashReverse,
+            requiredParry: !!options.requiredParry,
+        };
+        if (options.parryable !== false) {
+            mob.craftrasOnParrySuccess = body => {
+                const dash = mob.craftrasSwordGuy2Dash;
+                if (!dash || body !== target) return;
+                dash.parried = true;
+                dash.hit = true;
+                dash.endsAt = Date.now();
+                mob.velocity.x = 0;
+                mob.velocity.y = 0;
+            };
+            mob.craftrasOnParryFail = () => {};
+        } else {
+            mob.craftrasOnParrySuccess = null;
+            mob.craftrasOnParryFail = null;
+        }
+        return true;
+    }
+
+    updateSwordGuy2PhaseTwoBasicDash(mob, target, now = Date.now()) {
+        const dash = mob?.craftrasSwordGuy2Dash;
+        if (!dash) return false;
+        if (dash.homing && !dash.hit && target && !target.isDead?.()) {
+            const dx = target.x - mob.x;
+            const dy = target.y - mob.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            dash.direction.x = dash.direction.x * 0.72 + dx / distance * 0.28;
+            dash.direction.y = dash.direction.y * 0.72 + dy / distance * 0.28;
+            const directionLength = Math.hypot(dash.direction.x, dash.direction.y) || 1;
+            dash.direction.x /= directionLength;
+            dash.direction.y /= directionLength;
+        }
+        const travelled = Math.hypot(mob.x - dash.startX, mob.y - dash.startY);
+        const dashing = now < dash.endsAt && travelled < dash.maxDistance && !dash.hit && !dash.parried;
+        if (dashing) {
+            mob.velocity.x += dash.direction.x * dash.acceleration;
+            mob.velocity.y += dash.direction.y * dash.acceleration;
+            const velocityLength = Math.hypot(mob.velocity.x, mob.velocity.y) || 1;
+            if (velocityLength > dash.speed) {
+                mob.velocity.x = mob.velocity.x / velocityLength * dash.speed;
+                mob.velocity.y = mob.velocity.y / velocityLength * dash.speed;
+            }
+            mob.craftrasControl = {
+                goal: {
+                    x: mob.x + dash.direction.x * BLOCK_SIZE * 2,
+                    y: mob.y + dash.direction.y * BLOCK_SIZE * 2,
+                },
+                target: { x: dash.direction.x, y: dash.direction.y },
+                fire: false,
+                power: 1,
+            };
+        }
+        mob.facing = Math.atan2(dash.direction.y, dash.direction.x);
+        mob.vfacing = mob.facing;
+        if (!dash.hit && target && !target.isDead?.()) {
+            const hitRadius = Math.max(12, mob.realSize || mob.size || 32)
+                + Math.max(10, target.realSize || target.size || 12);
+            if ((mob.x - target.x) ** 2 + (mob.y - target.y) ** 2 <= hitRadius ** 2) {
+                dash.hit = true;
+                if (!dash.noDamage) {
+                    this.applyPlayerDamage(target, Math.max(1, target.health.max * dash.damageRatio), mob, {
+                        bypassParry: !dash.parryable,
+                        noKnockback: true,
+                        swordGuyAttack: true,
+                    });
+                }
+                if (dash.knockback > 0) {
+                    this.knockCombatTargetFromSource(target, mob, dash.knockback || 120);
+                }
+            }
+        }
+        if (dashing) return true;
+        mob.velocity.x *= 0.55;
+        mob.velocity.y *= 0.55;
+        mob.craftrasSwordGuy2Dash = null;
+        mob.craftrasOnParrySuccess = null;
+        mob.craftrasOnParryFail = null;
+        return false;
+    }
+
+    spawnSwordGuy2BasicSkillFriend(mob, target, options = {}) {
+        const slash = !!options.slash;
+        return this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+            location: options.location || mob,
+            target,
+            friend: true,
+            slash,
+            motion: options.homing ? "homing" : "straight",
+            speed: options.speed || CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FRIEND_SPEED,
+            turn: options.homing ? 0.18 : 0,
+            size: 33 * (options.sizeMultiplier || 1),
+            damageRatio: options.damageRatio || 0.05,
+            parryMode: "reflect",
+            reflectDuoTarget: true,
+            reflectDamage: options.reflectDamage ?? (slash ? 667 : 500),
+            life: 9_000,
+        });
+    }
+
+    queueSwordGuy2BasicCircleFriend(mob, target, location, options = {}, now = Date.now()) {
+        const circleLocation = { x: location.x, y: location.y };
+        this.spawnSwordGuy2PhaseTwoBasicCircle(
+            mob,
+            circleLocation,
+            CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY + 1_000,
+            options.circleSize || 30,
+        );
+        this.queueSwordGuy2PhaseTwoEvent(
+            mob,
+            now + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY,
+            () => {
+                if (mob.craftrasSwordGuy2BasicDefeated) return;
+                this.spawnSwordGuy2BasicSkillFriend(mob, target, {
+                    ...options,
+                    location: circleLocation,
+                });
+            },
+        );
+    }
+
+    spawnSwordGuy2BominikSkillOne(mob, target, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik || bominik.craftrasSwordGuy2Defeated) return;
+        this.spawnSwordGuy2PhaseTwoCircle(
+            mob,
+            3,
+            bominik,
+            CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY + 1_400,
+            36,
+        );
+        for (let index = 0; index < 4; index++) {
+            this.queueSwordGuy2PhaseTwoEvent(
+                mob,
+                now + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY + index * 300,
+                () => {
+                if (bominik.craftrasSwordGuy2Defeated) return;
+                const multiParry = index === 3;
+                const angle = multiParry
+                    ? Math.atan2(target.y - bominik.y, target.x - bominik.x)
+                    : Math.random() * Math.PI * 2;
+                this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+                    location: bominik,
+                    target,
+                    angle,
+                    motion: "homing",
+                    speed: CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FAST_ORB_SPEED,
+                    turn: multiParry ? 0.24 : 0.035,
+                    turnGrowthInterval: multiParry ? 0 : 2_000,
+                    turnGrowthStep: multiParry ? 0 : 0.055,
+                    maxTurn: multiParry ? 0.4 : 0.255,
+                    size: 54,
+                    color: multiParry ? "#42d96b" : "#b83cff",
+                    damageRatio: 0.20,
+                    parryMode: "reflect",
+                    reflectTarget: bominik,
+                    reflectDamage: 1_333,
+                    multiParryRequired: multiParry ? 3 : 0,
+                    life: 10_000,
+                });
+                },
+            );
+        }
+    }
+
+    spawnSwordGuy2BominikFlowerVolley(mob, target, volley, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik || bominik.craftrasSwordGuy2Defeated || !target) return;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = BLOCK_SIZE * 2.2;
+        const location = {
+            x: target.x + Math.cos(angle) * radius,
+            y: target.y + Math.sin(angle) * radius,
+        };
+        this.spawnSwordGuy2PhaseTwoCircle(
+            mob,
+            1,
+            location,
+            CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY + 1_000,
+            25,
+        );
+        this.queueSwordGuy2PhaseTwoEvent(
+            mob,
+            now + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY,
+            () => {
+                if (bominik.craftrasSwordGuy2Defeated) return;
+                const rotation = this.nextSwordGuy2BominikPatternRotation(mob);
+                for (let direction = 0; direction < 8; direction++) {
+                    this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+                        location,
+                        target,
+                        angle: rotation + direction * Math.PI * 2 / 8,
+                        motion: "straight",
+                        speed: 16,
+                        size: 18,
+                        color: "#c477ff",
+                        damageRatio: 0.05,
+                        parryMode: "vanish",
+                        life: 7_000,
+                    });
+                }
+            },
+        );
+    }
+
+    spawnSwordGuy2SkeletonSummon(mob, target, index = 0, now = Date.now(), options = {}) {
+        if (!mob || !target || target.isDead?.()) return null;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = BLOCK_SIZE * (4.5 + Math.random() * 2.5);
+        const location = {
+            x: target.x + Math.cos(angle) * radius,
+            y: target.y + Math.sin(angle) * radius,
+        };
+        const summon = this.spawnMobAt(location, "skeleton");
+        if (!summon) return null;
+        summon.define?.("craftrasBominikClone");
+        summon.craftrasMobType = "sword_guy_2_skeleton_summon";
+        summon.name = "BOMINIK'S CLONE";
+        summon.craftrasBaseName = "BOMINIK'S CLONE";
+        summon.craftrasSwordGuy2SummonOwner = mob;
+        summon.craftrasSwordGuy2SummonIndex = index;
+        summon.craftrasSunImmune = true;
+        summon.craftrasBurning = false;
+        summon.craftrasNoLoot = true;
+        summon.craftrasNoKnockback = false;
+        summon.craftrasNextSummonBurstAt = now + 700 + Math.random() * 500;
+        summon.craftrasSummonBurstShots = 0;
+        summon.craftrasSummonNextShotAt = 0;
+        const health = Math.max(1, Number(options.health) || 1);
+        summon.health.set(health);
+        summon.health.amount = health;
+        summon.damageReceived = 0;
+        summon.readyToDie = false;
+        summon.alwaysActive = true;
+        return summon;
+    }
+
+    spawnSwordGuy2SkeletonSummons(mob, target, now = Date.now()) {
+        for (const summon of [...this.mobs]) {
+            if (summon?.craftrasSwordGuy2SummonOwner !== mob) continue;
+            summon.destroy?.();
+            this.mobs.delete(summon);
+        }
+        for (let index = 0; index < 5; index++) {
+            this.queueSwordGuy2PhaseTwoEvent(mob, now + index * 200, eventNow => {
+                if (mob.craftrasSwordGuy2State !== "phase2_combat") return;
+                this.spawnSwordGuy2SkeletonSummon(mob, target, index, eventNow);
+            });
+        }
+    }
+
+    updateSwordGuy2SkeletonSummon(summon, now = Date.now()) {
+        const owner = summon?.craftrasSwordGuy2SummonOwner;
+        const target = owner ? this.getSwordGuy2Target(owner) : null;
+        if (
+            !summon
+            || !owner
+            || owner.isDead?.()
+            || !["phase2_combat", "phase3_combat"].includes(owner.craftrasSwordGuy2State)
+            || !target
+            || target.isDead?.()
+        ) {
+            summon?.destroy?.();
+            this.mobs.delete(summon);
+            return;
+        }
+        summon.craftrasSunImmune = true;
+        summon.craftrasBurning = false;
+        if (summon.craftrasPhaseThreeIllusion) {
+            if (now >= (summon.craftrasPhaseThreeIllusionExpiresAt || 0)) {
+                summon.destroy?.();
+                this.mobs.delete(summon);
+                return;
+            }
+            const dx = target.x - summon.x;
+            const dy = target.y - summon.y;
+            summon.facing = Math.atan2(dy, dx);
+            summon.vfacing = summon.facing;
+            summon.velocity.x = 0;
+            summon.velocity.y = 0;
+            summon.craftrasControl = {
+                goal: { x: summon.x, y: summon.y },
+                target: { x: dx, y: dy },
+                fire: false,
+                power: 0,
+            };
+            return;
+        }
+        const dx = target.x - summon.x;
+        const dy = target.y - summon.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const toward = { x: dx / distance, y: dy / distance };
+        const desiredDistance = BLOCK_SIZE * 7;
+        const moveDirection = distance < desiredDistance
+            ? { x: -toward.x, y: -toward.y }
+            : distance > BLOCK_SIZE * 10
+                ? toward
+                : {
+                    x: -toward.y * (summon.craftrasSwordGuy2SummonIndex % 2 ? 1 : -1),
+                    y: toward.x * (summon.craftrasSwordGuy2SummonIndex % 2 ? 1 : -1),
+                };
+        summon.craftrasControl = {
+            goal: {
+                x: summon.x + moveDirection.x * BLOCK_SIZE * 3,
+                y: summon.y + moveDirection.y * BLOCK_SIZE * 3,
+            },
+            target: { x: toward.x, y: toward.y },
+            fire: false,
+            power: 1,
+        };
+        summon.velocity.x = summon.velocity.x * 0.78 + moveDirection.x * 1.8;
+        summon.velocity.y = summon.velocity.y * 0.78 + moveDirection.y * 1.8;
+        summon.facing = Math.atan2(toward.y, toward.x);
+        summon.vfacing = summon.facing;
+
+        if (now >= (summon.craftrasNextSummonBurstAt || 0)) {
+            summon.craftrasNextSummonBurstAt = now + 5_000;
+            summon.craftrasSummonBurstShots = 2;
+            summon.craftrasSummonNextShotAt = now;
+        }
+        if (
+            summon.craftrasSummonBurstShots > 0
+            && now >= (summon.craftrasSummonNextShotAt || 0)
+        ) {
+            summon.craftrasSummonBurstShots--;
+            summon.craftrasSummonNextShotAt = now + 300;
+            const shotDx = target.x - summon.x;
+            const shotDy = target.y - summon.y;
+            this.spawnSwordGuy2PhaseTwoProjectile(owner, {
+                location: summon,
+                target,
+                angle: Math.atan2(shotDy, shotDx),
+                motion: "straight",
+                speed: 28,
+                size: 11,
+                color: "#eeeeee",
+                damageRatio: 0.05,
+                parryMode: "vanish",
+                life: 7_000,
+            });
+        }
+    }
+
+    spawnSwordGuy2BominikSkillThreeShot(mob, target, index, circle, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik || bominik.craftrasSwordGuy2Defeated || !target || !circle) return;
+        const finalShot = index === 5;
+        this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+            location: circle,
+            target,
+            motion: "homing",
+            speed: finalShot ? CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FAST_ORB_SPEED : 22,
+            turn: finalShot ? 0.28 : 0.10,
+            size: 48,
+            color: finalShot ? "#f04cff" : "#a958ff",
+            damageRatio: 0.20,
+            parryMode: finalShot ? "reflect" : "vanish",
+            reflectTarget: finalShot ? bominik : null,
+            reflectDamage: finalShot ? 1_333 : 0,
+            burst: finalShot ? null : {
+                distance: BLOCK_SIZE * 3.75,
+                delay: 500,
+                count: 8,
+                damageRatio: 0.05,
+                rotateWithBominik: true,
+            },
+            life: 9_000,
+        });
+    }
+
+    startSwordGuy2PhaseTwoSkill(mob, skill, target, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        const basicOnly = mob?.craftrasBossFormBasicOnly;
+        if (!mob || !target || (!bominik && !basicOnly)) return false;
+        mob.craftrasSwordGuy2ActiveSkill = skill;
+        mob.craftrasSwordGuy2PhaseTwoEvents = [];
+        mob.craftrasTheSwordStaffPoseStartedAt = skill === 2 ? now : 0;
+        const basicAlive = !mob.craftrasSwordGuy2BasicDefeated;
+        const bominikAlive = !!bominik && !bominik.craftrasSwordGuy2Defeated;
+        let duration = 5_000;
+
+        if (skill === 1) {
+            if (basicAlive) {
+                for (let index = 0; index < 3; index++) {
+                    this.queueSwordGuy2PhaseTwoEvent(mob, now + index * 700, eventNow => {
+                        if (mob.craftrasSwordGuy2BasicDefeated) return;
+                        this.startSwordGuy2PhaseTwoBasicDash(mob, target, {
+                            duration: 420,
+                            speed: 30,
+                            acceleration: 9,
+                            maxDistance: BLOCK_SIZE * 3,
+                            damageRatio: 0.20,
+                            slashReverse: index === 1,
+                        }, eventNow);
+                        this.queueSwordGuy2BasicCircleFriend(mob, target, mob, {
+                            homing: true,
+                            speed: CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FRIEND_SPEED,
+                        }, eventNow);
+                    });
+                }
+            }
+            if (bominikAlive) this.spawnSwordGuy2BominikSkillOne(mob, target, now);
+        } else if (skill === 2) {
+            duration = 9_500;
+            if (basicAlive) {
+                const basicCircleLocation = { x: mob.x, y: mob.y };
+                this.spawnSwordGuy2PhaseTwoBasicCircle(
+                    mob,
+                    basicCircleLocation,
+                    CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY + 6_800,
+                    38,
+                );
+                for (let index = 0; index < 20; index++) {
+                    this.queueSwordGuy2PhaseTwoEvent(
+                        mob,
+                        now + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY + index * 300,
+                        () => {
+                        if (mob.craftrasSwordGuy2BasicDefeated) return;
+                        const large = (index + 1) % 5 === 0;
+                        this.spawnSwordGuy2BasicSkillFriend(mob, target, {
+                            location: basicCircleLocation,
+                            homing: large,
+                            slash: large,
+                            sizeMultiplier: large ? 1.55 : 1,
+                            damageRatio: large ? 0.20 : 0.05,
+                            reflect: large,
+                            speed: large ? CRAFTRAS_SWORD_GUY_2_PHASE_TWO_FRIEND_SPEED * 1.5 : 27,
+                        });
+                        },
+                    );
+                }
+            }
+            if (bominikAlive) {
+                for (let volley = 0; volley < 5; volley++) {
+                    this.queueSwordGuy2PhaseTwoEvent(mob, now + volley * 1_300, eventNow => {
+                        this.spawnSwordGuy2BominikFlowerVolley(mob, target, volley, eventNow);
+                    });
+                }
+                this.queueSwordGuy2PhaseTwoEvent(mob, now + 6_700, eventNow => {
+                    this.spawnSwordGuy2SkeletonSummons(mob, target, eventNow);
+                });
+            }
+        } else {
+            duration = 8_000;
+            if (basicAlive) {
+                for (let cycle = 0; cycle < 3; cycle++) {
+                    const warningAt = now + cycle * 2_500;
+                    const teleportAt = warningAt + 200;
+                    const dashAt = teleportAt + 150;
+                    this.queueSwordGuy2PhaseTwoEvent(mob, warningAt, () => {
+                        if (mob.craftrasSwordGuy2BasicDefeated) return;
+                        mob.craftrasSwordGuy2TargetSocket?.talk?.("SG3", 200, 200);
+                    });
+                    this.queueSwordGuy2PhaseTwoEvent(mob, teleportAt, () => {
+                        if (mob.craftrasSwordGuy2BasicDefeated || !target || target.isDead?.()) return;
+                        const facing = Number.isFinite(target.facing) ? target.facing : 0;
+                        mob.x = target.x - Math.cos(facing) * BLOCK_SIZE * 3.4;
+                        mob.y = target.y - Math.sin(facing) * BLOCK_SIZE * 3.4;
+                        mob.velocity.x = 0;
+                        mob.velocity.y = 0;
+                        this.resolveEntityOutOfWall(mob);
+                        mob.facing = Math.atan2(target.y - mob.y, target.x - mob.x);
+                        mob.vfacing = mob.facing;
+                    });
+                    this.queueSwordGuy2PhaseTwoEvent(mob, dashAt, eventNow => {
+                        if (mob.craftrasSwordGuy2BasicDefeated || !target || target.isDead?.()) return;
+                        this.startSwordGuy2PhaseTwoBasicDash(mob, target, {
+                            duration: 360,
+                            speed: 78,
+                            acceleration: 21,
+                            maxDistance: BLOCK_SIZE * 6,
+                            damageRatio: 0.10,
+                            noDamage: false,
+                            knockback: 150,
+                            homing: true,
+                            parryable: false,
+                            slashReverse: cycle === 1,
+                        }, eventNow);
+                    });
+                }
+            }
+            if (bominikAlive) {
+                for (let index = 0; index < 6; index++) {
+                    const circleAngle = Math.random() * Math.PI * 2;
+                    const circleRadius = BLOCK_SIZE * (4 + Math.random() * 4);
+                    const circleLocation = {
+                        x: target.x + Math.cos(circleAngle) * circleRadius,
+                        y: target.y + Math.sin(circleAngle) * circleRadius,
+                    };
+                    let circle = null;
+                    const circleAt = now + index * 450;
+                    this.queueSwordGuy2PhaseTwoEvent(
+                        mob,
+                        circleAt,
+                        () => {
+                            if (bominik.craftrasSwordGuy2Defeated) return;
+                            circle = this.spawnSwordGuy2PhaseTwoCircle(mob, 2, circleLocation, 3_100, 38);
+                        },
+                    );
+                    this.queueSwordGuy2PhaseTwoEvent(
+                        mob,
+                        circleAt + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_MAGIC_CIRCLE_DELAY,
+                        eventNow => {
+                            this.spawnSwordGuy2BominikSkillThreeShot(mob, target, index, circle, eventNow);
+                        },
+                    );
+                }
+            }
+        }
+        mob.craftrasSwordGuy2SkillEndsAt = now + duration;
+        return true;
+    }
+
+    updateSwordGuy2PhaseTwoWeaponPose(mob, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2BasicDefeated) return;
+        const dash = mob.craftrasSwordGuy2Dash;
+        if (dash) {
+            this.setTheSwordSlashPose(
+                mob,
+                dash.startedAt,
+                now,
+                Math.max(1, dash.endsAt - dash.startedAt),
+                dash.slashReverse,
+            );
+            return;
+        }
+        if (
+            mob.craftrasSwordGuy2ActiveSkill === 2
+            && now < (mob.craftrasSwordGuy2SkillEndsAt || 0)
+        ) {
+            this.setTheSwordStaffShakePose(mob, now);
+            return;
+        }
+        this.setTheSwordIdlePose(mob);
+    }
+
+    updateSwordGuy2BominikPosition(mob, target, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik || bominik.isDead?.()) return;
+        if (bominik.craftrasSwordGuy2Defeated) {
+            bominik.velocity.x = 0;
+            bominik.velocity.y = 0;
+            return;
+        }
+        const distanceToTarget = target ? Math.hypot(target.x - bominik.x, target.y - bominik.y) : Infinity;
+        const targetAlpha = mob.craftrasSwordGuy2State === "phase3_final_pingpong"
+            ? 1
+            : distanceToTarget < BLOCK_SIZE * 2.5
+                ? 0
+                : 1;
+        bominik.alpha += (targetAlpha - bominik.alpha) * 0.16;
+        if (target) {
+            const targetX = target.x - bominik.x;
+            const targetY = target.y - bominik.y;
+            bominik.facing = Math.atan2(targetY, targetX);
+            bominik.vfacing = bominik.facing;
+            bominik.craftrasControl = {
+                goal: { x: bominik.x, y: bominik.y },
+                target: { x: targetX, y: targetY },
+                fire: false,
+                power: 0,
+            };
+        }
+        if (
+            ["phase2_combat", "phase3_combat"].includes(mob.craftrasSwordGuy2State)
+            && target
+            && now >= (bominik.craftrasNextTeleportAt || 0)
+        ) {
+            bominik.craftrasNextTeleportAt = now + 5_000;
+            const angle = Math.random() * Math.PI * 2;
+            const radius = BLOCK_SIZE * (7 + Math.random() * 3);
+            bominik.x = target.x + Math.cos(angle) * radius;
+            bominik.y = target.y + Math.sin(angle) * radius;
+            bominik.facing = Math.atan2(target.y - bominik.y, target.x - bominik.x);
+            bominik.vfacing = bominik.facing;
+        }
+        bominik.velocity.x = 0;
+        bominik.velocity.y = 0;
+    }
+
+    updateSwordGuy2PhaseTwoBasicMovement(
+        mob,
+        target,
+        now = Date.now(),
+        allowMelee = true,
+        speedMultiplier = 1,
+        minimumDistance = 0,
+    ) {
+        if (!mob || !target || mob.craftrasSwordGuy2BasicDefeated || mob.craftrasSwordGuy2Dash) return;
+        const dx = target.x - mob.x;
+        const dy = target.y - mob.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const direction = { x: dx / distance, y: dy / distance };
+        const movementDirection = minimumDistance > 0
+            ? distance < minimumDistance
+                ? -1
+                : distance <= minimumDistance * 1.25
+                    ? 0
+                    : 1
+            : 1;
+        mob.facing = Math.atan2(direction.y, direction.x);
+        mob.vfacing = mob.facing;
+        mob.craftrasControl = {
+            goal: movementDirection === 0
+                ? { x: mob.x, y: mob.y }
+                : {
+                    x: mob.x + direction.x * movementDirection * BLOCK_SIZE * 3,
+                    y: mob.y + direction.y * movementDirection * BLOCK_SIZE * 3,
+                },
+            target: direction,
+            fire: false,
+            power: movementDirection === 0 ? 0 : 1,
+        };
+        mob.velocity.x = mob.velocity.x * 0.72
+            + direction.x * movementDirection * 3.2 * speedMultiplier;
+        mob.velocity.y = mob.velocity.y * 0.72
+            + direction.y * movementDirection * 3.2 * speedMultiplier;
+        const meleeRange = (mob.realSize || mob.size || 20)
+            + (target.realSize || target.size || 12)
+            + BLOCK_SIZE * 0.9;
+        if (
+            allowMelee
+            && distance <= meleeRange
+            && now >= (mob.craftrasNextSwordGuy2PhaseTwoMeleeAt || 0)
+        ) {
+            mob.craftrasNextSwordGuy2PhaseTwoMeleeAt = now + 1_000;
+            mob.craftrasSwordGuy2MeleeStartedAt = now;
+            mob.craftrasSwordGuy2MeleeUntil = now + 600;
+            this.applyPlayerDamage(
+                target,
+                this.getSwordGuy2Damage(target, "sword"),
+                mob,
+                { swordGuyAttack: true },
+            );
+        }
+        if (now < (mob.craftrasSwordGuy2MeleeUntil || 0)) {
+            this.setTheSwordSlashPose(
+                mob,
+                mob.craftrasSwordGuy2MeleeStartedAt || now,
+                now,
+                600,
+            );
+        } else {
+            this.setTheSwordIdlePose(mob);
+        }
+    }
+
+    updateSwordGuy2PhaseTwoCombat(mob, target, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik) return;
+        this.runSwordGuy2PhaseTwoEvents(mob, now);
+        this.updateSwordGuy2PhaseTwoBasicDash(mob, target, now);
+        this.updateSwordGuy2PhaseTwoWeaponPose(mob, now);
+        this.updateSwordGuy2BominikPosition(mob, target, now);
+        this.syncSwordGuy2DuoHealth(mob, false, now);
+        if (mob.craftrasSwordGuy2State === "phase2_defeated") return;
+        if (now < (mob.craftrasSwordGuy2SkillEndsAt || 0)) return;
+        if (mob.craftrasSwordGuy2ActiveSkill) {
+            mob.craftrasSwordGuy2ActiveSkill = 0;
+            mob.craftrasTheSwordStaffPoseStartedAt = 0;
+            this.setTheSwordIdlePose(mob);
+            mob.craftrasSwordGuy2NextSkillAt = now + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_COOLDOWN;
+            mob.craftrasSwordGuy2SkillIndex = mob.craftrasSwordGuy2SkillIndex % 3 + 1;
+            return;
+        }
+        if (now < (mob.craftrasSwordGuy2NextSkillAt || 0)) {
+            this.updateSwordGuy2PhaseTwoBasicMovement(mob, target, now);
+            return;
+        }
+        this.startSwordGuy2PhaseTwoSkill(
+            mob,
+            mob.craftrasSwordGuy2SkillIndex || 1,
+            target,
+            now,
+        );
+    }
+
+    triggerSwordGuy2PhaseThreeParryPose(mob, now = Date.now()) {
+        if (!mob) return false;
+        mob.craftrasSwordGuy2ParryPoseStartedAt = now;
+        mob.craftrasSwordGuy2ParryPoseUntil = now + 460;
+        return true;
+    }
+
+    updateSwordGuy2PhaseThreeParryPose(mob, now = Date.now()) {
+        if (!mob || now >= (mob.craftrasSwordGuy2ParryPoseUntil || 0)) return false;
+        // Mirror the player's quick sword-parry sweep.
+        this.setTheSwordSlashPose(
+            mob,
+            mob.craftrasSwordGuy2ParryPoseStartedAt || now,
+            now,
+            460,
+            true,
+        );
+        return true;
+    }
+
+    trySwordGuy2PhaseThreeParry(mob, now = Date.now()) {
+        const storedChance = Number(mob?.craftrasSwordGuy2ParryChance);
+        const chance = Math.max(0, Math.min(
+            100,
+            Number.isFinite(storedChance)
+                ? storedChance
+                : CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_START,
+        ));
+        if (Math.random() * 100 >= chance) return false;
+        if (Math.random() < CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_DROP_CHANCE) {
+            mob.craftrasSwordGuy2ParryChance = Math.max(
+                0,
+                chance - CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_DROP,
+            );
+        }
+        this.triggerSwordGuy2PhaseThreeParryPose(mob, now);
+        this.spawnParryEffect(mob, {
+            duration: 500,
+            startSize: Math.max(18, (mob.realSize || mob.size || 24) * 1.1),
+            endSize: Math.max(34, (mob.realSize || mob.size || 24) * 2.2),
+        });
+        this.spawnExplosionEffect(mob, {
+            duration: 420,
+            startSize: Math.max(14, (mob.realSize || mob.size || 24) * 0.8),
+            endSize: Math.max(42, (mob.realSize || mob.size || 24) * 2.6),
+            color: "#65bfff",
+            alpha: 0.62,
+            fade: true,
+        });
+        return true;
+    }
+
+    damageSwordGuy2PhaseThreeBasic(mob, amount, now = Date.now(), options = {}) {
+        if (!mob || mob.craftrasSwordGuy2State !== "phase3_combat" || amount <= 0) return false;
+        if (!options.bypassParry && this.trySwordGuy2PhaseThreeParry(mob, now)) return false;
+        mob.craftrasSwordGuy2ParryChance = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_START;
+        mob.health.amount = Math.max(1, mob.health.amount - amount);
+        this.flashEntity(mob, 180);
+        if (mob.health.amount <= 1) this.startSwordGuy2PhaseThreeFinalSetup(mob, now);
+        this.syncSwordGuy2DuoHealth(mob, true, now);
+        return true;
+    }
+
+    aimSwordGuy2PhaseThreeOrb(projectile, target) {
+        if (!projectile || !target) return false;
+        const dx = target.x - projectile.x;
+        const dy = target.y - projectile.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        projectile.craftrasTarget = target;
+        projectile.craftrasTargetPoint = { x: target.x, y: target.y };
+        projectile.craftrasVelocity = {
+            x: dx / distance * projectile.craftrasSpeed,
+            y: dy / distance * projectile.craftrasSpeed,
+        };
+        projectile.facing = Math.atan2(projectile.craftrasVelocity.y, projectile.craftrasVelocity.x);
+        projectile.vfacing = projectile.facing;
+        return true;
+    }
+
+    swordGuy2PhaseThreeOrbCrossedTarget(projectile, target, startX, startY) {
+        if (!projectile || !target) return false;
+        const endX = projectile.x;
+        const endY = projectile.y;
+        const segmentX = endX - startX;
+        const segmentY = endY - startY;
+        const segmentLengthSquared = segmentX ** 2 + segmentY ** 2;
+        const projection = segmentLengthSquared > 0
+            ? Math.max(0, Math.min(1,
+                ((target.x - startX) * segmentX + (target.y - startY) * segmentY)
+                / segmentLengthSquared))
+            : 0;
+        const closestX = startX + segmentX * projection;
+        const closestY = startY + segmentY * projection;
+        const hitRadius = Math.max(12, projectile.realSize || projectile.size || 48)
+            + Math.max(10, target.realSize || target.size || 18);
+        return (target.x - closestX) ** 2 + (target.y - closestY) ** 2 <= hitRadius ** 2;
+    }
+
+    spawnSwordGuy2PhaseThreeOrb(mob, target, options = {}, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!mob || !target || !bominik) return null;
+        const location = options.location || bominik;
+        const projectile = this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+            location,
+            target,
+            motion: "straight",
+            speed: options.speed || 25,
+            turn: 0,
+            maxTurn: 0,
+            size: options.size || 54,
+            color: "#ce4cff",
+            damageRatio: options.damageRatio ?? 0.20,
+            parryMode: "vanish",
+            life: options.life ?? Number.POSITIVE_INFINITY,
+        });
+        if (!projectile) return null;
+        projectile.craftrasSwordGuy2PhaseThreeOrb = true;
+        projectile.craftrasPhaseThreeOrbMode = options.mode || "duel";
+        projectile.craftrasPhaseThreeTargetType = "player";
+        projectile.craftrasPhaseThreeBossTarget = options.bossTarget || mob;
+        projectile.craftrasPhaseThreeBossDamage = options.bossDamage || 1_000;
+        projectile.craftrasPhaseThreePlayerParries = 0;
+        projectile.craftrasPhaseThreeBossReturnIndex = 0;
+        this.aimSwordGuy2PhaseThreeOrb(projectile, target);
+        if (["duel", "storm_pingpong"].includes(projectile.craftrasPhaseThreeOrbMode)) {
+            mob.craftrasSwordGuy2ActivePingPongOrb = projectile;
+        }
+        projectile.on("dead", () => {
+            if (mob.craftrasSwordGuy2ActivePingPongOrb === projectile) {
+                mob.craftrasSwordGuy2ActivePingPongOrb = null;
+            }
+            if (
+                projectile.craftrasPhaseThreeOrbMode === "storm_pingpong"
+                && mob.craftrasSwordGuy2State === "phase3_combat"
+            ) {
+                this.finishSwordGuy2PhaseThreeStormPingPong(mob, Date.now());
+            }
+        });
+        projectile.craftrasOnParrySuccess = body => {
+            if (projectile.craftrasParryResolved) return;
+            projectile.craftrasParryResolved = true;
+            projectile.craftrasAwaitingParry = false;
+            projectile.craftrasHitIds.clear();
+            projectile.craftrasSpeed *= 1.1;
+            if ((projectile.realSize || projectile.size || 0) >= 60) {
+                this.getSocketForBody(body)?.talk?.("SH", JSON.stringify({
+                    type: "camera",
+                    duration: 520,
+                    amount: 48,
+                    keepShake: false,
+                }));
+            }
+            if (projectile.craftrasPhaseThreeOrbMode === "storm_pingpong") {
+                projectile.craftrasPhaseThreePlayerParries++;
+                projectile.craftrasPhaseThreeBossTarget = mob;
+                if (
+                    projectile.craftrasPhaseThreePlayerParries
+                    >= CRAFTRAS_SWORD_GUY_2_PHASE_THREE_STORM_PINGPONG_PARRIES
+                ) {
+                    projectile.craftrasPhaseThreeStormFinisher = true;
+                }
+            }
+            if (projectile.craftrasPhaseThreeOrbMode === "final_pingpong") {
+                projectile.craftrasPhaseThreePlayerParries++;
+                mob.craftrasSwordGuy2FinalParryCount = projectile.craftrasPhaseThreePlayerParries;
+                if (projectile.craftrasPhaseThreePlayerParries >= CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FINAL_PARRIES) {
+                    this.beginSwordGuy2ProjectileLinger(projectile);
+                    this.startSwordGuy2PhaseThreeWinDialogue(mob, Date.now());
+                    return;
+                }
+                projectile.craftrasPhaseThreeBossTarget = mob;
+            }
+            projectile.team = body.team;
+            projectile.craftrasPhaseThreeTargetType = "boss";
+            this.aimSwordGuy2PhaseThreeOrb(
+                projectile,
+                projectile.craftrasPhaseThreeBossTarget,
+            );
+        };
+        projectile.craftrasOnParryFail = body => {
+            if (projectile.craftrasParryResolved) return;
+            projectile.craftrasParryResolved = true;
+            if (projectile.craftrasPhaseThreeOrbMode === "final_pingpong") {
+                this.startSwordGuy2PhaseThreeLossDialogue(mob, body, Date.now());
+            }
+            this.beginSwordGuy2ProjectileLinger(projectile);
+        };
+        return projectile;
+    }
+
+    updateSwordGuy2PhaseThreeOrb(projectile, players, now = Date.now()) {
+        const mob = projectile?.craftrasOwner;
+        if (!projectile || !mob || mob.isDead?.()) return false;
+        if (projectile.craftrasLingerUntil) return false;
+        if (
+            Number.isFinite(projectile.craftrasExpiresAt)
+            && now >= projectile.craftrasExpiresAt
+        ) {
+            if (projectile.craftrasPhaseThreeOrbMode === "final_pingpong") {
+                this.startSwordGuy2PhaseThreeLossDialogue(
+                    mob,
+                    this.getSwordGuy2Target(mob),
+                    now,
+                );
+            }
+            this.beginSwordGuy2ProjectileLinger(projectile, now);
+            return false;
+        }
+        const target = projectile.craftrasTarget;
+        if (!target || target.isDead?.()) {
+            this.beginSwordGuy2ProjectileLinger(projectile, now);
+            return false;
+        }
+        if (projectile.craftrasPhaseThreeOrbMode !== "final_setup") {
+            this.aimSwordGuy2PhaseThreeOrb(projectile, target);
+        }
+        const startX = projectile.x;
+        const startY = projectile.y;
+        projectile.x += projectile.craftrasVelocity.x;
+        projectile.y += projectile.craftrasVelocity.y;
+        projectile.facing = Math.atan2(projectile.craftrasVelocity.y, projectile.craftrasVelocity.x);
+        projectile.vfacing = projectile.facing;
+        const phase = now / 420;
+        const channels = [
+            192 + Math.round(Math.sin(phase) * 48),
+            68 + Math.round(Math.sin(phase + Math.PI * 2 / 3) * 38),
+            184 + Math.round(Math.sin(phase + Math.PI * 4 / 3) * 58),
+        ].map(value => Math.max(0, Math.min(255, value)));
+        projectile.color.base = `#${channels.map(value => value.toString(16).padStart(2, "0")).join("")}`;
+        if (now >= (projectile.craftrasNextTrailAt || 0)) {
+            projectile.craftrasNextTrailAt = now + 70;
+            this.spawnExplosionEffect(projectile, {
+                duration: 420,
+                startSize: Math.max(16, (projectile.realSize || projectile.size || 48) * 0.75),
+                endSize: Math.max(8, (projectile.realSize || projectile.size || 48) * 0.2),
+                color: projectile.color.base,
+                alpha: 0.28,
+                fade: true,
+            });
+        }
+        if (
+            projectile.craftrasPhaseThreeOrbMode === "final_setup"
+            && projectile.craftrasPhaseThreeTargetType === "player"
+        ) {
+            if (this.swordGuy2PhaseThreeOrbCrossedTarget(
+                projectile,
+                mob,
+                startX,
+                startY,
+            )) {
+                this.triggerSwordGuy2PhaseThreeParryPose(mob, now);
+                this.spawnParryEffect(mob, {
+                    duration: 500,
+                    startSize: Math.max(18, (mob.realSize || mob.size || 24) * 1.1),
+                    endSize: Math.max(34, (mob.realSize || mob.size || 24) * 2.2),
+                });
+                projectile.team = mob.team;
+                projectile.craftrasPhaseThreeTargetType = "boss";
+                this.aimSwordGuy2PhaseThreeOrb(
+                    projectile,
+                    mob.craftrasSwordGuy2Bominik,
+                );
+                projectile.craftrasParryResolved = false;
+                projectile.craftrasHitIds.clear();
+                return true;
+            }
+        }
+        if (!this.swordGuy2PhaseThreeOrbCrossedTarget(
+            projectile,
+            target,
+            startX,
+            startY,
+        )) return true;
+
+        if (projectile.craftrasPhaseThreeTargetType === "boss") {
+            if (projectile.craftrasPhaseThreeOrbMode === "final_setup") {
+                const bominik = mob.craftrasSwordGuy2Bominik;
+                if (bominik) {
+                    bominik.health.amount = 1;
+                    bominik.damageReceived = 0;
+                    bominik.readyToDie = false;
+                    bominik.invuln = true;
+                    bominik.godmode = true;
+                }
+                this.syncSwordGuy2DuoHealth(mob, true, now);
+                this.beginSwordGuy2ProjectileLinger(projectile, now);
+                this.startSwordGuy2PhaseThreeFinalDialogue(mob, now);
+                return true;
+            }
+            if (projectile.craftrasPhaseThreeOrbMode === "storm_pingpong") {
+                projectile.craftrasPhaseThreeLastBossTarget = mob;
+                if (projectile.craftrasPhaseThreeStormFinisher) {
+                    this.spawnExplosionEffect(mob, {
+                        duration: 620,
+                        startSize: Math.max(24, (mob.realSize || mob.size || 24) * 1.1),
+                        endSize: Math.max(62, (mob.realSize || mob.size || 24) * 3.1),
+                        color: projectile.color.base,
+                        alpha: 0.62,
+                        fade: true,
+                    });
+                    this.damageSwordGuy2PhaseThreeBasic(
+                        mob,
+                        CRAFTRAS_SWORD_GUY_2_PHASE_THREE_STORM_PINGPONG_BOSS_DAMAGE,
+                        now,
+                        { bypassParry: true },
+                    );
+                    this.beginSwordGuy2ProjectileLinger(projectile, now);
+                    this.finishSwordGuy2PhaseThreeStormPingPong(mob, now);
+                    return true;
+                }
+                projectile.craftrasSpeed *= 1.06;
+                this.triggerSwordGuy2PhaseThreeParryPose(mob, now);
+                this.spawnParryEffect(mob, {
+                    duration: 420,
+                    startSize: Math.max(16, (mob.realSize || mob.size || 22) * 0.9),
+                    endSize: Math.max(32, (mob.realSize || mob.size || 22) * 2),
+                });
+                projectile.team = TEAM_ENEMIES;
+                projectile.craftrasPhaseThreeTargetType = "player";
+                this.aimSwordGuy2PhaseThreeOrb(
+                    projectile,
+                    this.getSwordGuy2Target(mob),
+                );
+                projectile.craftrasParryResolved = false;
+                projectile.craftrasHitIds.clear();
+                return true;
+            }
+            if (projectile.craftrasPhaseThreeOrbMode === "final_pingpong") {
+                projectile.craftrasPhaseThreeLastBossTarget = target;
+                projectile.craftrasPhaseThreeBossDamage += 1_500;
+                projectile.craftrasSpeed *= 1.1;
+                this.triggerSwordGuy2PhaseThreeParryPose(mob, now);
+                this.spawnParryEffect(target, {
+                    duration: 420,
+                    startSize: Math.max(16, (target.realSize || target.size || 22) * 0.9),
+                    endSize: Math.max(32, (target.realSize || target.size || 22) * 2),
+                });
+                projectile.team = TEAM_ENEMIES;
+                projectile.craftrasPhaseThreeTargetType = "player";
+                this.aimSwordGuy2PhaseThreeOrb(
+                    projectile,
+                    this.getSwordGuy2Target(mob),
+                );
+                projectile.craftrasParryResolved = false;
+                projectile.craftrasHitIds.clear();
+                return true;
+            }
+            if (this.trySwordGuy2PhaseThreeParry(mob, now)) {
+                projectile.craftrasPhaseThreeBossDamage += 1_500;
+                projectile.craftrasSpeed *= 1.1;
+                projectile.team = TEAM_ENEMIES;
+                projectile.craftrasPhaseThreeTargetType = "player";
+                this.aimSwordGuy2PhaseThreeOrb(
+                    projectile,
+                    this.getSwordGuy2Target(mob),
+                );
+                projectile.craftrasParryResolved = false;
+                projectile.craftrasHitIds.clear();
+                return true;
+            }
+            this.damageSwordGuy2PhaseThreeBasic(
+                mob,
+                projectile.craftrasPhaseThreeBossDamage,
+                now,
+                { bypassParry: true },
+            );
+            this.beginSwordGuy2ProjectileLinger(projectile, now);
+            return true;
+        }
+
+        if (projectile.craftrasAwaitingParry) return true;
+        const body = target;
+        const canParry = this.canPlayerParry(body);
+        projectile.craftrasAwaitingParry = canParry;
+        projectile.craftrasParryResolved = false;
+        const damage = Math.max(
+            1,
+            body.health.max * (
+                ["storm_pingpong", "final_pingpong"].includes(projectile.craftrasPhaseThreeOrbMode)
+                    ? CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PINGPONG_DAMAGE
+                    : projectile.craftrasDamageRatio
+            ),
+        );
+        this.applyPlayerDamage(body, damage, projectile, {
+            noKnockback: true,
+            swordGuyAttack: true,
+        });
+        if (!canParry) {
+            projectile.craftrasOnParryFail?.(body, now);
+            if (projectile.craftrasPhaseThreeOrbMode === "final_pingpong") {
+                body.health.amount = Math.max(1, body.health.amount || 1);
+                body.readyToDie = false;
+            }
+        }
+        return true;
+    }
+
+    startSwordGuy2PhaseThreeFinalSetup(mob, now = Date.now()) {
+        const target = this.getSwordGuy2Target(mob);
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!mob || !target || !bominik || mob.craftrasSwordGuy2State !== "phase3_combat") return false;
+        mob.craftrasSwordGuy2State = "phase3_final_setup";
+        mob.health.amount = 1;
+        mob.damageReceived = 0;
+        mob.readyToDie = false;
+        mob.invuln = true;
+        mob.craftrasSwordGuy2PhaseTwoEvents = [];
+        this.cleanupSwordGuy2Effects(mob);
+        this.spawnSwordGuy2PhaseThreeOrb(mob, target, {
+            mode: "final_setup",
+            bossTarget: bominik,
+            speed: 24,
+            size: 66,
+            damageRatio: 1,
+            life: Number.POSITIVE_INFINITY,
+        }, now);
+        this.syncSwordGuy2DuoHealth(mob, true, now);
+        return true;
+    }
+
+    startSwordGuy2PhaseThreeFinalDialogue(mob, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2State !== "phase3_final_setup") return false;
+        mob.craftrasSwordGuy2State = "phase3_final_dialogue";
+        mob.craftrasDialogueSpeed = 1;
+        mob.craftrasSwordGuy2FinalDialogueIndex = 0;
+        mob.craftrasSwordGuy2FinalNextLineAt = now;
+        return true;
+    }
+
+    updateSwordGuy2PhaseThreeFinalDialogue(mob, now = Date.now()) {
+        if (now < (mob.craftrasSwordGuy2FinalNextLineAt || 0)) return;
+        const index = mob.craftrasSwordGuy2FinalDialogueIndex || 0;
+        if (index < CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FINAL_SETUP_DIALOGUE.length) {
+            const line = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FINAL_SETUP_DIALOGUE[index];
+            const duration = this.getDialogueDuration(mob, line.duration);
+            mob.craftrasSwordGuy2FinalDialogueIndex = index + 1;
+            mob.craftrasSwordGuy2FinalNextLineAt = now + duration;
+            this.speakSwordGuy2PhaseThreeLine(mob, line);
+            return;
+        }
+        const target = this.getSwordGuy2Target(mob);
+        if (!target) return;
+        mob.craftrasSwordGuy2State = "phase3_final_pingpong";
+        mob.craftrasSwordGuy2FinalParryCount = 0;
+        this.spawnSwordGuy2PhaseThreeOrb(mob, target, {
+            mode: "final_pingpong",
+            location: mob,
+            bossTarget: mob,
+            speed: 28,
+            size: 72,
+            damageRatio: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PINGPONG_DAMAGE,
+            life: Number.POSITIVE_INFINITY,
+        }, now);
+    }
+
+    startSwordGuy2PhaseThreeWinDialogue(mob, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2State === "phase3_win_dialogue") return false;
+        this.cleanupSwordGuy2Effects(mob);
+        mob.craftrasSwordGuy2State = "phase3_win_dialogue";
+        mob.craftrasDialogueSpeed = 1;
+        mob.craftrasSwordGuy2EndingLines = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_WIN_DIALOGUE;
+        mob.craftrasSwordGuy2EndingIndex = 0;
+        mob.craftrasSwordGuy2EndingNextLineAt = now;
+        mob.craftrasSwordGuy2EndingStage = "win";
+        return true;
+    }
+
+    startSwordGuy2PhaseThreeLossDialogue(mob, body, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2State === "phase3_loss_dialogue") return false;
+        this.cleanupSwordGuy2Effects(mob);
+        if (body) {
+            body.health.amount = 1;
+            body.readyToDie = false;
+        }
+        mob.craftrasSwordGuy2State = "phase3_loss_dialogue";
+        mob.craftrasDialogueSpeed = 1;
+        mob.craftrasSwordGuy2EndingLines = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_LOSS_DIALOGUE;
+        mob.craftrasSwordGuy2EndingIndex = 0;
+        mob.craftrasSwordGuy2EndingNextLineAt = now;
+        mob.craftrasSwordGuy2EndingStage = "loss";
+        return true;
+    }
+
+    updateSwordGuy2PhaseThreeEndingDialogue(mob, now = Date.now()) {
+        if (now < (mob.craftrasSwordGuy2EndingNextLineAt || 0)) return;
+        const lines = mob.craftrasSwordGuy2EndingLines || [];
+        const index = mob.craftrasSwordGuy2EndingIndex || 0;
+        if (index < lines.length) {
+            const line = lines[index];
+            const duration = this.getDialogueDuration(mob, line.duration);
+            mob.craftrasSwordGuy2EndingIndex = index + 1;
+            mob.craftrasSwordGuy2EndingNextLineAt = now + duration;
+            this.speakSwordGuy2PhaseThreeLine(mob, line);
+            return;
+        }
+        if (mob.craftrasSwordGuy2EndingStage === "win") {
+            mob.craftrasSwordGuy2EndingStage = "hidden";
+            mob.alpha = 0;
+            if (mob.craftrasSwordGuy2Bominik) mob.craftrasSwordGuy2Bominik.alpha = 0;
+            mob.craftrasSwordGuy2EndingNextLineAt = now + 2_000;
+            return;
+        }
+        if (mob.craftrasSwordGuy2EndingStage === "hidden") {
+            mob.craftrasSwordGuy2EndingStage = "reward";
+            mob.alpha = 1;
+            if (mob.craftrasSwordGuy2Bominik) mob.craftrasSwordGuy2Bominik.alpha = 1;
+            const rewardSocket = mob.craftrasSwordGuy2TargetSocket || this.getSocketForBody(this.getSwordGuy2Target(mob));
+            if (rewardSocket && !mob.craftrasSwordGuy2MagicBookAwarded) {
+                mob.craftrasSwordGuy2MagicBookAwarded = true;
+                const accepted = this.gameManager.socketManager.addCraftrasItem(rewardSocket, ITEMS.magic_book, 1);
+                rewardSocket.talk?.(
+                    "m",
+                    5_000,
+                    accepted ? "You received the MAGIC BOOK." : "The MAGIC BOOK could not fit in your inventory.",
+                );
+                this.gameManager.socketManager.sendCraftrasInventory(rewardSocket);
+            }
+            mob.craftrasSwordGuy2EndingLines = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_REWARD_DIALOGUE;
+            mob.craftrasSwordGuy2EndingIndex = 0;
+            mob.craftrasSwordGuy2EndingNextLineAt = now;
+            return;
+        }
+        this.dismissSwordGuy2(mob);
+    }
+
+    spawnSwordGuy2PhaseThreeBominikBullet(mob, target, options = {}, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!mob || !bominik || !target || target.isDead?.()) return null;
+        const location = options.location || bominik;
+        const large = !!options.large;
+        const angle = Number.isFinite(options.angle)
+            ? options.angle
+            : Math.atan2(target.y - location.y, target.x - location.x);
+        const projectile = this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+            location,
+            target,
+            angle,
+            motion: options.motion || "straight",
+            speed: options.speed || (large ? 27 : 31),
+            size: options.size || (large ? 46 : 17),
+            color: options.color || (large ? "#e14fff" : "#b96cff"),
+            damageRatio: large
+                ? CRAFTRAS_SWORD_GUY_2_PHASE_THREE_BIG_BULLET_DAMAGE
+                : CRAFTRAS_SWORD_GUY_2_PHASE_THREE_BULLET_DAMAGE,
+            parryable: options.parryable ?? false,
+            parryMode: "vanish",
+            intangible: true,
+            life: options.life || (large ? 7_000 : 5_000),
+        });
+        if (!projectile) return null;
+        projectile.craftrasPhaseThreeBominikBullet = true;
+        projectile.craftrasPhaseThreeBigBullet = large;
+        projectile.craftrasSpawnedAt = now;
+        return projectile;
+    }
+
+    spawnSwordGuy2PhaseThreeBominikRadial(mob, target, count = 12, options = {}, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik || !target) return false;
+        const baseAngle = Number.isFinite(options.baseAngle)
+            ? options.baseAngle
+            : Math.atan2(target.y - bominik.y, target.x - bominik.x);
+        const rotation = Number(options.rotation) || 0;
+        for (let index = 0; index < count; index++) {
+            this.spawnSwordGuy2PhaseThreeBominikBullet(mob, target, {
+                angle: baseAngle + rotation + index * Math.PI * 2 / count,
+                speed: options.speed,
+                size: options.size,
+                color: options.color,
+                life: options.life,
+                large: !!options.large,
+            }, now);
+        }
+        return true;
+    }
+
+    spawnSwordGuy2PhaseThreeBominikSpread(mob, target, count = 5, spread = Math.PI / 3, options = {}, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!bominik || !target) return false;
+        const center = Math.atan2(target.y - bominik.y, target.x - bominik.x);
+        for (let index = 0; index < count; index++) {
+            const ratio = count <= 1 ? 0.5 : index / (count - 1);
+            this.spawnSwordGuy2PhaseThreeBominikBullet(mob, target, {
+                angle: center - spread / 2 + spread * ratio,
+                speed: options.speed,
+                size: options.size,
+                color: options.color,
+                life: options.life,
+                large: !!options.large,
+            }, now);
+        }
+        return true;
+    }
+
+    startSwordGuy2PhaseThreeStormPingPong(mob, target, now = Date.now()) {
+        if (!mob || !target || mob.craftrasSwordGuy2State !== "phase3_combat") return false;
+        mob.craftrasSwordGuy2PhaseTwoEvents = [];
+        this.cleanupSwordGuy2Effects(mob);
+        mob.craftrasSwordGuy2PhaseThreeCycleMode = "pingpong";
+        mob.craftrasSwordGuy2PhaseThreePingPongAt = 0;
+        mob.craftrasSwordGuy2NextPhaseThreeSkillAt = Number.POSITIVE_INFINITY;
+        mob.craftrasSwordGuy2NextPhaseThreeGiantSwordAt = Number.POSITIVE_INFINITY;
+        const projectile = this.spawnSwordGuy2PhaseThreeOrb(mob, target, {
+            mode: "storm_pingpong",
+            location: mob,
+            bossTarget: mob,
+            speed: 26,
+            size: 66,
+            damageRatio: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PINGPONG_DAMAGE,
+            life: Number.POSITIVE_INFINITY,
+        }, now);
+        if (!projectile) {
+            this.finishSwordGuy2PhaseThreeStormPingPong(mob, now);
+            return false;
+        }
+        return true;
+    }
+
+    finishSwordGuy2PhaseThreeStormPingPong(mob, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2State !== "phase3_combat") return false;
+        if (mob.craftrasSwordGuy2PhaseThreeCycleMode === "cooldown") return true;
+        mob.craftrasSwordGuy2ActivePingPongOrb = null;
+        mob.craftrasSwordGuy2PhaseThreeCycleMode = "cooldown";
+        mob.craftrasSwordGuy2PhaseThreeStormResumeAt =
+            now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_STORM_RESTART_DELAY;
+        return true;
+    }
+
+    restartSwordGuy2PhaseThreeStorm(mob, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2State !== "phase3_combat") return false;
+        mob.craftrasSwordGuy2PhaseThreeCycleMode = "storm";
+        mob.craftrasSwordGuy2PhaseThreeSkillIndex = 2;
+        mob.craftrasSwordGuy2NextPhaseThreeSkillAt = now + 900;
+        mob.craftrasSwordGuy2NextPhaseThreeGiantSwordAt = now + 3_500;
+        mob.craftrasSwordGuy2PhaseThreeStormResumeAt = 0;
+        mob.craftrasSwordGuy2PhaseThreeLastRainAngle = Math.random() * Math.PI * 2;
+        return true;
+    }
+
+    updateSwordGuy2PhaseThreeCombat(mob, target, now = Date.now()) {
+        const bominik = mob?.craftrasSwordGuy2Bominik;
+        if (!mob || !target || !bominik) return;
+        this.runSwordGuy2PhaseTwoEvents(mob, now);
+        this.updateSwordGuy2PhaseTwoBasicDash(mob, target, now);
+        this.updateSwordGuy2BominikPosition(mob, target, now);
+        this.syncSwordGuy2DuoHealth(mob, false, now);
+
+        const cycleMode = mob.craftrasSwordGuy2PhaseThreeCycleMode || "storm";
+        if (cycleMode === "ending") {
+            this.setSwordGuy2IdleControl(mob, target);
+            mob.velocity.x *= 0.72;
+            mob.velocity.y *= 0.72;
+            if (now >= (mob.craftrasSwordGuy2PhaseThreePingPongAt || 0)) {
+                this.startSwordGuy2PhaseThreeStormPingPong(mob, target, now);
+            }
+            this.updateSwordGuy2PhaseThreeParryPose(mob, now);
+            return;
+        }
+        if (cycleMode === "pingpong") {
+            const activeOrb = mob.craftrasSwordGuy2ActivePingPongOrb;
+            this.setSwordGuy2IdleControl(mob, target);
+            mob.velocity.x *= 0.72;
+            mob.velocity.y *= 0.72;
+            if (!activeOrb || activeOrb.isDead?.()) {
+                this.finishSwordGuy2PhaseThreeStormPingPong(mob, now);
+            }
+            this.updateSwordGuy2PhaseThreeParryPose(mob, now);
+            return;
+        }
+        if (cycleMode === "cooldown") {
+            this.setSwordGuy2IdleControl(mob, target);
+            mob.velocity.x *= 0.72;
+            mob.velocity.y *= 0.72;
+            if (now >= (mob.craftrasSwordGuy2PhaseThreeStormResumeAt || 0)) {
+                this.restartSwordGuy2PhaseThreeStorm(mob, now);
+            }
+            this.updateSwordGuy2PhaseThreeParryPose(mob, now);
+            return;
+        }
+
+        if (!mob.craftrasSwordGuy2Dash && now >= (mob.craftrasSwordGuy2DashWarningUntil || 0)) {
+            this.updateSwordGuy2PhaseTwoBasicMovement(
+                mob,
+                target,
+                now,
+                false,
+                1 / 1.5,
+                BLOCK_SIZE * 11.25,
+            );
+        }
+        if (now < (mob.craftrasSwordGuy2DashWarningUntil || 0)) {
+            mob.velocity.x = 0;
+            mob.velocity.y = 0;
+            mob.facing = Math.atan2(target.y - mob.y, target.x - mob.x);
+            mob.vfacing = mob.facing;
+            this.setTheSwordWeaponPose(mob, 27, 14.2, -118, -28);
+        }
+        if (now >= (mob.craftrasSwordGuy2NextPhaseThreeGiantSwordAt || 0)) {
+            mob.craftrasSwordGuy2NextPhaseThreeGiantSwordAt = now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_SWORD_INTERVAL;
+            this.startSwordGuy2PhaseThreeGiantSwordAttack(mob, target, now);
+        }
+        if (now >= (mob.craftrasSwordGuy2NextPhaseThreeSkillAt || 0)) {
+            const skill = Math.max(2, Math.min(5, mob.craftrasSwordGuy2PhaseThreeSkillIndex || 2));
+            let nextDelay = 5_000;
+            if (skill === 2) {
+                this.startSwordGuy2PhaseThreeSwordRain(mob, target, now);
+                nextDelay = 5_200;
+            } else if (skill === 3) {
+                this.startSwordGuy2PhaseThreeSwordPrison(mob, target, now);
+                nextDelay = 4_800;
+            } else if (skill === 4) {
+                this.startSwordGuy2PhaseThreeCloneCombo(mob, target, now);
+                nextDelay = 4_800;
+            } else {
+                this.startSwordGuy2PhaseThreeSwordVortex(mob, target, now);
+                mob.craftrasSwordGuy2PhaseThreeSkillIndex = 2;
+                mob.craftrasSwordGuy2PhaseThreeCycleMode = "ending";
+                mob.craftrasSwordGuy2PhaseThreePingPongAt =
+                    now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_VORTEX_DURATION + 700;
+                mob.craftrasSwordGuy2NextPhaseThreeSkillAt = Number.POSITIVE_INFINITY;
+                mob.craftrasSwordGuy2NextPhaseThreeGiantSwordAt = Number.POSITIVE_INFINITY;
+                return;
+            }
+            mob.craftrasSwordGuy2PhaseThreeSkillIndex = skill + 1;
+            mob.craftrasSwordGuy2NextPhaseThreeSkillAt = now + nextDelay;
+        }
+        this.updateSwordGuy2PhaseThreeParryPose(mob, now);
+    }
+
+    isSwordGuy2PhaseThreeEnraged(mob) {
+        return !!mob && mob.health.amount <= mob.health.max * 0.5;
+    }
+
+    countSwordGuy2ActiveProjectiles(mob, predicate = null) {
+        if (!mob) return 0;
+        let count = 0;
+        for (const projectile of this.theGreatProjectiles) {
+            if (!projectile || projectile.isDead?.() || projectile.craftrasOwner !== mob) continue;
+            if (typeof predicate === "function" && !predicate(projectile)) continue;
+            count++;
+        }
+        return count;
+    }
+
+    spawnSwordGuy2PhaseThreeGiantSword(mob, target, now = Date.now()) {
+        if (!mob || !target || target.isDead?.()) return null;
+        const projectile = this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+            location: mob,
+            target,
+            motion: "homing",
+            speed: 42,
+            turn: 0.28,
+            maxTurn: 0.46,
+            friend: true,
+            intangible: true,
+            size: 68,
+            color: "#ffd83d",
+            damageRatio: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_FRIEND_DAMAGE,
+            parryMode: "vanish",
+            multiParryRequired: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_SWORD_REPEAT,
+            life: 16_000,
+        });
+        if (!projectile) return null;
+        projectile.craftrasPhaseThreeGiantSword = true;
+        projectile.craftrasNextTrailAt = now;
+        return projectile;
+    }
+
+    startSwordGuy2PhaseThreeGiantSwordAttack(mob, target, now = Date.now()) {
+        if (!mob || !target) return false;
+        const enraged = this.isSwordGuy2PhaseThreeEnraged(mob);
+        const activeCount = this.countSwordGuy2ActiveProjectiles(
+            mob,
+            projectile => projectile.craftrasPhaseThreeGiantSword && !projectile.craftrasLingerUntil,
+        );
+        const maxAllowed = enraged ? 4 : 2;
+        if (activeCount >= maxAllowed) return false;
+        this.spawnSwordGuy2PhaseThreeGiantSword(mob, target, now);
+        if (enraged && activeCount + 1 < maxAllowed) {
+            this.queueSwordGuy2PhaseTwoEvent(mob, now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_GIANT_SWORD_DOUBLE_GAP, eventNow => {
+                const liveTarget = this.getSwordGuy2Target(mob);
+                if (!liveTarget || mob.isDead?.() || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+                this.spawnSwordGuy2PhaseThreeGiantSword(mob, liveTarget, eventNow);
+            });
+        }
+        return true;
+    }
+
+    getSwordGuy2PhaseThreeRainLocation(mob, target, index = 0) {
+        const baseAngle = Number.isFinite(mob?.craftrasSwordGuy2PhaseThreeLastRainAngle)
+            ? mob.craftrasSwordGuy2PhaseThreeLastRainAngle
+            : Math.random() * Math.PI * 2;
+        const angleStep = Math.PI * (0.42 + Math.random() * 0.46);
+        const direction = index % 2 === 0 ? 1 : -1;
+        const angle = baseAngle + direction * angleStep;
+        mob.craftrasSwordGuy2PhaseThreeLastRainAngle = angle;
+        const radius = BLOCK_SIZE * (8 + Math.random() * 6);
+        return {
+            x: target.x + Math.cos(angle) * radius,
+            y: target.y + Math.sin(angle) * radius,
+        };
+    }
+
+    spawnSwordGuy2PhaseThreeRainSword(mob, target, index, now = Date.now()) {
+        if (!mob || !target || target.isDead?.()) return null;
+        const enraged = this.isSwordGuy2PhaseThreeEnraged(mob);
+        const special = enraged && (index + 1) % 5 === 0;
+        const projectile = this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+            location: this.getSwordGuy2PhaseThreeRainLocation(mob, target, index),
+            target,
+            motion: "straight",
+            speed: special ? 34 : 30,
+            friend: true,
+            intangible: true,
+            size: special ? 30 : 24,
+            color: special ? "#ff7aa8" : "#ce4cff",
+            damageRatio: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FRIEND_DAMAGE,
+            parryable: false,
+            parryMode: "vanish",
+            life: 7_000,
+        });
+        if (!projectile) return null;
+        projectile.craftrasPhaseThreeRainSword = true;
+        return projectile;
+    }
+
+    startSwordGuy2PhaseThreeSwordRain(mob, target, now = Date.now()) {
+        if (!mob || !target) return false;
+        for (let index = 0; index < CRAFTRAS_SWORD_GUY_2_PHASE_THREE_SWORD_RAIN_COUNT; index++) {
+            this.queueSwordGuy2PhaseTwoEvent(mob, now + index * CRAFTRAS_SWORD_GUY_2_PHASE_THREE_SWORD_RAIN_STEP, eventNow => {
+                const liveTarget = this.getSwordGuy2Target(mob);
+                if (!liveTarget || mob.isDead?.() || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+                this.spawnSwordGuy2PhaseThreeRainSword(mob, liveTarget, index, eventNow);
+                if (this.isSwordGuy2PhaseThreeEnraged(mob) && (index + 1) % 5 === 0) {
+                    this.spawnSwordGuy2PhaseThreeBominikRadial(
+                        mob,
+                        liveTarget,
+                        12,
+                        { speed: 28, size: 14, color: "#ffb3d4", life: 4_000 },
+                        eventNow,
+                    );
+                }
+            });
+        }
+        return true;
+    }
+
+    spawnSwordGuy2PhaseThreePrisonWave(mob, target, wave = 0, now = Date.now()) {
+        if (!mob || !target || target.isDead?.()) return false;
+        const enraged = this.isSwordGuy2PhaseThreeEnraged(mob);
+        const center = { x: target.x, y: target.y };
+        const count = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PRISON_SWORDS;
+        const gapWidth = enraged ? 1 : 2;
+        const gapStart = Math.floor(Math.random() * count);
+        const rotation = Math.random() * Math.PI * 2 + wave * Math.PI / count;
+        const radius = BLOCK_SIZE * (enraged ? 6.2 : 6.8) * 1.5;
+        for (let index = 0; index < count; index++) {
+            const gapOffset = (index - gapStart + count) % count;
+            if (gapOffset < gapWidth) continue;
+            const angle = rotation + index * Math.PI * 2 / count;
+            const location = {
+                x: center.x + Math.cos(angle) * radius,
+                y: center.y + Math.sin(angle) * radius,
+            };
+            const projectile = this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+                location,
+                target,
+                angle: angle + Math.PI,
+                motion: "straight",
+                speed: 1,
+                friend: true,
+                intangible: true,
+                size: enraged ? 29 : 27,
+                color: wave % 2 ? "#ff709f" : "#c35cff",
+                damageRatio: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FRIEND_DAMAGE,
+                parryable: false,
+                parryMode: "vanish",
+                life: 5_000,
+            });
+            if (!projectile) continue;
+            projectile.craftrasPhaseThreePrisonSword = true;
+            projectile.craftrasDelayedLaunchAt = now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PRISON_WARNING;
+            projectile.craftrasDelayedLaunchSpeed = enraged ? 38 : 34;
+            projectile.craftrasDelayedTargetPoint = center;
+            projectile.craftrasVelocity.x = 0;
+            projectile.craftrasVelocity.y = 0;
+            projectile.facing = angle + Math.PI;
+            projectile.vfacing = projectile.facing;
+        }
+        return true;
+    }
+
+    startSwordGuy2PhaseThreeSwordPrison(mob, target, now = Date.now()) {
+        if (!mob || !target) return false;
+        this.spawnSwordGuy2PhaseThreePrisonWave(mob, target, 0, now);
+        this.queueSwordGuy2PhaseTwoEvent(mob, now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PRISON_WARNING + 120, eventNow => {
+            const liveTarget = this.getSwordGuy2Target(mob);
+            if (!liveTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+            this.spawnSwordGuy2PhaseThreeBominikSpread(mob, liveTarget, 5, Math.PI / 2.6, {
+                speed: 30,
+                size: 17,
+                color: "#c783ff",
+            }, eventNow);
+        });
+        if (this.isSwordGuy2PhaseThreeEnraged(mob)) {
+            this.queueSwordGuy2PhaseTwoEvent(mob, now + 1_650, eventNow => {
+                const liveTarget = this.getSwordGuy2Target(mob);
+                if (!liveTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+                this.spawnSwordGuy2PhaseThreePrisonWave(mob, liveTarget, 1, eventNow);
+                this.queueSwordGuy2PhaseTwoEvent(mob, eventNow + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PRISON_WARNING + 120, bulletNow => {
+                    const bulletTarget = this.getSwordGuy2Target(mob);
+                    if (!bulletTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+                    this.spawnSwordGuy2PhaseThreeBominikSpread(mob, bulletTarget, 7, Math.PI / 2.2, {
+                        speed: 32,
+                        size: 17,
+                        color: "#ff78bb",
+                    }, bulletNow);
+                });
+            });
+        }
+        return true;
+    }
+
+    spawnSwordGuy2PhaseThreeIllusion(mob, target, index, count, now = Date.now()) {
+        const summon = this.spawnSwordGuy2SkeletonSummon(mob, target, index, now, { health: 1 });
+        if (!summon) return null;
+        const angle = Math.PI * 2 * index / count + Math.PI / 2;
+        const radius = BLOCK_SIZE * 5.8;
+        summon.x = target.x + Math.cos(angle) * radius;
+        summon.y = target.y + Math.sin(angle) * radius;
+        summon.velocity.x = 0;
+        summon.velocity.y = 0;
+        summon.craftrasPhaseThreeIllusion = true;
+        summon.craftrasPhaseThreeIllusionExpiresAt = now + 3_600;
+        summon.craftrasNextSummonBurstAt = Number.POSITIVE_INFINITY;
+        summon.name = "SWORD GUY ILLUSION";
+        summon.craftrasBaseName = "SWORD GUY ILLUSION";
+        summon.alpha = 0.72;
+        return summon;
+    }
+
+    startSwordGuy2PhaseThreeCloneCombo(mob, target, now = Date.now()) {
+        if (!mob || !target) return false;
+        const enraged = this.isSwordGuy2PhaseThreeEnraged(mob);
+        const cloneCount = enraged ? 3 : 2;
+        const clones = [];
+        for (let index = 0; index < cloneCount; index++) {
+            const clone = this.spawnSwordGuy2PhaseThreeIllusion(mob, target, index, cloneCount, now);
+            if (clone) clones.push(clone);
+        }
+        const waves = enraged ? 2 : 1;
+        for (let wave = 0; wave < waves; wave++) {
+            for (let index = 0; index < clones.length; index++) {
+                this.queueSwordGuy2PhaseTwoEvent(mob, now + 650 + wave * 600 + index * 180, () => {
+                    const clone = clones[index];
+                    const liveTarget = this.getSwordGuy2Target(mob);
+                    if (!clone || clone.isDead?.() || !liveTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+                    this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+                        location: clone,
+                        target: liveTarget,
+                        motion: "straight",
+                        speed: enraged ? 36 : 32,
+                        friend: true,
+                        intangible: true,
+                        size: 27,
+                        color: "#e5c6ff",
+                        damageRatio: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FRIEND_DAMAGE,
+                        parryable: false,
+                        parryMode: "vanish",
+                        life: 6_000,
+                    });
+                });
+            }
+        }
+        for (let volley = 0; volley < (enraged ? 3 : 2); volley++) {
+            this.queueSwordGuy2PhaseTwoEvent(mob, now + 480 + volley * 620, eventNow => {
+                const liveTarget = this.getSwordGuy2Target(mob);
+                if (!liveTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+                this.spawnSwordGuy2PhaseThreeBominikSpread(
+                    mob,
+                    liveTarget,
+                    enraged ? 7 : 5,
+                    Math.PI / 2.4,
+                    { speed: enraged ? 33 : 30, size: 17, color: "#d69aff" },
+                    eventNow,
+                );
+            });
+        }
+        const dashAt = now + (enraged ? 2_050 : 2_300);
+        this.queueSwordGuy2PhaseTwoEvent(mob, dashAt - 1_000, warningNow => {
+            const liveTarget = this.getSwordGuy2Target(mob);
+            if (!liveTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+            const angle = Math.atan2(liveTarget.y - mob.y, liveTarget.x - mob.x);
+            mob.x = liveTarget.x - Math.cos(angle) * BLOCK_SIZE * 5;
+            mob.y = liveTarget.y - Math.sin(angle) * BLOCK_SIZE * 5;
+            mob.velocity.x = 0;
+            mob.velocity.y = 0;
+            mob.facing = Math.atan2(liveTarget.y - mob.y, liveTarget.x - mob.x);
+            mob.vfacing = mob.facing;
+            this.resolveEntityOutOfWall(mob);
+            // The red emoji is rendered above Basic's head as a one-second parry warning.
+            mob.say?.("❗", 1_000);
+            this.spawnExplosionEffect(mob, {
+                duration: 1_000,
+                startSize: Math.max(12, (mob.realSize || mob.size || 24) * 0.55),
+                endSize: Math.max(26, (mob.realSize || mob.size || 24) * 1.35),
+                color: "#ff2020",
+                alpha: 0.72,
+                fade: true,
+            });
+            mob.craftrasSwordGuy2DashWarningUntil = warningNow + 1_000;
+        });
+        this.queueSwordGuy2PhaseTwoEvent(mob, dashAt, eventNow => {
+            const liveTarget = this.getSwordGuy2Target(mob);
+            if (!liveTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+            this.startSwordGuy2PhaseTwoBasicDash(mob, liveTarget, {
+                duration: 480,
+                speed: enraged ? 76 : 68,
+                acceleration: 18,
+                maxDistance: BLOCK_SIZE * 7,
+                damageRatio: 0.20,
+                noDamage: false,
+                knockback: 170,
+                homing: true,
+                parryable: true,
+            }, eventNow);
+        });
+        return true;
+    }
+
+    startSwordGuy2PhaseThreeSwordVortex(mob, target, now = Date.now()) {
+        if (!mob || !target) return false;
+        const enraged = this.isSwordGuy2PhaseThreeEnraged(mob);
+        const count = enraged ? 20 : 18;
+        const gapWidth = enraged ? 2 : 3;
+        const gapStart = Math.floor(Math.random() * count);
+        const center = { x: target.x, y: target.y };
+        const rotation = Math.random() * Math.PI * 2;
+        for (let index = 0; index < count; index++) {
+            const gapOffset = (index - gapStart + count) % count;
+            if (gapOffset < gapWidth) continue;
+            const angle = rotation + index * Math.PI * 2 / count;
+            const location = {
+                x: center.x + Math.cos(angle) * BLOCK_SIZE * 10.5,
+                y: center.y + Math.sin(angle) * BLOCK_SIZE * 10.5,
+            };
+            const projectile = this.spawnSwordGuy2PhaseTwoProjectile(mob, {
+                location,
+                target,
+                angle: angle + Math.PI / 2,
+                motion: "straight",
+                speed: 1,
+                friend: true,
+                intangible: true,
+                size: enraged ? 28 : 26,
+                color: enraged ? "#ff507f" : "#a84dff",
+                damageRatio: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_FRIEND_DAMAGE,
+                parryable: false,
+                parryMode: "vanish",
+                life: CRAFTRAS_SWORD_GUY_2_PHASE_THREE_VORTEX_DURATION + 800,
+            });
+            if (!projectile) continue;
+            projectile.craftrasPhaseThreeVortex = {
+                centerX: center.x,
+                centerY: center.y,
+                angle,
+                startedAt: now,
+                endsAt: now + CRAFTRAS_SWORD_GUY_2_PHASE_THREE_VORTEX_DURATION,
+                startRadius: BLOCK_SIZE * 10.5,
+                endRadius: BLOCK_SIZE * (enraged ? 2.5 : 3.2),
+                angularSpeed: (enraged ? 0.00245 : 0.00185) * (index % 2 ? 1 : -1),
+            };
+            projectile.craftrasVelocity.x = 0;
+            projectile.craftrasVelocity.y = 0;
+        }
+        const bulletWaves = enraged ? 5 : 4;
+        for (let wave = 0; wave < bulletWaves; wave++) {
+            this.queueSwordGuy2PhaseTwoEvent(mob, now + 700 + wave * 1_050, eventNow => {
+                const liveTarget = this.getSwordGuy2Target(mob);
+                if (!liveTarget || mob.craftrasSwordGuy2State !== "phase3_combat") return;
+                this.spawnSwordGuy2PhaseThreeBominikRadial(
+                    mob,
+                    liveTarget,
+                    enraged ? 10 : 8,
+                    {
+                        rotation: wave * Math.PI / (enraged ? 10 : 8),
+                        speed: enraged ? 31 : 28,
+                        size: 16,
+                        color: enraged ? "#ff67ac" : "#b87cff",
+                        life: 4_200,
+                    },
+                    eventNow,
+                );
+            });
+        }
+        return true;
+    }
+
+    startSwordGuy2Intro(mob, attacker, now = Date.now()) {
+        if (!mob || mob.craftrasSwordGuy2State !== "idle" || !attacker) return false;
+        mob.craftrasSwordGuy2State = "dialogue";
+        mob.craftrasDialogueSpeed = 1;
+        mob.craftrasSwordGuy2TargetId = attacker.id;
+        mob.craftrasSwordGuy2TargetSocket = this.getSocketForBody(attacker);
+        mob.craftrasSwordGuy2DialogueBranch = "opening";
+        mob.craftrasSwordGuy2DialogueLines = CRAFTRAS_SWORD_GUY_2_OPENING_LINES;
+        mob.craftrasSwordGuy2DialogueIndex = 0;
+        mob.craftrasSwordGuy2NextLineAt = now;
+        mob.invuln = true;
+        mob.damageReceived = 0;
+        mob.health.amount = mob.health.max;
+        mob.readyToDie = false;
+        this.setSwordGuy2IdleControl(mob, attacker);
+        return true;
+    }
+
+    finishSwordGuy2Intro(mob, now = Date.now()) {
+        if (!mob) return null;
+        const target = this.getSwordGuy2Target(mob);
+        const location = { x: mob.x, y: mob.y };
+        const facing = mob.facing || 0;
+        const targetId = target?.id || mob.craftrasSwordGuy2TargetId || null;
+        const targetSocket = mob.craftrasSwordGuy2TargetSocket || this.getSocketForBody(target);
+        mob.craftrasSwordGuy2State = "replaced";
+        mob.craftrasLootDropped = true;
+        mob.destroy?.();
+        this.mobs.delete(mob);
+        const replacement = this.spawnMobAt(location, "sword_guy_2", {
+            swordGuy2Combat: true,
+            swordGuy2TargetId: targetId,
+            swordGuy2TargetSocket: targetSocket,
+        });
+        if (!replacement) return null;
+        replacement.facing = facing;
+        replacement.vfacing = facing;
+        if (targetSocket) {
+            targetSocket.craftrasBossHealthBar = null;
+            this.markBossHealthHit(replacement, target || targetSocket.player?.body, now);
+        }
+        return replacement;
+    }
+
+    dismissSwordGuy2(mob) {
+        if (!mob) return;
+        this.setSwordGuy2TargetFovMultiplier(mob, 1);
+        mob.craftrasSwordGuy2State = "dismissed";
+        mob.craftrasLootDropped = true;
+        this.cleanupSwordGuy2Effects(mob);
+        this.destroySwordGuy2Bominik(mob);
+        mob.destroy?.();
+        this.mobs.delete(mob);
+    }
+
+    startSwordGuy2Farewell(mob, now = Date.now()) {
+        if (!mob || ["farewell", "dismissed", "replaced"].includes(mob.craftrasSwordGuy2State)) return false;
+        this.setSwordGuy2TargetFovMultiplier(mob, 1);
+        mob.craftrasSwordGuy2State = "farewell";
+        mob.craftrasSwordGuy2FarewellAt = now + 4_000;
+        mob.invuln = true;
+        mob.damageReceived = 0;
+        mob.health.amount = Math.max(1, mob.health.amount || 1);
+        mob.readyToDie = false;
+        this.cleanupSwordGuy2Effects(mob);
+        this.destroySwordGuy2Bominik(mob);
+        this.setSwordGuy2IdleControl(mob);
+        this.speakSwordGuy2Line(mob, { text: "Better luck next time....", duration: 4_000 });
+        return true;
+    }
+
+    configureSwordGuy2Combat(mob, now = Date.now()) {
+        if (!mob) return null;
+        mob.define?.("craftrasSwordGuy2Basic");
+        mob.name = "Basic";
+        mob.craftrasBaseName = "Basic";
+        mob.nameColor = "#4aa3ff";
+        mob.craftrasHeldItem = "the_great";
+        mob.craftrasSwordGuyPhase = 2;
+        mob.craftrasSwordGuy2State = "combat";
+        mob.craftrasSunImmune = true;
+        mob.craftrasBurning = false;
+        mob.craftrasNoKnockback = true;
+        mob.craftrasMaxIncomingDamage = CRAFTRAS_SWORD_GUY_2_MAX_INCOMING_DAMAGE;
+        mob.invuln = false;
+        mob.readyToDie = false;
+        mob.damageReceived = 0;
+        mob.health.set(CRAFTRAS_SWORD_GUY_2_HEALTH);
+        mob.health.amount = CRAFTRAS_SWORD_GUY_2_HEALTH;
+        mob.craftrasNextSwordGuy2NowAt = now + 1_500;
+        mob.craftrasNextSwordGuy2FriendAt = now + 1_000;
+        mob.craftrasSwordGuy2NowImpactAt = 0;
+        mob.craftrasSwordGuy2NowEndsAt = 0;
+        mob.craftrasSwordGuy2PendingFriends ??= [];
+        this.setSwordGuy2IdleControl(mob, this.getSwordGuy2Target(mob));
+        return mob;
+    }
+
+    startSwordGuy2NowAttack(mob, target, now = Date.now()) {
+        if (!mob || !target) return false;
+        const socket = this.getSocketForBody(target) || mob.craftrasSwordGuy2TargetSocket;
+        if (!socket) return false;
+        this.cleanupSwordGuy2Effects(mob);
+        socket.talk?.(
+            "SGP",
+            CRAFTRAS_SWORD_GUY_2_NOW_STEP_DURATION,
+            CRAFTRAS_SWORD_GUY_2_NOW_DURATION,
+            500,
+        );
+        mob.craftrasSwordGuy2NowImpactAt = now
+            + CRAFTRAS_SWORD_GUY_2_NOW_STEP_DURATION * 3;
+        mob.craftrasSwordGuy2NowEndsAt = mob.craftrasSwordGuy2NowImpactAt
+            + CRAFTRAS_SWORD_GUY_2_NOW_DURATION;
+        mob.craftrasNextSwordGuy2NowAt = now + CRAFTRAS_SWORD_GUY_2_NOW_COOLDOWN;
+        return true;
+    }
+
+    spawnSwordGuy2MagicCircle(mob, target, now = Date.now()) {
+        if (!mob || !target) return null;
+        const angle = Math.random() * Math.PI * 2;
+        const radius = BLOCK_SIZE * (1.2 + Math.random() * 1.4);
+        const location = {
+            x: mob.x + Math.cos(angle) * radius,
+            y: mob.y + Math.sin(angle) * radius,
+        };
+        const circle = new Entity(location);
+        circle.define("craftrasBasicMagicCircle");
+        circle.team = TEAM_ENEMIES;
+        circle.alwaysActive = true;
+        circle.craftrasSwordGuy2Owner = mob;
+        circle.craftrasExplosionStarted = now;
+        circle.craftrasExplosionDuration = 1_200;
+        circle.craftrasExplosionStartSize = 32;
+        circle.craftrasExplosionEndSize = 32;
+        circle.craftrasExplosionStartAlpha = 1;
+        circle.craftrasExplosionFade = true;
+        circle.SIZE = 32;
+        circle.coreSize = 32;
+        circle.sizeMultiplier = 1;
+        circle.alpha = 1;
+        this.explosionEffects.add(circle);
+        mob.craftrasSwordGuy2PendingFriends.push({
+            x: location.x,
+            y: location.y,
+            spawnAt: now + CRAFTRAS_SWORD_GUY_2_FRIEND_SPAWN_DELAY,
+        });
+        return circle;
+    }
+
+    spawnSwordGuy2Friend(mob, target, location, now = Date.now()) {
+        if (!mob || !target || !location) return null;
+        const friend = this.spawnTheGreatFriend({
+            x: location.x,
+            y: location.y,
+            target,
+            mode: "homing",
+            owner: mob,
+            speed: CRAFTRAS_SWORD_GUY_2_FRIEND_SPEED,
+        });
+        if (!friend) return null;
+        friend.craftrasSwordGuy2Projectile = true;
+        friend.craftrasSwordGuy2DamageKind = "friend";
+        friend.craftrasExpiresAt = now + CRAFTRAS_SWORD_GUY_2_FRIEND_LIFE;
+        return friend;
+    }
+
+    cleanupSwordGuy2Effects(mob) {
+        if (!mob) return;
+        for (const projectile of [...this.theGreatProjectiles]) {
+            if (
+                projectile?.craftrasOwner !== mob
+                || (!projectile.craftrasSwordGuy2Projectile && !projectile.craftrasSwordGuy2PhaseTwoProjectile)
+            ) continue;
+            projectile.destroy?.();
+            this.theGreatProjectiles.delete(projectile);
+        }
+        for (const effect of [...this.explosionEffects]) {
+            if (effect?.craftrasSwordGuy2Owner !== mob) continue;
+            effect.destroy?.();
+            this.explosionEffects.delete(effect);
+        }
+        for (const summon of [...this.mobs]) {
+            if (summon?.craftrasSwordGuy2SummonOwner !== mob) continue;
+            summon.destroy?.();
+            this.mobs.delete(summon);
+        }
+        mob.craftrasSwordGuy2PendingFriends = [];
+    }
+
+    updateSwordGuy2(mob, now = Date.now()) {
+        if (!mob) return;
+        const target = this.getSwordGuy2Target(mob);
+        if (
+            [
+                "dialogue",
+                "combat",
+                "phase2_dialogue",
+                "phase2_waiting",
+                "phase2_opening",
+                "phase2_combat",
+                "phase2_defeated",
+                "phase3_dialogue",
+                "phase3_combat",
+                "phase3_final_setup",
+                "phase3_final_dialogue",
+                "phase3_final_pingpong",
+                "phase3_win_dialogue",
+                "phase3_loss_dialogue",
+            ].includes(mob.craftrasSwordGuy2State) &&
+            !target
+        ) {
+            this.startSwordGuy2Farewell(mob, now);
+            return;
+        }
+        if (!["phase2_combat", "phase3_combat"].includes(mob.craftrasSwordGuy2State)) {
+            this.setSwordGuy2IdleControl(mob, target);
+        }
+        if (mob.craftrasSwordGuy2State === "idle") return;
+        if (mob.craftrasSwordGuy2State === "farewell") {
+            if (now >= (mob.craftrasSwordGuy2FarewellAt || 0)) this.dismissSwordGuy2(mob);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase2_dialogue") {
+            mob.health.amount = 1;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            this.updateSwordGuy2PhaseTwoDialogue(mob, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase2_waiting") {
+            mob.health.amount = 1;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase2_opening") {
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            this.updateSwordGuy2BominikPosition(mob, target, now);
+            this.syncSwordGuy2DuoHealth(mob, false, now);
+            if (mob.craftrasSwordGuy2OpeningImpactAt && now >= mob.craftrasSwordGuy2OpeningImpactAt) {
+                mob.craftrasSwordGuy2OpeningImpactAt = 0;
+                mob.craftrasSwordGuy2OpeningRecoveryEndsAt = now
+                    + CRAFTRAS_SWORD_GUY_2_PHASE_TWO_OPENING_RECOVERY;
+                this.applyPlayerDamage(target, Math.max(1, target.health.max), mob, {
+                    noKnockback: true,
+                    swordGuyAttack: true,
+                });
+            }
+            if (
+                mob.craftrasSwordGuy2OpeningRecoveryEndsAt
+                && now >= mob.craftrasSwordGuy2OpeningRecoveryEndsAt
+            ) {
+                mob.craftrasSwordGuy2State = "phase2_combat";
+                mob.craftrasSwordGuy2SkillIndex = 1;
+                mob.craftrasSwordGuy2ActiveSkill = 0;
+                mob.craftrasSwordGuy2SkillEndsAt = 0;
+                mob.craftrasSwordGuy2NextSkillAt = now;
+                mob.craftrasSwordGuy2OpeningRecoveryEndsAt = 0;
+                mob.craftrasOnParrySuccess = null;
+                mob.craftrasOnParryFail = null;
+                mob.invuln = false;
+            }
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase2_combat") {
+            this.updateSwordGuy2PhaseTwoCombat(mob, target, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase2_defeated") {
+            this.startSwordGuy2PhaseThreeDialogue(mob, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase3_dialogue") {
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            this.updateSwordGuy2BominikPosition(mob, target, now);
+            this.syncSwordGuy2DuoHealth(mob, false, now);
+            this.updateSwordGuy2PhaseThreeDialogue(mob, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase3_combat") {
+            this.updateSwordGuy2PhaseThreeCombat(mob, target, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase3_final_setup") {
+            mob.health.amount = 1;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            this.updateSwordGuy2BominikPosition(mob, target, now);
+            this.syncSwordGuy2DuoHealth(mob, false, now);
+            this.updateSwordGuy2PhaseThreeParryPose(mob, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase3_final_dialogue") {
+            mob.health.amount = 1;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            if (mob.craftrasSwordGuy2Bominik) {
+                mob.craftrasSwordGuy2Bominik.health.amount = 1;
+                mob.craftrasSwordGuy2Bominik.damageReceived = 0;
+                mob.craftrasSwordGuy2Bominik.readyToDie = false;
+            }
+            this.syncSwordGuy2DuoHealth(mob, false, now);
+            this.updateSwordGuy2PhaseThreeFinalDialogue(mob, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "phase3_final_pingpong") {
+            mob.health.amount = 1;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            if (mob.craftrasSwordGuy2Bominik) {
+                mob.craftrasSwordGuy2Bominik.health.amount = 1;
+                mob.craftrasSwordGuy2Bominik.damageReceived = 0;
+                mob.craftrasSwordGuy2Bominik.readyToDie = false;
+            }
+            this.updateSwordGuy2BominikPosition(mob, target, now);
+            this.syncSwordGuy2DuoHealth(mob, false, now);
+            this.updateSwordGuy2PhaseThreeParryPose(mob, now);
+            return;
+        }
+        if (["phase3_win_dialogue", "phase3_loss_dialogue"].includes(mob.craftrasSwordGuy2State)) {
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            this.updateSwordGuy2PhaseThreeEndingDialogue(mob, now);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State === "dialogue") {
+            mob.health.amount = mob.health.max;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+            if (now < (mob.craftrasSwordGuy2NextLineAt || 0)) return;
+            const lines = mob.craftrasSwordGuy2DialogueLines || [];
+            const index = mob.craftrasSwordGuy2DialogueIndex || 0;
+            if (index < lines.length) {
+                const line = lines[index];
+                const duration = this.getDialogueDuration(mob, line.duration);
+                mob.craftrasSwordGuy2DialogueIndex = index + 1;
+                mob.craftrasSwordGuy2NextLineAt = now + duration;
+                this.speakSwordGuy2Line(mob, line);
+                return;
+            }
+            if (mob.craftrasSwordGuy2DialogueBranch === "opening") {
+                const hasParryTool = !!target && this.hasPlayerParryTool(target);
+                mob.craftrasSwordGuy2DialogueBranch = hasParryTool ? "ready" : "no_parry";
+                mob.craftrasSwordGuy2DialogueLines = hasParryTool
+                    ? [CRAFTRAS_SWORD_GUY_2_READY_LINE]
+                    : CRAFTRAS_SWORD_GUY_2_NO_PARRY_LINES;
+                mob.craftrasSwordGuy2DialogueIndex = 0;
+                mob.craftrasSwordGuy2NextLineAt = now;
+                return;
+            }
+            if (mob.craftrasSwordGuy2DialogueBranch === "ready") this.finishSwordGuy2Intro(mob, now);
+            else this.dismissSwordGuy2(mob);
+            return;
+        }
+        if (mob.craftrasSwordGuy2State !== "combat" || !target) return;
+        if (mob.craftrasSwordGuy2NowImpactAt && now >= mob.craftrasSwordGuy2NowImpactAt) {
+            mob.craftrasSwordGuy2NowImpactAt = 0;
+            this.applyPlayerDamage(target, this.getSwordGuy2Damage(target, "screen"), mob, {
+                knockbackForce: 90,
+                swordGuyAttack: true,
+            });
+        }
+        if (now >= (mob.craftrasNextSwordGuy2NowAt || 0)) this.startSwordGuy2NowAttack(mob, target, now);
+        const nowAttackActive = now < (mob.craftrasSwordGuy2NowEndsAt || 0);
+        if (!nowAttackActive) {
+            if (now >= (mob.craftrasNextSwordGuy2FriendAt || 0)) {
+                mob.craftrasNextSwordGuy2FriendAt = now + CRAFTRAS_SWORD_GUY_2_FRIEND_INTERVAL;
+                this.spawnSwordGuy2MagicCircle(mob, target, now);
+            }
+            const pending = mob.craftrasSwordGuy2PendingFriends || [];
+            for (let index = pending.length - 1; index >= 0; index--) {
+                const entry = pending[index];
+                if (now < entry.spawnAt) continue;
+                pending.splice(index, 1);
+                this.spawnSwordGuy2Friend(mob, target, entry, now);
+            }
+        }
     }
 
     startTheSwordDeathDialogue(mob, source = null, now = Date.now()) {
@@ -8561,6 +20261,8 @@ class Craftras {
         mob.health.amount = 1;
         mob.craftrasSwordGuyCombo = null;
         mob.craftrasTheSwordRewardBody = source && !source.isDead?.() ? source : null;
+        mob.craftrasDialogueSpeed = 1;
+        mob.craftrasTheSwordDeathIndex = 0;
         mob.velocity.x = 0;
         mob.velocity.y = 0;
         if (mob.accel) {
@@ -8574,18 +20276,28 @@ class Craftras {
             power: 0,
         };
 
+        this.scheduleTheSwordDeathDialogue(mob);
+        return true;
+    }
+
+    scheduleTheSwordDeathDialogue(mob) {
+        if (!mob || mob.craftrasSwordGuyPhase !== "dying") return false;
+        const startIndex = Math.max(0, mob.craftrasTheSwordDeathIndex || 0);
         let delay = 0;
-        mob.craftrasSwordGuyTransformTimers = [];
-        for (const line of CRAFTRAS_THE_SWORD_DEATH_LINES) {
+        mob.craftrasSwordGuyTransformTimers ||= [];
+        for (let index = startIndex; index < CRAFTRAS_THE_SWORD_DEATH_LINES.length; index++) {
+            const line = CRAFTRAS_THE_SWORD_DEATH_LINES[index];
+            const duration = this.getDialogueDuration(mob, line.duration);
             const timer = setTimeout(() => {
                 if (!mob || mob.craftrasSwordGuyPhase !== "dying") return;
                 mob.health.amount = 1;
                 mob.damageReceived = 0;
                 mob.readyToDie = false;
-                this.sendTheSwordIntroLine(mob, line.text, line.duration);
+                mob.craftrasTheSwordDeathIndex = index + 1;
+                this.sendTheSwordIntroLine(mob, line.text, duration);
             }, delay);
             mob.craftrasSwordGuyTransformTimers.push(timer);
-            delay += line.duration;
+            delay += duration;
         }
         const finishTimer = setTimeout(() => {
             if (!mob || mob.craftrasSwordGuyPhase !== "dying") return;
@@ -8715,6 +20427,7 @@ class Craftras {
         mob.craftrasSwordGuyIntroStartedAt = now;
         mob.craftrasSwordGuyIntroIndex = 0;
         mob.craftrasNextSwordGuyIntroLineAt = now;
+        mob.craftrasDialogueSpeed = 1;
         mob.craftrasSwordGuyArenaCenter ||= { x: mob.x, y: mob.y };
         mob.craftrasSwordGuyParticipantIds ??= new Set();
         if (source?.id) mob.craftrasSwordGuyParticipantIds.add(source.id);
@@ -8779,7 +20492,7 @@ class Craftras {
         mob.craftrasSunImmune = true;
         mob.craftrasBurning = false;
         mob.craftrasNextSunDamageAt = 0;
-        mob.craftrasMaxIncomingDamage = 1e10;
+        mob.craftrasMaxIncomingDamage = CRAFTRAS_SWORD_GUY_MAX_INCOMING_DAMAGE;
         mob.health.set(3000);
         mob.health.amount = 3000;
         mob.craftrasPhaseTwoHoldUntil = now + CRAFTRAS_THE_SWORD_READY_DURATION;
@@ -8845,42 +20558,75 @@ class Craftras {
     scheduleSwordGuyPhaseTwoIntro(mob) {
         if (!mob || mob.craftrasSwordGuyIntroScheduled) return;
         mob.craftrasSwordGuyIntroScheduled = true;
-        mob.craftrasSwordGuyTransformTimers = [];
-        CRAFTRAS_THE_SWORD_INTRO_LINES.forEach((line, index) => {
+        mob.craftrasSwordGuyTransformTimers ||= [];
+        const startIndex = Math.max(0, mob.craftrasSwordGuyIntroIndex || 0);
+        const interval = this.getDialogueDuration(mob, CRAFTRAS_THE_SWORD_INTRO_LINE_INTERVAL);
+        for (let index = startIndex; index < CRAFTRAS_THE_SWORD_INTRO_LINES.length; index++) {
+            const line = CRAFTRAS_THE_SWORD_INTRO_LINES[index];
             const timer = setTimeout(() => {
                 if (!mob || mob.craftrasSwordGuyPhase !== "intro") return;
                 if (!this.maintainSwordGuyTransformLock(mob)) return;
-                this.sendTheSwordIntroLine(mob, line);
-            }, index * CRAFTRAS_THE_SWORD_INTRO_LINE_INTERVAL);
+                mob.craftrasSwordGuyIntroIndex = index + 1;
+                this.sendTheSwordIntroLine(mob, line, this.getDialogueDuration(mob, CRAFTRAS_THE_SWORD_INTRO_LINE_DURATION));
+            }, (index - startIndex) * interval);
             mob.craftrasSwordGuyTransformTimers.push(timer);
-        });
+        }
         const recoverTimer = setTimeout(() => {
             if (!mob || mob.craftrasSwordGuyPhase !== "intro") return;
             if (!this.maintainSwordGuyTransformLock(mob)) return;
             mob.craftrasSwordGuyPhase = "recovering";
             mob.craftrasSwordGuyRecoveryAnnounced = true;
             mob.craftrasSwordGuyRecoverStartedAt = Date.now();
+            mob.craftrasSwordGuyRecoverBaseHealth = 1;
+            mob.craftrasSwordGuyRecoverSpeed = this.getDialogueSpeed(mob);
             mob.health.set(3000);
             mob.health.amount = 1;
-            this.sendTheSwordIntroLine(mob, "...");
-            mob.craftrasSwordGuyRecoverTimer = setInterval(() => {
-                if (!mob || mob.craftrasSwordGuyPhase !== "recovering") {
-                    if (mob?.craftrasSwordGuyRecoverTimer) clearInterval(mob.craftrasSwordGuyRecoverTimer);
-                    if (mob) mob.craftrasSwordGuyRecoverTimer = null;
-                    return;
-                }
-                if (!this.maintainSwordGuyTransformLock(mob)) return;
-                const elapsed = Date.now() - (mob.craftrasSwordGuyRecoverStartedAt || Date.now());
-                const recovered = Math.floor(elapsed / CRAFTRAS_THE_SWORD_RECOVER_INTERVAL) * CRAFTRAS_THE_SWORD_RECOVER_PER_TICK;
-                mob.health.amount = Math.min(3000, 1 + recovered);
-                if (mob.health.amount >= 3000) {
-                    clearInterval(mob.craftrasSwordGuyRecoverTimer);
-                    mob.craftrasSwordGuyRecoverTimer = null;
-                    this.startSwordGuyPhaseTwo(mob, Date.now());
-                }
-            }, 100);
-        }, CRAFTRAS_THE_SWORD_INTRO_LINES.length * CRAFTRAS_THE_SWORD_INTRO_LINE_INTERVAL);
+            this.sendTheSwordIntroLine(mob, "...", this.getDialogueDuration(mob, CRAFTRAS_THE_SWORD_INTRO_LINE_DURATION));
+            this.startSwordGuyRecoveryTimer(mob);
+        }, Math.max(0, CRAFTRAS_THE_SWORD_INTRO_LINES.length - startIndex) * interval);
         mob.craftrasSwordGuyTransformTimers.push(recoverTimer);
+    }
+
+    startSwordGuyRecoveryTimer(mob) {
+        if (!mob || mob.craftrasSwordGuyRecoverTimer) return;
+        mob.craftrasSwordGuyRecoverTimer = setInterval(() => {
+            if (!mob || mob.craftrasSwordGuyPhase !== "recovering") {
+                if (mob?.craftrasSwordGuyRecoverTimer) clearInterval(mob.craftrasSwordGuyRecoverTimer);
+                if (mob) mob.craftrasSwordGuyRecoverTimer = null;
+                return;
+            }
+            if (!this.maintainSwordGuyTransformLock(mob)) return;
+            const elapsed = Date.now() - (mob.craftrasSwordGuyRecoverStartedAt || Date.now());
+            const speed = Math.max(1, Number(mob.craftrasSwordGuyRecoverSpeed) || 1);
+            const recovered = Math.floor(elapsed / CRAFTRAS_THE_SWORD_RECOVER_INTERVAL)
+                * CRAFTRAS_THE_SWORD_RECOVER_PER_TICK
+                * speed;
+            mob.health.amount = Math.min(3000, (mob.craftrasSwordGuyRecoverBaseHealth || 1) + recovered);
+            if (mob.health.amount >= 3000) {
+                clearInterval(mob.craftrasSwordGuyRecoverTimer);
+                mob.craftrasSwordGuyRecoverTimer = null;
+                this.startSwordGuyPhaseTwo(mob, Date.now());
+            }
+        }, 100);
+    }
+
+    rescheduleSwordGuyDialogue(mob) {
+        if (!mob) return false;
+        if (mob.craftrasSwordGuyPhase === "recovering") {
+            mob.craftrasSwordGuyRecoverBaseHealth = Math.max(1, mob.health?.amount || 1);
+            mob.craftrasSwordGuyRecoverStartedAt = Date.now();
+            mob.craftrasSwordGuyRecoverSpeed = 10;
+            this.startSwordGuyRecoveryTimer(mob);
+            return true;
+        }
+        this.clearSwordGuyTransformTimers(mob);
+        if (mob.craftrasSwordGuyPhase === "intro") {
+            mob.craftrasSwordGuyIntroScheduled = false;
+            this.scheduleSwordGuyPhaseTwoIntro(mob);
+            return true;
+        }
+        if (mob.craftrasSwordGuyPhase === "dying") return this.scheduleTheSwordDeathDialogue(mob);
+        return false;
     }
 
     updateSwordGuyTransformations(now = Date.now()) {
@@ -8906,7 +20652,9 @@ class Craftras {
         mob.say?.(message, duration);
         const participants = this.getSwordGuyParticipants(mob);
         const targets = participants.length ? participants : this.getLivingPlayers();
-        for (const { socket } of targets) socket?.talk?.("BM", duration, message, "#ff3030");
+        for (const { socket } of targets) {
+            socket?.talk?.("BM", duration, message, "#ff3030", "sword_guy");
+        }
     }
 
     knockCombatTargetFromSource(target, source, force = 36) {
@@ -8926,7 +20674,14 @@ class Craftras {
             return false;
         }
         target.health.amount -= amount;
-        if (target.craftrasChallengeActor) target.craftrasNextChallengeRegenAt = Date.now() + CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL;
+        this.recordPlayerDamageTarget(source, target, amount);
+        if (target.craftrasChallengeActor) {
+            target.craftrasNextChallengeRegenAt = Date.now() + (
+                target.craftrasChallengeRole === "captain"
+                    ? CRAFTRAS_CHALLENGE_CAPTAIN_REGEN_INTERVAL
+                    : CRAFTRAS_CHALLENGE_NPC_REGEN_INTERVAL
+            );
+        }
         this.flashEntity(target);
         if (source) {
             target.craftrasGuardTarget = source;
@@ -8964,7 +20719,8 @@ class Craftras {
             return;
         }
         if (now < (body.craftrasNextPoisonAt || 0)) return;
-        const damage = Math.min(5, Math.max(0, body.health.amount - 1));
+        const curseMultiplier = this.hasWorld2Curse(body) ? 1.5 : 1;
+        const damage = Math.min(5 * curseMultiplier, Math.max(0, body.health.amount - 1));
         body.craftrasPoisonRemaining = Math.max(0, (body.craftrasPoisonRemaining || 0) - damage);
         body.craftrasNextPoisonAt = now + 1000;
         if (damage <= 0) return;
@@ -8974,8 +20730,47 @@ class Craftras {
         this.flashEntity(body);
     }
 
+    applyPlayerFire(body, source = null, duration = CRAFTRAS_FIRE_DURATION) {
+        if (!body || body.isDead?.() || body.invuln || body.godmode) return false;
+        const now = Date.now();
+        body.craftrasFireUntil = Math.max(body.craftrasFireUntil || 0, now + duration);
+        body.craftrasNextFireDamageAt = Math.min(body.craftrasNextFireDamageAt || now + CRAFTRAS_FIRE_DAMAGE_INTERVAL, now + CRAFTRAS_FIRE_DAMAGE_INTERVAL);
+        body.craftrasFireSource = source || body.craftrasFireSource || null;
+        return true;
+    }
+
+    updatePlayerFire(body, now) {
+        if (!body?.craftrasFireUntil || body.isDead?.()) return;
+        if (body.invuln || body.godmode || now >= body.craftrasFireUntil) {
+            body.craftrasFireUntil = 0;
+            body.craftrasNextFireDamageAt = 0;
+            body.craftrasFireSource = null;
+            return;
+        }
+        if (now < (body.craftrasNextFireDamageAt || 0)) return;
+        body.craftrasNextFireDamageAt = now + CRAFTRAS_FIRE_DAMAGE_INTERVAL;
+        const fireDamage = Math.max(1, (body.health?.max || 100) * CRAFTRAS_FIRE_DAMAGE_RATIO);
+        this.applyPlayerDamage(body, fireDamage, body.craftrasFireSource, { noKnockback: true });
+    }
+
     syncPlayerDebuffs(socket, body, now) {
         const debuffs = [];
+        if (this.hasWorld1RebirthBlessing(body)) {
+            debuffs.push({
+                id: "world1_blessing",
+                name: "World 1 Blessing",
+                description: "Health, damage, and block damage are doubled.",
+                remaining: -1,
+            });
+        }
+        if (this.hasWorld2Curse(body)) {
+            debuffs.push({
+                id: "world2_curse",
+                name: "World 2 Curse",
+                description: "Damage and block damage -50%, damage taken +50%, purchases disabled.",
+                remaining: -1,
+            });
+        }
         if (this.knightTargetBody === body) {
             debuffs.push({
                 id: "knight_target",
@@ -8992,7 +20787,22 @@ class Craftras {
                 remaining: Math.max(1, Math.ceil((body.craftrasPoisonUntil - now) / 1000)),
             });
         }
-        if (this.hasHealthBlessing(body, now)) {
+        if ((body.craftrasFireUntil || 0) > now) {
+            debuffs.push({
+                id: "burning",
+                name: "Burning",
+                description: "Fire deals 5% of maximum health each second.",
+                remaining: Math.max(1, Math.ceil((body.craftrasFireUntil - now) / 1000)),
+            });
+        }
+        if (this.hasHealthBlessingLevel2(body, now)) {
+            debuffs.push({
+                id: "health_buff_2",
+                name: "Health Buff Lv.2",
+                description: "Maximum health +3000.",
+                remaining: Math.max(1, Math.ceil((body.craftrasHealthBlessingLevel2Until - now) / 1000)),
+            });
+        } else if (this.hasHealthBlessing(body, now)) {
             const healthUntil = Math.max(body.craftrasBlessingUntil || 0, body.craftrasHealthBlessingUntil || 0);
             const remaining = body.craftrasHelmet === "blesser_hat" ? -1 : Math.max(1, Math.ceil((healthUntil - now) / 1000));
             debuffs.push({
@@ -9002,7 +20812,14 @@ class Craftras {
                 remaining,
             });
         }
-        if (this.hasStrengthBlessing(body, now)) {
+        if (this.hasStrengthBlessingLevel2(body, now)) {
+            debuffs.push({
+                id: "strength_buff_2",
+                name: "Strength Buff Lv.2",
+                description: "Melee damage +500.",
+                remaining: Math.max(1, Math.ceil((body.craftrasStrengthBlessingLevel2Until - now) / 1000)),
+            });
+        } else if (this.hasStrengthBlessing(body, now)) {
             const strengthUntil = Math.max(body.craftrasBlessingUntil || 0, body.craftrasStrengthBlessingUntil || 0);
             const remaining = body.craftrasHelmet === "blesser_hat" ? -1 : Math.max(1, Math.ceil((strengthUntil - now) / 1000));
             debuffs.push({
@@ -9010,6 +20827,14 @@ class Craftras {
                 name: "Strength Buff",
                 description: "Melee damage +40.",
                 remaining,
+            });
+        }
+        if (this.hasHasteBlessingLevel2(body, now)) {
+            debuffs.push({
+                id: "haste_buff_2",
+                name: "Haste Buff Lv.2",
+                description: "Movement speed +50%.",
+                remaining: Math.max(1, Math.ceil((body.craftrasHasteBlessingLevel2Until - now) / 1000)),
             });
         }
         const signature = JSON.stringify(debuffs);
@@ -9052,6 +20877,79 @@ class Craftras {
         return false;
     }
 
+    pointInsideToolPolygon(x, y, polygon) {
+        const points = polygon?.points || [];
+        let inside = false;
+        for (let index = 0, previous = points.length - 1; index < points.length; previous = index++) {
+            const first = points[index];
+            const second = points[previous];
+            if ((first.y > y) === (second.y > y)) continue;
+            const edgeX = (second.x - first.x) * (y - first.y) / (second.y - first.y || 1e-9) + first.x;
+            if (x < edgeX) inside = !inside;
+        }
+        return inside;
+    }
+
+    toolPolygonsHitCircle(toolPolygons, target, extraRadius = 0) {
+        if (!toolPolygons?.length || !target) return false;
+        const radius = Math.max(1, target.realSize || target.size || 12) + extraRadius;
+        for (const polygon of toolPolygons) {
+            const points = polygon?.points || [];
+            if (points.length < 3) continue;
+            if (this.pointInsideToolPolygon(target.x, target.y, polygon)) return true;
+            for (let index = 0; index < points.length; index++) {
+                const first = points[index];
+                const second = points[(index + 1) % points.length];
+                if (this.pointToSegmentDistanceSquared(target.x, target.y, {
+                    startX: first.x,
+                    startY: first.y,
+                    endX: second.x,
+                    endY: second.y,
+                }) <= radius * radius) return true;
+            }
+        }
+        return false;
+    }
+
+    spawnCustomWeaponTrail(body, toolPolygons, trail, now = Date.now()) {
+        if (!body || !toolPolygons?.length || now < (body.craftrasNextCustomWeaponTrailAt || 0)) return false;
+        body.craftrasNextCustomWeaponTrailAt = now + Math.max(16, Number(trail.interval) || 40);
+        let point = null;
+        let distance = -1;
+        for (const polygon of toolPolygons) for (const candidate of polygon.points || []) {
+            const candidateDistance = (candidate.x - body.x) ** 2 + (candidate.y - body.y) ** 2;
+            if (candidateDistance <= distance) continue;
+            point = candidate;
+            distance = candidateDistance;
+        }
+        if (!point) return false;
+        const size = Math.max(4, (body.realSize || body.size || 12) * (Number(trail.size) || 1));
+        const previous = body.craftrasPreviousCustomWeaponTrailPoint;
+        const direction = previous
+            ? Math.atan2(point.y - previous.y, point.x - previous.x)
+            : Number.isFinite(body.facing) ? body.facing : 0;
+        body.craftrasPreviousCustomWeaponTrailPoint = { x: point.x, y: point.y };
+        const effect = new Entity({ x: point.x, y: point.y });
+        effect.define("craftrasCustomWeaponSlashTrail");
+        effect.team = TEAM_ROOM;
+        effect.facing = direction;
+        effect.vfacing = direction;
+        effect.craftrasExplosionStarted = now;
+        effect.craftrasExplosionDuration = Math.max(30, Number(trail.duration) || 300);
+        effect.craftrasExplosionStartSize = size;
+        effect.craftrasExplosionEndSize = size * 0.35;
+        effect.craftrasExplosionGrowth = 0;
+        effect.craftrasExplosionStartAlpha = Math.max(0, Math.min(1, Number(trail.opacity) || 0.55));
+        effect.craftrasExplosionFade = true;
+        effect.SIZE = size;
+        effect.coreSize = size;
+        effect.sizeMultiplier = 1;
+        effect.alpha = effect.craftrasExplosionStartAlpha;
+        effect.color.base = /^#[0-9a-f]{6}$/i.test(trail.color || "") ? trail.color : "#ff4fb8";
+        this.explosionEffects.add(effect);
+        return true;
+    }
+
     toolSegmentHitsBlock(segment, blockX, blockY) {
         const location = blockToWorld(blockX, blockY);
         const half = WALL_SIZE * 0.5 + segment.radius;
@@ -9081,7 +20979,25 @@ class Craftras {
         return true;
     }
 
-    damageMobsInSlash(body, { toolSegments, damage, heldItem }) {
+    isWormDamageImmune(mob) {
+        return !!mob && (
+            (mob.craftrasMobFamily === "worm" && !!mob.craftrasWormDamageImmune)
+            || !!mob.craftrasSpikerDamageImmune
+        );
+    }
+
+    toolSegmentsHitMob(toolSegments, mob, toolPolygons = null) {
+        const usePolygons = !!toolPolygons?.length;
+        if (usePolygons ? this.toolPolygonsHitCircle(toolPolygons, mob) : this.toolSegmentsHitCircle(toolSegments, mob)) return true;
+        if (mob?.craftrasMobFamily !== "worm") return false;
+        return (mob.craftrasWormSegments || []).some(segment => (
+            segment &&
+            !segment.isDead?.() &&
+            (usePolygons ? this.toolPolygonsHitCircle(toolPolygons, segment) : this.toolSegmentsHitCircle(toolSegments, segment))
+        ));
+    }
+
+    damageMobsInSlash(body, { toolSegments, toolPolygons, damage, damageOverride = null, heldItem }) {
         if (!body || body.craftrasSpectator) return;
         if (body?.craftrasMobType === "builder" && body.craftrasBuilderJobMode === "demolish") return;
         if (!this.mobs.size) return;
@@ -9089,8 +21005,17 @@ class Craftras {
         const itemDamage = ITEMS[heldItem]?.damage;
         const multiplier = heldItem === "sword" || heldItem?.endsWith("_sword") ? 1 : 0.5;
         const now = Date.now();
-        const blessingDamageBonus = this.hasStrengthBlessing(body, now) ? VILLAGE_BLESSER_DAMAGE_BONUS : 0;
-        const effectiveDamage = (Number.isFinite(itemDamage) ? itemDamage : damage * multiplier) + blessingDamageBonus;
+        const blessingDamageBonus = this.hasStrengthBlessingLevel2(body, now)
+            ? WORLD2_HEALER_DAMAGE_BONUS
+            : this.hasStrengthBlessing(body, now) ? VILLAGE_BLESSER_DAMAGE_BONUS : 0;
+        const hasDamageOverride = damageOverride !== null && damageOverride !== undefined && damageOverride !== ""
+            && Number.isFinite(Number(damageOverride));
+        const baseDamage = hasDamageOverride
+            ? Math.max(0, Number(damageOverride))
+            : Number.isFinite(itemDamage) ? itemDamage : damage * multiplier;
+        const effectiveDamage = (baseDamage + blessingDamageBonus)
+            * (body.craftrasParrySwingMultiplier || 1)
+            * this.getPlayerProgressionDamageMultiplier(body);
 
         for (const mob of this.mobs) {
             if (!mob || mob.isDead?.() || body.craftrasCombatHitIds.has(mob.id)) continue;
@@ -9098,7 +21023,9 @@ class Craftras {
                 if (mob.health) mob.health.amount = mob.health.max;
                 continue;
             }
-            if (!this.toolSegmentsHitCircle(toolSegments, mob)) continue;
+            if (this.isWormDamageImmune(mob)) continue;
+            if (!this.toolSegmentsHitMob(toolSegments, mob, toolPolygons)) continue;
+            if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) continue;
             const dx = mob.x - body.x;
             const dy = mob.y - body.y;
             body.craftrasCombatHitIds.add(mob.id);
@@ -9113,16 +21040,19 @@ class Craftras {
                 continue;
             }
             mob.health.amount -= damageToMob;
+            this.recordPlayerDamageTarget(body, mob, damageToMob, now);
+            this.markBossHealthHit(mob, body, now);
             this.setMobAggro(mob, body, now);
             this.handleSwordGuyDamaged(mob, damageToMob, body, now);
             this.flashEntity(mob);
             if (heldItem === "venom_sword") this.applyMobPoison(mob, body, 10, 10_000);
-            const distance = Math.hypot(dx, dy) || 1;
-            if (!mob.craftrasNoKnockback) {
-                mob.velocity.x += dx / distance * 16;
-                mob.velocity.y += dy / distance * 16;
-            }
+            this.applyCraftrasMobKnockback(mob, dx, dy, 16);
             if (mob.health.amount <= 0) {
+                if (mob.craftrasMagicBoss) {
+                    mob.health.amount = 1;
+                    this.finishChallengeMagicalBoss(mob, now);
+                    continue;
+                }
                 this.awardCraftrasScore(body, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
                 mob.kill?.();
             }
@@ -9131,6 +21061,8 @@ class Craftras {
 
     applyMobPoison(mob, owner, damage = 10, duration = 10_000) {
         if (!mob || mob.isDead?.() || mob.craftrasInvulnerableNpc || mob.craftrasMobFamily === "npc") return false;
+        if (this.isWormDamageImmune(mob)) return false;
+        if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) return false;
         const now = Date.now();
         mob.craftrasPoisonDamage = Math.max(mob.craftrasPoisonDamage || 0, damage);
         mob.craftrasPoisonUntil = Math.max(mob.craftrasPoisonUntil || 0, now + duration);
@@ -9141,6 +21073,11 @@ class Craftras {
 
     updateMobPoison(mob, now) {
         if (!mob?.craftrasPoisonUntil || mob.isDead?.()) return false;
+        if (this.isWormDamageImmune(mob)) {
+            mob.craftrasNextPoisonAt = now + 1000;
+            return false;
+        }
+        if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) return false;
         if (now >= mob.craftrasPoisonUntil) {
             mob.craftrasPoisonUntil = 0;
             mob.craftrasPoisonDamage = 0;
@@ -9148,7 +21085,11 @@ class Craftras {
             return false;
         }
         if (now < (mob.craftrasNextPoisonAt || 0)) return false;
-        const damage = this.capKingDamageByGuardian(mob, Math.max(0, mob.craftrasPoisonDamage || 10));
+        const owner = mob.craftrasPoisonOwner;
+        const damage = this.capKingDamageByGuardian(
+            mob,
+            this.scalePlayerProgressionDamage(owner, Math.max(0, mob.craftrasPoisonDamage || 10)),
+        );
         mob.craftrasNextPoisonAt = now + 1000;
         if (!damage || !mob.health) return false;
         if (this.tryGuardianLastStand(mob, damage)) {
@@ -9156,14 +21097,28 @@ class Craftras {
             return false;
         }
         mob.health.amount -= damage;
+        this.recordPlayerDamageTarget(owner, mob, damage, now);
+        this.markBossHealthHit(mob, mob.craftrasPoisonOwner, now);
         this.handleSwordGuyDamaged(mob, damage, mob.craftrasPoisonOwner, now);
         this.flashEntity(mob);
         if (mob.health.amount > 0) return false;
-        const owner = mob.craftrasPoisonOwner;
         if (owner && !owner.isDead?.()) {
             this.awardCraftrasScore(owner, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
         }
-        mob.kill?.();
+        if (mob.craftrasWorld2MagicBoss) {
+            if (!mob.craftrasWorld2MagicEnraged) {
+                mob.health.amount = mob.health.max * 0.5;
+                this.startWorld2MagicalZombieEnrage(mob, this.getWorld2MagicalZombieAudience(), now);
+                return false;
+            }
+            mob.health.amount = 1;
+            this.startWorld2MagicalZombieDeath(mob, now);
+            return false;
+        }
+        if (mob.craftrasMagicBoss) {
+            mob.health.amount = 1;
+            this.finishChallengeMagicalBoss(mob, now);
+        } else mob.kill?.();
         return true;
     }
 
@@ -9232,9 +21187,16 @@ class Craftras {
         return null;
     }
 
-    capKingDamageByGuardian(king, amount) {
-        if (!king || king.craftrasMobType !== "king_zombie" || amount <= 0) return amount;
-        return this.getLivingGuardianForKing(king)
+    capKingDamageByGuardian(target, amount) {
+        if (!target || amount <= 0) return amount;
+        if (target.craftrasMobType === "sword_guy_2") {
+            return Math.min(amount, this.getSwordGuy2IncomingDamageCap(target));
+        }
+        if (target.craftrasMobType === "sword_guy") {
+            return Math.min(amount, CRAFTRAS_SWORD_GUY_MAX_INCOMING_DAMAGE);
+        }
+        if (target.craftrasMobType !== "king_zombie") return amount;
+        return this.getLivingGuardianForKing(target)
             ? Math.min(amount, CRAFTRAS_KING_GUARDIAN_DAMAGE_CAP)
             : amount;
     }
@@ -9348,17 +21310,27 @@ class Craftras {
         return 1;
     }
 
-    damagePlayersInSlash(body, { toolSegments, damage, heldItem }) {
+    damagePlayersInSlash(body, { toolSegments, toolPolygons, damage, damageOverride = null, heldItem }) {
         if (!body || body.craftrasSpectator) return;
         if (body?.craftrasMobType === "builder" && body.craftrasBuilderJobMode === "demolish") return;
         body.craftrasCombatHitIds ??= new Set();
         const itemDamage = ITEMS[heldItem]?.damage;
         const multiplier = heldItem === "sword" || heldItem?.endsWith("_sword") ? 1 : 0.5;
-        const effectiveDamage = Number.isFinite(itemDamage) ? itemDamage : damage * multiplier;
+        const hasDamageOverride = damageOverride !== null && damageOverride !== undefined && damageOverride !== ""
+            && Number.isFinite(Number(damageOverride));
+        const baseDamage = hasDamageOverride
+            ? Math.max(0, Number(damageOverride))
+            : Number.isFinite(itemDamage) ? itemDamage : damage * multiplier;
+        const effectiveDamage = baseDamage
+            * (body.craftrasParrySwingMultiplier || 1);
 
         for (const { body: target } of this.getLivingPlayers()) {
             if (!target || target === body || body.craftrasCombatHitIds.has(target.id)) continue;
-            if (!this.toolSegmentsHitCircle(toolSegments, target)) continue;
+            if (this.areCraftrasPlayerAllies(body, target)) continue;
+            const hit = toolPolygons?.length
+                ? this.toolPolygonsHitCircle(toolPolygons, target)
+                : this.toolSegmentsHitCircle(toolSegments, target);
+            if (!hit) continue;
             body.craftrasCombatHitIds.add(target.id);
             this.applyPlayerDamage(target, effectiveDamage, body);
         }
@@ -9374,7 +21346,7 @@ class Craftras {
             const x = center.x + Math.round(Math.cos(angle) * distance);
             const y = center.y + Math.round(Math.sin(angle) * distance);
             const cell = this.getCell(x, y);
-            if (cell?.region !== "underground" || this.isMovementBlockingBlock(this.getBlock(x, y))) continue;
+            if (isInsideWorld2(x, y) || cell?.region !== "underground" || this.isMovementBlockingBlock(this.getBlock(x, y))) continue;
             const location = blockToWorld(x, y);
             if (players.some(({ body }) => (body.x - location.x) ** 2 + (body.y - location.y) ** 2 < (BLOCK_SIZE * 5) ** 2)) continue;
             if (this.placementOverlapsEntity(x, y)) continue;
@@ -9393,13 +21365,347 @@ class Craftras {
             const x = center.x + Math.round(Math.cos(angle) * distance);
             const y = center.y + Math.round(Math.sin(angle) * distance);
             const cell = this.getCell(x, y);
-            if (!cell || this.getBlock(x, y) !== BLOCKS.AIR || cell.floor === FLOORS.WATER) continue;
+            if (isInsideWorld2(x, y) || cell?.region !== "surface" || this.getBlock(x, y) !== BLOCKS.AIR || cell.floor === FLOORS.WATER) continue;
             const location = blockToWorld(x, y);
             if (players.some(({ body }) => (body.x - location.x) ** 2 + (body.y - location.y) ** 2 < (BLOCK_SIZE * 5) ** 2)) continue;
             if (this.placementOverlapsEntity(x, y)) continue;
             return location;
         }
         return null;
+    }
+
+    isSwordGuy2FightActive(mob) {
+        if (!mob || mob.isDead?.() || mob.craftrasMobType !== "sword_guy_2") return false;
+        const state = String(mob.craftrasSwordGuy2State || "");
+        return ["dialogue", "combat"].includes(state)
+            || state.startsWith("phase2")
+            || state.startsWith("phase3");
+    }
+
+    isSwordGuy2NaturalSpawnSuppressedForBody(body) {
+        if (!body || body.isDead?.()) return false;
+        for (const mob of this.mobs) {
+            if (this.isSwordGuy2FightActive(mob) && this.getSwordGuy2Target(mob) === body) return true;
+            if (
+                mob?.craftrasJaneEncounterHost
+                && mob.craftrasJaneEncounterState !== "waiting"
+                && mob.craftrasJaneChallengerId === body.id
+            ) return true;
+            if (
+                mob?.craftrasMobType === "jane"
+                && !mob.isDead?.()
+                && !["shell", "outro", "defeated"].includes(mob.craftrasJaneState)
+                && this.getJaneTarget(mob) === body
+            ) return true;
+        }
+        return false;
+    }
+
+    getSwordGuy2SpawnExclusionCenters() {
+        const centers = [];
+        for (const mob of this.mobs) {
+            const swordGuy2Fight = this.isSwordGuy2FightActive(mob);
+            const janeHostFight = mob?.craftrasJaneEncounterHost && mob.craftrasJaneEncounterState !== "waiting";
+            const janeFight = mob?.craftrasMobType === "jane"
+                && !mob.isDead?.()
+                && !["shell", "outro", "defeated"].includes(mob.craftrasJaneState);
+            if (!swordGuy2Fight && !janeHostFight && !janeFight) continue;
+            centers.push(mob);
+            const target = swordGuy2Fight
+                ? this.getSwordGuy2Target(mob)
+                : janeFight
+                    ? this.getJaneTarget(mob)
+                    : this.getLivingPlayers().find(({ body }) => body?.id === mob.craftrasJaneChallengerId)?.body;
+            if (target && !target.isDead?.()) centers.push(target);
+        }
+        return centers;
+    }
+
+    getWorld2ChallengeStartLocations(now = Date.now()) {
+        if (now < (this.world2ChallengeStartLocationsRefreshAt || 0)) {
+            return this.world2ChallengeStartLocations || [];
+        }
+        this.world2ChallengeStartLocationsRefreshAt = now + 1_000;
+        this.world2ChallengeStartLocations = [...this.placedBlocks]
+            .filter(([, type]) => type === BLOCKS.WORLD2_CHALLENGE_START)
+            .map(([key]) => {
+                const [x, y] = key.split(",").map(Number);
+                return Number.isFinite(x) && Number.isFinite(y) ? blockToWorld(x, y) : null;
+            })
+            .filter(Boolean);
+        return this.world2ChallengeStartLocations;
+    }
+
+    isNearWorld2ChallengeStart(location, now = Date.now()) {
+        if (!location) return false;
+        const radiusSquared = CRAFTRAS_WORLD2_CHALLENGE_SPAWN_SUPPRESS_RADIUS ** 2;
+        return this.getWorld2ChallengeStartLocations(now).some(block => (
+            (block.x - location.x) ** 2 + (block.y - location.y) ** 2 <= radiusSquared
+        ));
+    }
+
+    findWorld2SurfaceSpawn(players) {
+        if (!players.length) return null;
+        const swordGuy2ExclusionCenters = this.getSwordGuy2SpawnExclusionCenters();
+        const swordGuy2ExclusionRadiusSquared = CRAFTRAS_SWORD_GUY_2_SPAWN_EXCLUSION_RADIUS ** 2;
+        for (let attempt = 0; attempt < 120; attempt++) {
+            const owner = players[Math.floor(Math.random() * players.length)].body;
+            const center = worldToBlock(owner.x, owner.y);
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 7 + Math.floor(Math.random() * 13);
+            const x = center.x + Math.round(Math.cos(angle) * distance);
+            const y = center.y + Math.round(Math.sin(angle) * distance);
+            const cell = this.getCell(x, y);
+            if (!isInsideWorld2(x, y) || cell?.region !== "surface" || cell.floor === FLOORS.WATER) continue;
+            if (this.getBlock(x, y) !== BLOCKS.AIR || this.placementOverlapsEntity(x, y)) continue;
+            const location = blockToWorld(x, y);
+            if (players.some(({ body }) => (body.x - location.x) ** 2 + (body.y - location.y) ** 2 < (BLOCK_SIZE * 5) ** 2)) continue;
+            if (this.isNearWorld2ChallengeStart(location)) continue;
+            if (swordGuy2ExclusionCenters.some(center => (
+                (center.x - location.x) ** 2 + (center.y - location.y) ** 2
+                <= swordGuy2ExclusionRadiusSquared
+            ))) continue;
+            return location;
+        }
+        return null;
+    }
+
+    chooseWorld2BandageMobVariant() {
+        const roll = Math.random();
+        if (roll < 0.20) return "giant_bandage_zombie";
+        if (roll >= 0.30) return "bandage_zombie";
+        if (Math.random() < 0.90) return "armored_bandage_zombie";
+        return "elite_bandage_zombie";
+    }
+
+    chooseWorld2BurningSkeletonType() {
+        const roll = Math.random();
+        if (roll < 0.05) {
+            const phoenixAlive = [...this.mobs].some(mob => mob
+                && !mob.isDead?.()
+                && mob.craftrasMobType === "phoenix_skeleton");
+            return phoenixAlive ? "burning_skeleton" : "phoenix_skeleton";
+        }
+        if (roll < 0.35) return "sniper_burning_skeleton";
+        return "burning_skeleton";
+    }
+
+    chooseWorld2WormType() {
+        const roll = Math.random();
+        if (roll < 0.05) return "giant_worm";
+        if (roll < 0.20) return "large_worm";
+        return "worm";
+    }
+
+    replaceWorld2SurfaceMobsForInferno() {
+        const bandageTypes = new Set([
+            "bandage_zombie",
+            "armored_bandage_zombie",
+            "giant_bandage_zombie",
+            "elite_bandage_zombie",
+        ]);
+        const wormTypes = new Set(["worm", "large_worm", "giant_worm"]);
+        const replacements = [];
+        for (const mob of [...this.mobs]) {
+            if (!mob || mob.isDead?.() || !mob.craftrasWorld2SurfaceMob) continue;
+            const replacementType = bandageTypes.has(mob.craftrasMobType)
+                ? "fire_zombie"
+                : wormTypes.has(mob.craftrasMobType) ? "fire_worm" : null;
+            if (!replacementType) continue;
+            replacements.push({ x: mob.x, y: mob.y, type: replacementType });
+            mob.craftrasChallengeNoLoot = true;
+            mob.craftrasLootDropped = true;
+            for (const segment of mob.craftrasWormSegments || []) segment?.destroy?.();
+            mob.craftrasWormSegments = [];
+            mob.destroy?.();
+            this.mobs.delete(mob);
+        }
+        for (const replacement of replacements) {
+            this.spawnMobAt(replacement, replacement.type, {
+                naturalSpawn: true,
+                world2SurfaceMob: true,
+            });
+        }
+    }
+
+    spawnWorld2SurfaceMob(players, type) {
+        const location = this.findWorld2SurfaceSpawn(players);
+        return location ? this.spawnMobAt(location, type, {
+            naturalSpawn: true,
+            world2SurfaceMob: true,
+        }) : null;
+    }
+
+    getWorld2SurfaceMobCounts(players) {
+        const radiusSquared = CRAFTRAS_WORLD2_NEARBY_MOB_RADIUS ** 2;
+        const counts = players
+            .map(player => ({
+                player,
+                body: player?.body,
+                total: 0,
+                zombie: 0,
+                skeleton: 0,
+                worm: 0,
+            }))
+            .filter(entry => entry.body && !entry.body.isDead?.());
+
+        for (const mob of this.mobs) {
+            if (!mob || mob.isDead?.() || !mob.craftrasWorld2SurfaceMob) continue;
+            for (const entry of counts) {
+                const dx = mob.x - entry.body.x;
+                const dy = mob.y - entry.body.y;
+                if (dx * dx + dy * dy > radiusSquared) continue;
+                entry.total++;
+                if (Object.hasOwn(entry, mob.craftrasMobFamily)) entry[mob.craftrasMobFamily]++;
+            }
+        }
+        return counts;
+    }
+
+    updateWorld2NaturalSpawns(players, now) {
+        const infernoActive = this.whiteInfernoState === "active"
+            || now < this.whiteInfernoAftermathUntil;
+        const activePlayerIds = new Set();
+        const nearbyCounts = this.getWorld2SurfaceMobCounts(players);
+        const radiusSquared = CRAFTRAS_WORLD2_NEARBY_MOB_RADIUS ** 2;
+        const recordSpawn = spawnedMob => {
+            if (!spawnedMob) return false;
+            for (const entry of nearbyCounts) {
+                const dx = spawnedMob.x - entry.body.x;
+                const dy = spawnedMob.y - entry.body.y;
+                if (dx * dx + dy * dy > radiusSquared) continue;
+                entry.total++;
+                if (Object.hasOwn(entry, spawnedMob.craftrasMobFamily)) entry[spawnedMob.craftrasMobFamily]++;
+            }
+            return true;
+        };
+
+        for (const entry of nearbyCounts) {
+            const { player, body } = entry;
+            activePlayerIds.add(body.id);
+
+            if (this.isSwordGuy2NaturalSpawnSuppressedForBody(body) || this.isNearWorld2ChallengeStart(body, now)) {
+                this.world2BandageNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_BANDAGE_SPAWN_INTERVAL);
+                this.world2SkeletonNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_SKELETON_SPAWN_INTERVAL);
+                this.world2WormNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_WORM_SPAWN_INTERVAL);
+                continue;
+            }
+
+            if (!this.world2BandageNextSpawnAt.has(body.id)) {
+                this.world2BandageNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_BANDAGE_SPAWN_INTERVAL);
+            }
+            if (!this.world2SkeletonNextSpawnAt.has(body.id)) {
+                this.world2SkeletonNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_SKELETON_SPAWN_INTERVAL);
+            }
+            if (!this.world2WormNextSpawnAt.has(body.id)) {
+                this.world2WormNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_WORM_SPAWN_INTERVAL);
+            }
+
+            if (now >= this.world2BandageNextSpawnAt.get(body.id)) {
+                this.world2BandageNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_BANDAGE_SPAWN_INTERVAL);
+                if (
+                    entry.total < CRAFTRAS_WORLD2_NEARBY_MOB_CAP &&
+                    entry.zombie < CRAFTRAS_WORLD2_ZOMBIE_CAP
+                ) recordSpawn(this.spawnWorld2SurfaceMob([player], infernoActive ? "fire_zombie" : this.chooseWorld2BandageMobVariant()));
+            }
+            if (now >= this.world2SkeletonNextSpawnAt.get(body.id)) {
+                this.world2SkeletonNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_SKELETON_SPAWN_INTERVAL);
+                if (
+                    entry.total < CRAFTRAS_WORLD2_NEARBY_MOB_CAP &&
+                    entry.skeleton < CRAFTRAS_WORLD2_SKELETON_CAP
+                ) recordSpawn(this.spawnWorld2SurfaceMob([player], this.chooseWorld2BurningSkeletonType()));
+            }
+            if (now >= this.world2WormNextSpawnAt.get(body.id)) {
+                this.world2WormNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_WORM_SPAWN_INTERVAL);
+                if (
+                    entry.total < CRAFTRAS_WORLD2_NEARBY_MOB_CAP &&
+                    entry.worm < CRAFTRAS_WORLD2_WORM_CAP
+                ) recordSpawn(this.spawnWorld2SurfaceMob([player], infernoActive ? "fire_worm" : this.chooseWorld2WormType()));
+            }
+        }
+
+        for (const playerId of this.world2BandageNextSpawnAt.keys()) {
+            if (!activePlayerIds.has(playerId)) this.world2BandageNextSpawnAt.delete(playerId);
+        }
+        for (const playerId of this.world2SkeletonNextSpawnAt.keys()) {
+            if (!activePlayerIds.has(playerId)) this.world2SkeletonNextSpawnAt.delete(playerId);
+        }
+        for (const playerId of this.world2WormNextSpawnAt.keys()) {
+            if (!activePlayerIds.has(playerId)) this.world2WormNextSpawnAt.delete(playerId);
+        }
+    }
+
+    isWorld2GiantCaveCell(x, y) {
+        if (!isInsideWorld2(x, y)) return false;
+        const localX = x - Math.ceil(BLOCKS_X / 2);
+        const localY = y + Math.floor(BLOCKS_Y / 2);
+        const bounds = CRAFTRAS_WORLD2_GIANT_CAVE_BOUNDS;
+        return localX >= bounds.minX && localX <= bounds.maxX
+            && localY >= bounds.minY && localY <= bounds.maxY
+            && this.getCell(x, y)?.region === "underground";
+    }
+
+    findWorld2GiantCaveSpawn(players) {
+        if (!players.length) return null;
+        for (let attempt = 0; attempt < 140; attempt++) {
+            const owner = players[Math.floor(Math.random() * players.length)].body;
+            const center = worldToBlock(owner.x, owner.y);
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 6 + Math.floor(Math.random() * 13);
+            const x = center.x + Math.round(Math.cos(angle) * distance);
+            const y = center.y + Math.round(Math.sin(angle) * distance);
+            if (!this.isWorld2GiantCaveCell(x, y) || this.getBlock(x, y) !== BLOCKS.AIR) continue;
+            if (this.placementOverlapsEntity(x, y)) continue;
+            const location = blockToWorld(x, y);
+            if (players.some(({ body }) => (body.x - location.x) ** 2 + (body.y - location.y) ** 2 < (BLOCK_SIZE * 4) ** 2)) continue;
+            return location;
+        }
+        return null;
+    }
+
+    chooseWorld2GiantCaveMobType() {
+        const roll = Math.random();
+        if (roll < 0.38) return "iron_armored_giant_zombie";
+        if (roll < 0.65) return "diamond_armored_giant_zombie";
+        if (roll < 0.83) return "artillery_giant_zombie";
+        if (roll < 0.95) return "ruby_armored_giant_zombie";
+        return "elite_giant_zombie";
+    }
+
+    updateWorld2GiantCaveSpawns(players, now) {
+        const activePlayerIds = new Set(players.map(({ body }) => body?.id).filter(id => id != null));
+        let aliveCount = [...this.mobs].filter(mob => mob && !mob.isDead?.() && mob.craftrasWorld2GiantCaveMob).length;
+        let magicalBossAlive = [...this.mobs].some(mob => mob && !mob.isDead?.() && mob.craftrasWorld2MagicBoss);
+        for (const player of players) {
+            const body = player?.body;
+            if (!body || body.isDead?.()) continue;
+            if (this.isNearWorld2ChallengeStart(body, now)) {
+                this.world2GiantCaveNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_GIANT_CAVE_SPAWN_INTERVAL);
+                continue;
+            }
+            if (!this.world2GiantCaveNextSpawnAt.has(body.id)) {
+                this.world2GiantCaveNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_GIANT_CAVE_SPAWN_INTERVAL);
+            }
+            if (now < this.world2GiantCaveNextSpawnAt.get(body.id)) continue;
+            this.world2GiantCaveNextSpawnAt.set(body.id, now + CRAFTRAS_WORLD2_GIANT_CAVE_SPAWN_INTERVAL);
+            if (aliveCount >= CRAFTRAS_WORLD2_GIANT_CAVE_CAP) continue;
+            const location = this.findWorld2GiantCaveSpawn([player]);
+            if (!location) continue;
+            const type = !magicalBossAlive && Math.random() < CRAFTRAS_WORLD2_MAGIC_BOSS_SPAWN_CHANCE
+                ? "world2_magical_zombie"
+                : this.chooseWorld2GiantCaveMobType();
+            const mob = this.spawnMobAt(location, type, {
+                naturalSpawn: true,
+                world2GiantCaveMob: true,
+            });
+            if (mob) {
+                aliveCount++;
+                if (mob.craftrasWorld2MagicBoss) magicalBossAlive = true;
+            }
+        }
+        for (const playerId of this.world2GiantCaveNextSpawnAt.keys()) {
+            if (!activePlayerIds.has(playerId)) this.world2GiantCaveNextSpawnAt.delete(playerId);
+        }
     }
 
     findSurfaceAnimalSpawn(players) {
@@ -9454,10 +21760,10 @@ class Craftras {
         if (night) return this.spawnMobAt(location, roll < 0.45 ? this.getZombieVariant()
             : roll < 0.70 ? "skeleton"
                 : roll < 0.88 ? "creeper"
-                    : "spider");
+                    : "spider", { naturalSpawn: true, world1RoamingMob: true });
         return this.spawnMobAt(location, roll < 0.58 ? this.getZombieVariant()
             : roll < 0.80 ? this.getSkeletonVariant()
-                : "creeper");
+                : "creeper", { naturalSpawn: true, world1RoamingMob: true });
     }
 
     spawnOutsideBoss(type, options = {}) {
@@ -9481,31 +21787,54 @@ class Craftras {
         const variant = typeof type === "object" && type ? type : this.getExplicitMobVariant(type);
         const mobType = variant?.type || type;
         if (!location || !MOB_TYPES.has(mobType)) return null;
+        const spawnCell = worldToBlock(location.x, location.y);
+        const generatedSpawnCell = this.getCell(spawnCell.x, spawnCell.y);
+        if (
+            options.world1RoamingMob &&
+            !isInsideWorld2(spawnCell.x, spawnCell.y) &&
+            this.getDayPhase() !== "night" &&
+            generatedSpawnCell?.region !== "underground"
+        ) return null;
         if (ANIMAL_TYPES.has(mobType)) {
             const cell = worldToBlock(location.x, location.y);
             if (isBrokenKingdomSurfaceCell(cell.x, cell.y)) return null;
         }
         const mob = new Entity(location);
-        mob.define(MOB_CLASS_NAMES[mobType]);
+        mob.define(variant?.className || MOB_CLASS_NAMES[mobType]);
+        if (Number.isFinite(Number(options.facing))) {
+            mob.facing = Number(options.facing);
+            mob.vfacing = Number(options.facing);
+        }
         if (variant) this.applyMobVariantDefinition(mob, variant);
         if (variant?.label) mob.name = variant.label;
         mob.craftrasBaseName = mob.name || mob.label;
         mob.craftrasMobType = variant?.scoreType || mobType;
-        mob.craftrasMobFamily = NPC_TYPES.has(mobType) ? "npc" : ANIMAL_TYPES.has(mobType) ? "animal" : mobType.includes("zombie") || mobType === "king_guardian" ? "zombie" : mobType.includes("skeleton") ? "skeleton" : mobType.includes("spider") ? "spider" : mobType;
+        mob.craftrasMobFamily = NPC_TYPES.has(mobType) ? "npc" : ANIMAL_TYPES.has(mobType) ? "animal" : mobType.includes("zombie") || mobType === "king_guardian" ? "zombie" : mobType.includes("skeleton") ? "skeleton" : mobType.includes("spider") ? "spider" : mobType.includes("worm") ? "worm" : mobType;
         mob.team = mob.craftrasMobFamily === "npc" ? TEAM_ROOM : TEAM_ENEMIES;
         mob.craftrasSpawnPlaceId = options.placeId || null;
+        mob.craftrasNaturalSpawn = !!options.naturalSpawn;
+        mob.craftrasWorld2SurfaceMob = !!options.world2SurfaceMob;
+        mob.craftrasWorld2GiantCaveMob = !!options.world2GiantCaveMob;
         mob.craftrasFixedNpc = !!options.fixed;
         mob.craftrasHome = options.fixed ? { x: location.x, y: location.y } : null;
         mob.craftrasInvulnerableNpc = NPC_TYPES.has(mobType) && !VILLAGE_COMBAT_NPC_TYPES.has(mobType) && mobType !== "challenge_king" && mobType !== "royal_guardian";
         mob.craftrasNpcWanderRadius = VILLAGE_NPC_MAX_HOME_DISTANCE;
         mob.craftrasSwordZombie = !!variant?.sword || type === "iron_sword_zombie";
         mob.craftrasSwordDamage = variant?.swordDamage || (type === "iron_sword_zombie" ? 40 : 0);
+        mob.craftrasRangedMob = !!variant?.ranged;
         mob.craftrasHelmetMaterial = variant?.helmet || null;
         mob.craftrasSwordMaterial = variant?.sword || (type === "iron_sword_zombie" ? "iron" : null);
         mob.craftrasContactDamage = variant?.contactDamage ?? (ANIMAL_TYPES.has(mobType) || NPC_TYPES.has(mobType) ? 0 : mobType === "giant_zombie" ? 30 : mobType === "toxic_spider" ? 20 : 20);
         mob.craftrasScoreMultiplier = variant?.scoreMultiplier || 1;
         mob.craftrasNoKnockback = !!variant?.noKnockback || NPC_TYPES.has(mobType);
         mob.craftrasPoisonOnHit = mobType === "toxic_spider" || mobType === "queen_spider";
+        mob.craftrasFireOnHit = mobType === "burning_skeleton"
+            || mobType === "sniper_burning_skeleton"
+            || mobType === "phoenix_skeleton"
+            || mobType === "fire_zombie"
+            || mobType === "fire_worm";
+        mob.craftrasInfernoMob = mobType === "fire_zombie" || mobType === "fire_worm";
+        if (mob.craftrasFireOnHit || mob.craftrasWorld2SurfaceMob) mob.craftrasSunImmune = true;
         mob.craftrasQueenSpider = mobType === "queen_spider";
         if (mobType === "the_nuclear") {
             const now = Date.now();
@@ -9527,9 +21856,36 @@ class Craftras {
             mob.craftrasQueenHalfSummoned = false;
         }
         if (mobType === "runner_zombie") mob.craftrasNoAttackKnockback = true;
-        if (mobType === "magical_zombie") {
+        if (mobType === "jane") {
+            mob.craftrasHelmet = "jane_hat";
+            mob.craftrasHeldItem = "jane_sword";
+            mob.craftrasMainHandStack = makeItem("jane_sword");
+            mob.craftrasHelmetMaterial = "jane_hat";
+            mob.craftrasSwordMaterial = "jane_sword";
+            mob.craftrasSwordDamage = 200;
+            mob.craftrasSunImmune = true;
+            mob.craftrasNoKnockback = true;
+            mob.alwaysActive = true;
+        }
+        if (mobType === "magical_zombie" || mobType === "world2_magical_zombie") {
             mob.craftrasFinalDashPhasing = true;
             mob.craftrasSunImmune = true;
+        }
+        if (mobType === "world2_magical_zombie") {
+            const now = Date.now();
+            mob.craftrasWorld2MagicBoss = true;
+            mob.craftrasWorld2MagicEnraged = false;
+            mob.craftrasWorld2MagicNextBlackHoleAt = Infinity;
+            mob.craftrasWorld2MagicDeathAt = 0;
+            mob.craftrasWorld2MagicTitan = null;
+            mob.craftrasMagicBoss = true;
+            mob.craftrasMagicPhase = 2;
+            mob.craftrasMagicMode = "cooldown";
+            mob.craftrasMagicVulnerable = true;
+            mob.craftrasMagicSkillIndex = 1;
+            mob.craftrasMagicNextSkillAt = now + 2_000;
+            mob.invuln = false;
+            mob.alwaysActive = true;
         }
         mob.craftrasGuardian = mobType === "king_guardian";
         if (mob.craftrasGuardian) {
@@ -9564,21 +21920,170 @@ class Craftras {
         mob.health.amount = appliedMaxHealth;
         mob.shield.set(0, 0);
         mob.skill.points = 0;
-        if (mob.craftrasMobFamily === "skeleton") {
-            mob.craftrasSkeletonBulletDamage = mobType === "sniper_skeleton" ? 60 : mobType === "cannon_skeleton" ? 90 : 20;
-            mob.craftrasSkeletonApproachRange = BLOCK_SIZE * (mobType === "sniper_skeleton" ? 22 : 11);
-            mob.craftrasSkeletonRetreatRange = BLOCK_SIZE * (mobType === "sniper_skeleton" ? 14 : 7);
-            mob.craftrasSkeletonNoRetreat = mobType === "cannon_skeleton";
+        if (mob.craftrasMobFamily === "worm") {
+            const theWorm = mobType === "the_worm";
+            const wormGrave = mobType === "the_worm_grave";
+            const theWormScale = theWorm || wormGrave;
+            mob.craftrasWormHead = true;
+            mob.craftrasWormSegmentCount = theWormScale ? 60 : mobType === "giant_worm" ? 20 : mobType === "large_worm" ? 10 : 5;
+            mob.craftrasWormSegmentSize = theWormScale ? 48 * 1.4 * 3 : mobType === "giant_worm" ? 48 * 1.4 : mobType === "large_worm" ? 48 / 1.3 : 24 / 1.2;
+            mob.craftrasWormSurfaceColor = wormGrave
+                ? CRAFTRAS_THE_WORM_GRAVE_COLOR
+                : mobType === "fire_worm"
+                    ? this.getPhoenixSkeletonColor(Date.now())
+                    : CRAFTRAS_WORM_SURFACE_COLOR;
+            mob.craftrasWormIgnoresHitStop = mobType === "giant_worm" || theWormScale;
+            mob.craftrasWormLastHealth = appliedMaxHealth;
+            mob.craftrasWormLastUpdateAt = Date.now();
+            mob.craftrasWormTravelAngle = Number.isFinite(mob.facing) ? mob.facing : 0;
+            mob.craftrasNextWormDashAt = Date.now() + CRAFTRAS_WORM_DASH_INTERVAL;
+            mob.craftrasWormTrail = [{ x: mob.x, y: mob.y }];
+            mob.craftrasWormBurrowed = !theWormScale;
+            mob.craftrasWormDamageImmune = !theWorm || wormGrave;
+            mob.craftrasWormTransition = null;
+            mob.craftrasWormRevealUntil = 0;
+            mob.craftrasFinalDashPhasing = true;
+            mob.intangibility = true;
+            mob.color.base = wormGrave
+                ? CRAFTRAS_THE_WORM_GRAVE_COLOR
+                : theWorm
+                    ? CRAFTRAS_WORM_SURFACE_COLOR
+                    : CRAFTRAS_WORM_BURROW_COLOR;
+            mob.alpha = theWormScale ? 1 : CRAFTRAS_WORM_BURROW_ALPHA;
+            if (wormGrave) {
+                mob.craftrasStaticWormGrave = true;
+                mob.craftrasContactDamage = 0;
+                mob.craftrasNoKnockback = true;
+                mob.craftrasFixedNpc = true;
+                mob.craftrasHome = { x: location.x, y: location.y };
+                mob.type = "wall";
+                mob.intangibility = false;
+                if (mob.settings) {
+                    mob.settings.no_collisions = false;
+                    mob.settings.hitsOwnType = "never";
+                }
+                mob.invuln = true;
+                mob.alwaysActive = true;
+                mob.team = TEAM_ROOM;
+                mob.name = "";
+                mob.craftrasBaseName = "";
+                mob.craftrasWormTrail = this.buildWorld2WormGraveTrail(location, mob.facing || 0);
+            }
+            if (theWorm) {
+                const now = Date.now();
+                mob.craftrasContactDamage = CRAFTRAS_THE_WORM_CONTACT_DAMAGE;
+                mob.craftrasNoKnockback = true;
+                mob.craftrasTheWormAction = null;
+                mob.craftrasTheWormNextDashAt = now + CRAFTRAS_THE_WORM_DASH_INTERVAL;
+                mob.craftrasTheWormNextSpikeAt = now + CRAFTRAS_THE_WORM_SPIKE_INTERVAL;
+                mob.craftrasTheWormSkillTwoReadyAt = now;
+                mob.craftrasTheWormContactHits = new Map();
+                mob.alwaysActive = true;
+            }
+        }
+        if (mobType === "spiker") {
+            const now = Date.now();
+            mob.craftrasSpikerState = "burrowed";
+            mob.craftrasSpikerStateStartedAt = now;
+            mob.craftrasSpikerLastUpdateAt = now;
+            mob.craftrasSpikerRotation = Number.isFinite(mob.facing) ? mob.facing : 0;
+            mob.craftrasSpikerBurrowVelocity = { x: 0, y: 0 };
+            mob.craftrasSpikerLastHealth = appliedMaxHealth;
+            mob.craftrasSpikerDamageImmune = true;
+            mob.craftrasNextSpikerPullTrailAt = now;
+            mob.craftrasSpikerContactHits = new Map();
+            mob.craftrasNoKnockback = true;
+            mob.craftrasSpikerAnchored = true;
+            mob.craftrasFinalDashPhasing = true;
+            mob.intangibility = true;
+            mob.alwaysActive = true;
+            mob.alpha = CRAFTRAS_SPIKER_BURROW_ALPHA;
+            mob.color.base = "#17130f";
+        }
+        if (mob.craftrasMobFamily === "skeleton" || mob.craftrasRangedMob) {
+            mob.craftrasSkeletonBulletDamage = variant?.projectileDamage || (mobType === "sniper_skeleton" ? 60
+                : mobType === "cannon_skeleton" ? 90
+                : mobType === "burning_skeleton" ? 100
+                : mobType === "sniper_burning_skeleton" ? 200
+                : mobType === "phoenix_skeleton" ? CRAFTRAS_PHOENIX_EXPLOSION_DAMAGE
+                : 20);
+            const sniperSkeleton = mobType === "sniper_skeleton" || mobType === "sniper_burning_skeleton";
+            mob.craftrasSkeletonApproachRange = BLOCK_SIZE * (sniperSkeleton ? 22 : 11);
+            mob.craftrasSkeletonRetreatRange = BLOCK_SIZE * (sniperSkeleton ? 14 : 7);
+            mob.craftrasSkeletonNoRetreat = mobType === "cannon_skeleton" || mob.craftrasRangedMob;
+        }
+        mob.on("damage", ({ damageInflictor = [], damageTool = [] } = {}) => {
+            if (mob.craftrasStaticWormGrave) {
+                mob.damageReceived = 0;
+                return;
+            }
+            const attacker = this.findPlayerDamageSource(damageInflictor, damageTool);
+            if (!attacker || !Number.isFinite(Number(mob.damageReceived))) return;
+            mob.damageReceived = this.scalePlayerProgressionDamage(attacker, mob.damageReceived);
+            const trackedDamage = Math.min(
+                Math.max(0, Number(mob.damageReceived) || 0),
+                Number.isFinite(mob.craftrasMaxIncomingDamage) ? mob.craftrasMaxIncomingDamage : Infinity,
+            );
+            if (trackedDamage > 0) this.recordPlayerDamageTarget(attacker, mob, trackedDamage);
+        });
+        if (mobType === "the_worm") {
+            mob.on("damage", () => {
+                if (!mob.craftrasWorld2ChallengeBoss) return;
+                const received = Math.max(0, Number(mob.damageReceived) || 0);
+                if (mob.craftrasWorld2ChallengeDefeating) {
+                    mob.damageReceived = 0;
+                    mob.health.amount = 1;
+                    mob.readyToDie = false;
+                    return;
+                }
+                if (received > 0 && (mob.health?.amount || 0) - received <= 0) {
+                    mob.damageReceived = 0;
+                    mob.health.amount = 1;
+                    mob.readyToDie = false;
+                    this.startWorld2ChallengeWormDefeat(mob, Date.now());
+                }
+            });
+        }
+        if (mobType === "world2_magical_zombie") {
+            mob.on("damage", () => {
+                const received = Math.max(0, Number(mob.damageReceived) || 0);
+                if (mob.craftrasWorld2MagicDeathAt) {
+                    mob.damageReceived = 0;
+                    mob.health.amount = 1;
+                    mob.readyToDie = false;
+                    return;
+                }
+                if (!received) return;
+                const nextHealth = (mob.health?.amount || 0) - received;
+                const halfHealth = (mob.health?.max || CRAFTRAS_WORLD2_MAGIC_BOSS_HEALTH) * 0.5;
+                if (!mob.craftrasWorld2MagicEnraged && nextHealth <= halfHealth) {
+                    mob.damageReceived = 0;
+                    mob.health.amount = halfHealth;
+                    mob.readyToDie = false;
+                    this.startWorld2MagicalZombieEnrage(mob, this.getWorld2MagicalZombieAudience(), Date.now());
+                    return;
+                }
+                if (mob.craftrasWorld2MagicEnraged && nextHealth <= 0) {
+                    mob.damageReceived = 0;
+                    mob.health.amount = 1;
+                    mob.readyToDie = false;
+                    this.startWorld2MagicalZombieDeath(mob, Date.now());
+                }
+            });
         }
         if (mobType === "sword_guy") {
             mob.craftrasSkeletonApproachRange = BLOCK_SIZE * 24;
             mob.craftrasSkeletonRetreatRange = 0;
             mob.craftrasSwordGuyHostile = false;
             mob.craftrasSwordGuyPhase = 1;
+            mob.craftrasMaxIncomingDamage = CRAFTRAS_SWORD_GUY_MAX_INCOMING_DAMAGE;
             mob.craftrasSwordGuyArenaCenter = { x: location.x, y: location.y };
             mob.on("damage", ({ damageInflictor = [], damageTool = [] } = {}) => {
                 const now = Date.now();
-                const received = Math.max(1, Number(mob.damageReceived) || 0);
+                const received = Math.min(
+                    CRAFTRAS_SWORD_GUY_MAX_INCOMING_DAMAGE,
+                    Math.max(1, Number(mob.damageReceived) || 0),
+                );
                 const attacker = this.findPlayerDamageSource(damageInflictor, damageTool);
                 if (mob.craftrasSwordGuyPhase === "intro" || mob.craftrasSwordGuyPhase === "recovering") {
                     mob.damageReceived = 0;
@@ -9594,16 +22099,116 @@ class Craftras {
                 this.handleSwordGuyDamaged(mob, received, attacker, now);
             });
         }
+        if (mobType === "sword_guy_2") {
+            mob.craftrasSwordGuy2State = options.swordGuy2Combat ? "combat" : "idle";
+            mob.craftrasSwordGuy2TargetId = options.swordGuy2TargetId || null;
+            mob.craftrasSwordGuy2TargetSocket = options.swordGuy2TargetSocket || null;
+            mob.craftrasSwordGuy2PendingFriends = [];
+            mob.craftrasSunImmune = true;
+            mob.craftrasNoKnockback = true;
+            mob.craftrasMaxIncomingDamage = CRAFTRAS_SWORD_GUY_2_MAX_INCOMING_DAMAGE;
+            mob.alwaysActive = true;
+            mob.on("damage", ({ damageInflictor = [], damageTool = [] } = {}) => {
+                const attacker = this.findPlayerDamageSource(damageInflictor, damageTool);
+                const received = Math.min(
+                    this.getSwordGuy2IncomingDamageCap(mob),
+                    Math.max(1, Number(mob.damageReceived) || 0),
+                );
+                mob.damageReceived = received;
+                if (mob.craftrasSwordGuy2State === "idle" && attacker) {
+                    mob.damageReceived = 0;
+                    mob.health.amount = mob.health.max;
+                    mob.readyToDie = false;
+                    this.startSwordGuy2Intro(mob, attacker, Date.now());
+                    return;
+                }
+                if (mob.craftrasSwordGuy2State === "phase2_combat") {
+                    if (mob.craftrasSwordGuy2BasicDefeated) {
+                        mob.damageReceived = 0;
+                        mob.health.amount = 1;
+                        mob.readyToDie = false;
+                        return;
+                    }
+                    if (mob.health.amount - received <= 0) {
+                        mob.damageReceived = 0;
+                        this.damageSwordGuy2PhaseTwoActor(mob, mob, received, Date.now());
+                    }
+                    return;
+                }
+                if (mob.craftrasSwordGuy2State === "phase3_combat") {
+                    const now = Date.now();
+                    if (this.trySwordGuy2PhaseThreeParry(mob, now)) {
+                        mob.damageReceived = 0;
+                        mob.readyToDie = false;
+                        return;
+                    }
+                    mob.craftrasSwordGuy2ParryChance = CRAFTRAS_SWORD_GUY_2_PHASE_THREE_PARRY_START;
+                    if (mob.health.amount - received <= 1) {
+                        mob.damageReceived = 0;
+                        mob.health.amount = 1;
+                        mob.readyToDie = false;
+                        this.startSwordGuy2PhaseThreeFinalSetup(mob, now);
+                    }
+                    this.syncSwordGuy2DuoHealth(mob, true, now);
+                    return;
+                }
+                if (mob.craftrasSwordGuy2State !== "combat") {
+                    mob.damageReceived = 0;
+                    mob.health.amount = Math.max(1, mob.health.amount || mob.health.max);
+                    mob.readyToDie = false;
+                    return;
+                }
+                if (mob.health.amount - received <= 0) {
+                    this.startSwordGuy2PhaseTwoDialogue(mob, Date.now());
+                }
+            });
+            if (options.swordGuy2Combat) this.configureSwordGuy2Combat(mob, Date.now());
+        }
         if (mob.craftrasInvulnerableNpc) {
             mob.on("damage", () => {
                 mob.damageReceived = 0;
                 mob.health.amount = mob.health.max;
             });
         }
+        if (mobType === "phoenix_skeleton") {
+            mob.craftrasPhoenixBaseSize = mob.SIZE || mob.size || 24;
+            mob.on("damage", () => {
+                const received = Math.max(0, Number(mob.damageReceived) || 0);
+                if (mob.craftrasPhoenixDeathAt) {
+                    mob.damageReceived = 0;
+                    mob.health.amount = Math.max(1, mob.health.amount || 1);
+                    return;
+                }
+                if (received <= 0 || mob.health.amount - received > 0) return;
+                mob.damageReceived = 0;
+                mob.health.amount = 1;
+                mob.readyToDie = false;
+                mob.craftrasPhoenixDeathStarted = Date.now();
+                mob.craftrasPhoenixDeathAt = mob.craftrasPhoenixDeathStarted + CRAFTRAS_PHOENIX_DEATH_WINDUP;
+            });
+        }
         if (mob.craftrasMobFamily !== "npc") {
             mob.on("damage", ({ damageInflictor = [], damageTool = [] }) => {
+                if (this.isWormDamageImmune(mob)) {
+                    mob.damageReceived = 0;
+                    const protectedHealth = mob.craftrasSpikerLastHealth
+                        ?? mob.craftrasWormLastHealth
+                        ?? mob.health.max;
+                    mob.health.amount = Math.max(mob.health.amount || 0, protectedHealth);
+                    mob.readyToDie = false;
+                    return;
+                }
                 const attacker = this.findPlayerDamageSource(damageInflictor, damageTool);
-                if (attacker) this.setMobAggro(mob, attacker);
+                if (attacker) {
+                    this.setMobAggro(mob, attacker);
+                    if (!mob.craftrasMagicBoss || mob.craftrasMagicVulnerable) {
+                        this.markBossHealthHit(mob, attacker);
+                    }
+                }
+                if (mob.craftrasMobFamily === "worm" && !mob.craftrasWormIgnoresHitStop && Number(mob.damageReceived) > 0) {
+                    mob.craftrasWormStunnedUntil = Date.now() + CRAFTRAS_WORM_HIT_STOP_DURATION;
+                    mob.craftrasWormDash = null;
+                }
             });
         }
         if (mobType === "king_zombie" || mob.craftrasGuardian) {
@@ -9621,7 +22226,21 @@ class Craftras {
             });
         }
         mob.on("dead", () => {
-            this.spawnMobDeathEffect(mob);
+            if (mob.craftrasWorld2MagicBoss) this.clearChallengeMagicEntities(mob);
+            if (mobType === "sword_guy_2") {
+                this.cleanupSwordGuy2Effects(mob);
+                this.destroySwordGuy2Bominik(mob);
+            }
+            for (const segment of mob.craftrasWormSegments || []) segment?.destroy?.();
+            mob.craftrasWormSegments = [];
+            if (mobType === "spiker") {
+                for (const projectile of this.mobs) {
+                    if (projectile?.craftrasSpikerOwner !== mob) continue;
+                    projectile.destroy?.();
+                    this.mobs.delete(projectile);
+                }
+            }
+            if (mobType !== "phoenix_skeleton" || !mob.craftrasExploded) this.spawnMobDeathEffect(mob);
             this.dropMobLoot(mob, mobType);
             this.mobs.delete(mob);
             if (mobType === "king_zombie") {
@@ -9646,13 +22265,14 @@ class Craftras {
     }
 
     updateMobSunlight(mob, now) {
-        if (this.weatherType === "rain" || mob.craftrasSunImmune || mob.craftrasSwordGuyPhase === 2) {
+        const block = worldToBlock(mob.x, mob.y);
+        const rainingHere = this.weatherType === "rain" && !isInsideWorld2(block.x, block.y);
+        if (rainingHere || mob.craftrasSunImmune || mob.craftrasSwordGuyPhase === 2) {
             mob.craftrasBurning = false;
             mob.craftrasNextSunDamageAt = 0;
             if (mob.craftrasBaseName) mob.name = mob.craftrasBaseName;
             return;
         }
-        const block = worldToBlock(mob.x, mob.y);
         const onSurface = this.getCell(block.x, block.y)?.region === "surface";
         const burnable = mob.craftrasMobFamily === "zombie" || mob.craftrasMobFamily === "skeleton";
         const phase = this.getDayPhase();
@@ -9724,18 +22344,44 @@ class Craftras {
 
     applyMobVariantDefinition(mob, variant) {
         const turrets = [];
+        if (variant.fixedEquipment) {
+            mob.define({ LABEL: variant.label || mob.label });
+            return;
+        }
+        const hasBuiltInBandage = variant.bandage && (
+            variant.type === "bandage_zombie" ||
+            variant.type === "armored_bandage_zombie" ||
+            variant.type === "giant_bandage_zombie" ||
+            variant.type === "elite_bandage_zombie"
+        );
+        if (variant.bandage && !hasBuiltInBandage) {
+            turrets.push({
+                POSITION: [7, 0, 0, 0, 360, 2],
+                TYPE: "craftrasMobBandageWrap",
+            });
+        }
         if (variant.helmet) {
             turrets.push({
                 POSITION: [7, 0, 0, 0, 360, 2],
                 TYPE: variant.helmet === "zombie_crown"
                     ? "craftrasHelmetCrown"
+                    : variant.helmet === "ruby" ? "craftrasMobRubyHelmet"
+                    : variant.helmet === "sapphire" ? "craftrasMobSapphireHelmet"
+                    : variant.helmet === "amethyst" ? "craftrasMobAmethystHelmet"
+                    : variant.helmet === "great_diamond" ? "craftrasMobGreatDiamondHelmet"
                     : variant.helmet === "diamond" ? "craftrasHelmetSide" : "craftrasHelmetFront",
             });
         }
         if (variant.sword) {
             turrets.push({
                 POSITION: [0.001, 6.64, 4.82, -35, 360, 1],
-                TYPE: variant.sword === "diamond"
+                TYPE: variant.sword === "ruby"
+                    ? "craftrasHeldRubySword"
+                    : variant.sword === "sapphire"
+                    ? "craftrasHeldSapphireSword"
+                    : variant.sword === "amethyst"
+                    ? "craftrasHeldAmethystSword"
+                    : variant.sword === "diamond"
                     ? "craftrasHeldDiamondSword"
                     : variant.sword === "stone" ? "craftrasHeldStoneSword" : "craftrasHeldIronSword",
             });
@@ -9756,6 +22402,7 @@ class Craftras {
         let nearest = null;
         let best = Infinity;
         for (const { body } of players) {
+            if (!body || body.isDead?.() || body.craftrasSpectator) continue;
             const distanceSquared = (body.x - mob.x) ** 2 + (body.y - mob.y) ** 2;
             if (distanceSquared < best) {
                 best = distanceSquared;
@@ -9796,15 +22443,45 @@ class Craftras {
             const dy = Math.abs(goal.y - y);
             return Math.max(dx, dy) + (Math.SQRT2 - 1) * Math.min(dx, dy);
         };
-        const open = [{ x: start.x, y: start.y, g: 0, f: heuristic(start.x, start.y) }];
+        const open = [];
+        const pushOpen = node => {
+            open.push(node);
+            let index = open.length - 1;
+            while (index > 0) {
+                const parent = (index - 1) >> 1;
+                if (open[parent].f <= node.f) break;
+                open[index] = open[parent];
+                index = parent;
+            }
+            open[index] = node;
+        };
+        const popOpen = () => {
+            const result = open[0];
+            const tail = open.pop();
+            if (open.length && tail) {
+                let index = 0;
+                while (true) {
+                    const left = index * 2 + 1;
+                    if (left >= open.length) break;
+                    const right = left + 1;
+                    const child = right < open.length && open[right].f < open[left].f ? right : left;
+                    if (open[child].f >= tail.f) break;
+                    open[index] = open[child];
+                    index = child;
+                }
+                open[index] = tail;
+            }
+            return result;
+        };
+        pushOpen({ x: start.x, y: start.y, g: 0, f: heuristic(start.x, start.y) });
         const bestCost = new Map([[key(start.x, start.y), 0]]);
         const parents = new Map();
         let visited = 0;
 
         while (open.length && visited++ < 2500) {
-            let bestIndex = 0;
-            for (let index = 1; index < open.length; index++) if (open[index].f < open[bestIndex].f) bestIndex = index;
-            const current = open.splice(bestIndex, 1)[0];
+            const current = popOpen();
+            const currentKey = key(current.x, current.y);
+            if (current.g !== bestCost.get(currentKey)) continue;
             if (current.x === goal.x && current.y === goal.y) {
                 const path = [];
                 let cursor = key(goal.x, goal.y);
@@ -9836,8 +22513,8 @@ class Craftras {
                 const nextCost = current.g + (offsetX && offsetY ? Math.SQRT2 : 1);
                 if (nextCost >= (bestCost.get(nextKey) ?? Infinity)) continue;
                 bestCost.set(nextKey, nextCost);
-                parents.set(nextKey, key(current.x, current.y));
-                open.push({ x, y, g: nextCost, f: nextCost + heuristic(x, y) });
+                parents.set(nextKey, currentKey);
+                pushOpen({ x, y, g: nextCost, f: nextCost + heuristic(x, y) });
             }
         }
         return null;
@@ -9866,19 +22543,25 @@ class Craftras {
     }
 
     isValidMobAggroTarget(mob, target, players = null, now = Date.now()) {
-        if (!mob || !target || target.isDead?.()) return false;
+        if (!mob || !target || target.isDead?.() || target.craftrasSpectator) return false;
         if ((mob.craftrasAggroUntil || 0) && now > mob.craftrasAggroUntil) return false;
         if (target.craftrasMobFamily === "npc") {
-            return VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType) && this.isInsideVillageGuardZone(target) && this.isInsideVillageGuardZone(mob);
+            const bounds = this.getVillageCombatBounds(target);
+            return VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType) &&
+                this.isInsideVillageGuardZone(target, null, bounds) &&
+                this.isInsideVillageGuardZone(mob, null, bounds);
         }
         if (!players) return true;
         return players.some(({ body }) => body === target && !body?.isDead?.());
     }
 
     setMobAggro(mob, target, now = Date.now(), duration = 20_000) {
-        if (!mob || !target || mob.isDead?.() || target.isDead?.() || mob.craftrasMobFamily === "npc" || mob.craftrasMobFamily === "animal") return false;
+        if (!mob || !target || mob.isDead?.() || target.isDead?.() || target.craftrasSpectator || mob.craftrasMobFamily === "npc" || mob.craftrasMobFamily === "animal") return false;
         if (target.craftrasMobFamily === "npc" && !VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType)) return false;
-        if (target.craftrasMobFamily === "npc" && (!this.isInsideVillageGuardZone(target) || !this.isInsideVillageGuardZone(mob))) return false;
+        if (target.craftrasMobFamily === "npc") {
+            const bounds = this.getVillageCombatBounds(target);
+            if (!this.isInsideVillageGuardZone(target, null, bounds) || !this.isInsideVillageGuardZone(mob, null, bounds)) return false;
+        }
         if (this.isValidGreatFriendMonsterTarget?.(mob) && this.findSocketByBody(target)) {
             target.craftrasGreatFriendPreferredTarget = mob;
             target.craftrasGreatFriendPreferredTargetAt = now;
@@ -9922,7 +22605,7 @@ class Craftras {
         const homeCell = worldToBlock(home.x, home.y);
         const radius = mob.craftrasMobType === "blesser" || mob.craftrasMobType === "monster_merchant" ? 2 : mob.craftrasNpcWanderRadius || VILLAGE_NPC_MAX_HOME_DISTANCE;
         const villageCombatNpc = VILLAGE_COMBAT_NPC_TYPES.has(mob.craftrasMobType);
-        const bounds = villageCombatNpc ? this.villageBounds : null;
+        const bounds = villageCombatNpc ? this.getVillageCombatBounds(mob) : null;
         mob.craftrasWanderPath = null;
         mob.craftrasWanderPathIndex = 0;
 
@@ -9933,13 +22616,13 @@ class Craftras {
             const y = bounds
                 ? bounds.minY - VILLAGE_GUARD_ZONE_PADDING + Math.floor(Math.random() * (bounds.maxY - bounds.minY + 1 + VILLAGE_GUARD_ZONE_PADDING * 2))
                 : homeCell.y + Math.floor(Math.random() * (radius * 2 + 1)) - radius;
-            if (villageCombatNpc && !this.isInsideVillageGuardZone(x, y)) continue;
+            if (villageCombatNpc && !this.isInsideVillageGuardZone(x, y, bounds)) continue;
             if (this.getBlock(x, y) !== BLOCKS.AIR) continue;
             const destination = blockToWorld(x, y);
             const path = this.findMobPath(mob, destination);
             if (!path?.length) continue;
             if (villageCombatNpc) {
-                if (!path.every(point => this.isInsideVillageGuardZone(point.x, point.y))) continue;
+                if (!path.every(point => this.isInsideVillageGuardZone(point.x, point.y, bounds))) continue;
             } else if (!path.every(point => Math.abs(point.x - homeCell.x) <= radius && Math.abs(point.y - homeCell.y) <= radius)) continue;
             mob.craftrasWanderPath = path;
             mob.craftrasWanderPathIndex = 0;
@@ -9975,6 +22658,7 @@ class Craftras {
         const homeCell = worldToBlock(home.x, home.y);
         const radius = mob.craftrasMobType === "blesser" || mob.craftrasMobType === "monster_merchant" ? 2 : mob.craftrasNpcWanderRadius || VILLAGE_NPC_MAX_HOME_DISTANCE;
         const villageCombatNpc = VILLAGE_COMBAT_NPC_TYPES.has(mob.craftrasMobType);
+        const combatBounds = villageCombatNpc ? this.getVillageCombatBounds(mob) : null;
         let path = mob.craftrasWanderPath;
         let index = mob.craftrasWanderPathIndex || 0;
         if (!path?.length || index >= path.length) {
@@ -9989,7 +22673,7 @@ class Craftras {
         }
 
         let waypoint = path[index];
-        if (villageCombatNpc ? !this.isInsideVillageGuardZone(waypoint.x, waypoint.y) : Math.abs(waypoint.x - homeCell.x) > radius || Math.abs(waypoint.y - homeCell.y) > radius) {
+        if (villageCombatNpc ? !this.isInsideVillageGuardZone(waypoint.x, waypoint.y, combatBounds) : Math.abs(waypoint.x - homeCell.x) > radius || Math.abs(waypoint.y - homeCell.y) > radius) {
             mob.craftrasWanderPath = null;
             mob.craftrasWanderPathIndex = 0;
             return;
@@ -10240,9 +22924,51 @@ class Craftras {
         return true;
     }
 
+    updateWorld2Healer(healer, players, now) {
+        const castTarget = healer.craftrasHealerCastTarget;
+        if (now < (healer.craftrasClericCastUntil || 0) && castTarget && !castTarget.isDead?.()) {
+            healer.craftrasControl = {
+                goal: { x: healer.x, y: healer.y },
+                target: { x: castTarget.x - healer.x, y: castTarget.y - healer.y },
+                fire: true,
+                power: 0,
+            };
+            this.setClericStaffCastPose(healer, now);
+            return true;
+        }
+        healer.craftrasHealerCastTarget = null;
+        this.setClericStaffPose(healer, -45, 1);
+        if (now < (healer.craftrasNextHealerPulseAt || 0)) return false;
+        healer.craftrasNextHealerPulseAt = now + 1000;
+        let target = null;
+        let bestDistance = Infinity;
+        for (const { body } of players) {
+            if (!body?.health || body.isDead?.() || body.craftrasSpectator || body.health.amount <= 0 || body.health.amount >= body.health.max) continue;
+            const distance = Math.hypot(body.x - healer.x, body.y - healer.y);
+            if (distance > BLOCK_SIZE * 4 || distance >= bestDistance) continue;
+            target = body;
+            bestDistance = distance;
+        }
+        if (!target) return false;
+        target.health.amount = Math.min(target.health.max, target.health.amount + 100);
+        healer.craftrasHealerCastTarget = target;
+        healer.craftrasClericCastTarget = target;
+        healer.craftrasClericCastStarted = now;
+        healer.craftrasClericCastUntil = now + 900;
+        healer.craftrasControl = {
+            goal: { x: healer.x, y: healer.y },
+            target: { x: target.x - healer.x, y: target.y - healer.y },
+            fire: true,
+            power: 0,
+        };
+        this.setClericStaffCastPose(healer, now);
+        return true;
+    }
+
     findVillageGuardTarget(mob, home) {
         const aggroTarget = mob.craftrasGuardTarget;
-        const guardZone = target => target && this.isInsideVillageGuardZone(target);
+        const bounds = this.getVillageCombatBounds(mob);
+        const guardZone = target => target && this.isInsideVillageGuardZone(target, null, bounds);
         if (aggroTarget && !aggroTarget.isDead?.() && aggroTarget.craftrasMobFamily !== "npc" && aggroTarget.craftrasMobFamily !== "animal" && guardZone(aggroTarget)) {
             return { body: aggroTarget, distance: Math.hypot(aggroTarget.x - mob.x, aggroTarget.y - mob.y) };
         }
@@ -10261,12 +22987,14 @@ class Craftras {
     }
 
     findVillageCombatTargetForMob(mob) {
-        if (!mob || !this.isInsideVillageGuardZone(mob)) return null;
+        if (!mob) return null;
         let best = null;
         let bestDistance = Infinity;
         for (const target of this.mobs) {
             if (!target || target === mob || target.isDead?.() || target.craftrasMobFamily !== "npc") continue;
-            if (!VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType) || !this.isInsideVillageGuardZone(target)) continue;
+            if (!VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType)) continue;
+            const bounds = this.getVillageCombatBounds(target);
+            if (!this.isInsideVillageGuardZone(target, null, bounds) || !this.isInsideVillageGuardZone(mob, null, bounds)) continue;
             const distanceSquared = (target.x - mob.x) ** 2 + (target.y - mob.y) ** 2;
             if (distanceSquared >= bestDistance) continue;
             best = target;
@@ -10290,7 +23018,9 @@ class Craftras {
 
     applyVillageGuardHit(mob, target, damage, now) {
         if (!mob || !target || target.isDead?.()) return false;
+        if (target.craftrasMagicBoss && !target.craftrasMagicVulnerable) return false;
         let hitDamage = damage;
+        if (mob.craftrasChallengeActor && mob.craftrasChallengeRole === "captain") hitDamage *= 1.5;
         hitDamage = this.capKingDamageByGuardian(target, hitDamage);
         if (target.craftrasGuardian) hitDamage = this.absorbGuardianShieldDamage(target, hitDamage, now);
         if (hitDamage <= 0) return false;
@@ -10304,12 +23034,13 @@ class Craftras {
         this.flashEntity(target);
         const dx = target.x - mob.x;
         const dy = target.y - mob.y;
-        const distance = Math.hypot(dx, dy) || 1;
-        if (!target.craftrasNoKnockback) {
-            target.velocity.x += dx / distance * 10;
-            target.velocity.y += dy / distance * 10;
+        this.applyCraftrasMobKnockback(target, dx, dy, 10);
+        if (target.health.amount <= 0) {
+            if (target.craftrasMagicBoss) {
+                target.health.amount = 1;
+                this.finishChallengeMagicalBoss(target, now);
+            } else target.kill?.();
         }
-        if (target.health.amount <= 0) target.kill?.();
         return true;
     }
 
@@ -10432,7 +23163,7 @@ class Craftras {
             angle = -115 + (125 + 115) * (1 - (1 - t) ** 3);
             if (!slash.hitDone && Math.hypot(dx, dy) <= range) {
                 slash.hitDone = true;
-                const damage = mob.craftrasChallengeRole === "guardian" ? 120 : 60;
+                const damage = mob.craftrasSwordDamage || (mob.craftrasChallengeRole === "guardian" ? 120 : 60);
                 this.applyVillageGuardHit(mob, target, damage, now);
             }
         } else {
@@ -10466,8 +23197,9 @@ class Craftras {
         if (this.updateVillageGuardSlash(mob, now)) return true;
         if (this.updateVillageGuardClericRetreat(mob, now)) return true;
         let target = mob.craftrasGuardTarget;
+        const guardBounds = this.getVillageCombatBounds(mob);
         const targetValid = target && !target.isDead?.() && target.craftrasMobFamily !== "npc" && target.craftrasMobFamily !== "animal" &&
-            !target.craftrasInvulnerableNpc && this.isInsideVillageGuardZone(target);
+            !target.craftrasInvulnerableNpc && this.isInsideVillageGuardZone(target, null, guardBounds);
         if (!targetValid) {
             const nearest = this.findVillageGuardTarget(mob, home);
             target = nearest?.body || null;
@@ -10587,6 +23319,70 @@ class Craftras {
         return true;
     }
 
+    applyCraftrasMobKnockback(target, dx, dy, force) {
+        if (!target || target.craftrasNoKnockback) return false;
+        const distance = Math.hypot(dx, dy) || 1;
+        const multiplier = target.craftrasChallengeHostile && ["giant_zombie", "titan_zombie"].includes(target.craftrasMobType) ? 2 : 1;
+        const impulseX = dx / distance * force * multiplier;
+        const impulseY = dy / distance * force * multiplier;
+        if (!target.craftrasChallengeHostile) {
+            target.velocity.x += impulseX;
+            target.velocity.y += impulseY;
+            return true;
+        }
+        const velocity = target.craftrasChallengeKnockbackVelocity ||= { x: 0, y: 0 };
+        velocity.x += impulseX;
+        velocity.y += impulseY;
+        const magnitude = Math.hypot(velocity.x, velocity.y);
+        const maxMagnitude = target.craftrasMobType === "titan_zombie" ? 68 : target.craftrasMobType === "giant_zombie" ? 58 : 34;
+        if (magnitude > maxMagnitude) {
+            velocity.x = velocity.x / magnitude * maxMagnitude;
+            velocity.y = velocity.y / magnitude * maxMagnitude;
+        }
+        target.craftrasChallengeKnockbackUntil = Date.now() + 320;
+        return true;
+    }
+
+    updateChallengeHostileKnockback(mob, now = Date.now()) {
+        const velocity = mob?.craftrasChallengeKnockbackVelocity;
+        if (!velocity || now >= (mob.craftrasChallengeKnockbackUntil || 0) || Math.hypot(velocity.x, velocity.y) < 0.2) {
+            if (mob) {
+                mob.craftrasChallengeKnockbackVelocity = null;
+                mob.craftrasChallengeKnockbackUntil = 0;
+            }
+            return false;
+        }
+        const canOccupy = (x, y) => {
+            const cell = worldToBlock(x, y);
+            return !this.isBodyCollisionBlockForEntity(this.getBlock(cell.x, cell.y), mob);
+        };
+        const nextX = mob.x + velocity.x;
+        const nextY = mob.y + velocity.y;
+        if (canOccupy(nextX, nextY)) {
+            mob.x = nextX;
+            mob.y = nextY;
+        } else if (canOccupy(nextX, mob.y)) {
+            mob.x = nextX;
+        } else if (canOccupy(mob.x, nextY)) {
+            mob.y = nextY;
+        }
+        velocity.x *= 0.72;
+        velocity.y *= 0.72;
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
+        if (mob.accel) {
+            mob.accel.x = 0;
+            mob.accel.y = 0;
+        }
+        mob.craftrasControl = {
+            goal: { x: mob.x, y: mob.y },
+            target: mob.craftrasControl?.target || { x: 1, y: 0 },
+            fire: false,
+            power: 0,
+        };
+        return true;
+    }
+
     updateChallengeHostileNavigation(mob, targets, now) {
         const startX = mob.x;
         const startY = mob.y;
@@ -10606,6 +23402,7 @@ class Craftras {
             targetDistance = distance;
         }
         if (!target) return null;
+        if (this.updateChallengeHostileKnockback(mob, now)) return null;
         if (this.removeChallengeStraggler(mob, targetDistance, now)) return null;
 
         mob.craftrasTarget = target;
@@ -10715,7 +23512,12 @@ class Craftras {
             mob.craftrasTarget = priorityTarget;
             mob.craftrasNextPathAt = 0;
         }
-        if (!target || target.isDead?.() || (target.craftrasMobFamily === "npc" && !target.craftrasChallengeActor && (!VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType) || !this.isInsideVillageGuardZone(target)))) {
+        const targetSocket = this.findSocketByBody(target);
+        const unavailablePlayerTarget = !!targetSocket && (
+            target.craftrasSpectator
+            || !players.some(({ body }) => body === target && !body?.craftrasSpectator)
+        );
+        if (!target || target.isDead?.() || unavailablePlayerTarget || (target.craftrasMobFamily === "npc" && !target.craftrasChallengeActor && (!VILLAGE_COMBAT_NPC_TYPES.has(target.craftrasMobType) || !this.isInsideVillageGuardZone(target)))) {
             target = null;
             let nearestDistance = Infinity;
             for (const { body } of players) {
@@ -10740,8 +23542,14 @@ class Craftras {
 
         const targetCell = worldToBlock(target.x, target.y);
         const pathTargetKey = this.wallKey(targetCell.x, targetCell.y);
-        if (now >= (mob.craftrasNextPathAt || 0) || mob.craftrasPathTargetKey !== pathTargetKey) {
-            mob.craftrasNextPathAt = now + 500;
+        const visible = this.hasLineOfSight(mob, target);
+        if (visible) {
+            mob.craftrasPathTargetKey = pathTargetKey;
+            mob.craftrasPath = [];
+            mob.craftrasPathIndex = 0;
+        } else if (!mob.craftrasPath || now >= (mob.craftrasNextPathAt || 0)) {
+            const baseInterval = mob.craftrasWorld2SurfaceMob ? 1000 : 500;
+            mob.craftrasNextPathAt = now + baseInterval + Math.random() * 250;
             mob.craftrasPathTargetKey = pathTargetKey;
             mob.craftrasPath = this.findMobPath(mob, target);
             mob.craftrasPathIndex = 0;
@@ -10770,7 +23578,1272 @@ class Craftras {
             fire: false,
             power: 1,
         };
-        return { body: target, distance: Math.hypot(target.x - mob.x, target.y - mob.y), visible: this.hasLineOfSight(mob, target) };
+        return { body: target, distance: Math.hypot(target.x - mob.x, target.y - mob.y), visible };
+    }
+
+    stopWormMovement(mob, target = null) {
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
+        if (mob.accel) {
+            mob.accel.x = 0;
+            mob.accel.y = 0;
+        }
+        const targetX = target ? target.x - mob.x : mob.craftrasControl?.target?.x || 1;
+        const targetY = target ? target.y - mob.y : mob.craftrasControl?.target?.y || 0;
+        if (target && (targetX || targetY)) {
+            const facing = Math.atan2(targetY, targetX);
+            mob.facing = facing;
+            mob.vfacing = facing;
+        }
+        mob.craftrasControl = {
+            goal: { x: mob.x, y: mob.y },
+            target: { x: targetX, y: targetY },
+            fire: false,
+            power: 0,
+        };
+    }
+
+    canWormOccupy(mob, x, y) {
+        const radius = Math.min(BLOCK_SIZE * 0.78, Math.max(8, (mob.realSize || mob.size || mob.SIZE || 20) * 0.72));
+        const probes = [
+            { x, y },
+            { x: x + radius, y },
+            { x: x - radius, y },
+            { x, y: y + radius },
+            { x, y: y - radius },
+        ];
+        return probes.every(point => {
+            const cell = worldToBlock(point.x, point.y);
+            return !this.isBodyCollisionBlockForEntity(this.getBlock(cell.x, cell.y), mob);
+        });
+    }
+
+    startWormBurrowTransition(mob, toBurrowed, now, target = null) {
+        if (!mob || mob.craftrasWormTransition?.toBurrowed === toBurrowed) return;
+        if (!mob.craftrasWormTransition && !!mob.craftrasWormBurrowed === toBurrowed) return;
+        mob.craftrasWormTransition = {
+            toBurrowed,
+            startedAt: now,
+            target,
+        };
+        mob.craftrasWormDamageImmune = true;
+        mob.craftrasFinalDashPhasing = true;
+        mob.intangibility = true;
+        mob.craftrasWormDash = null;
+        if (!toBurrowed) {
+            const dx = target ? target.x - mob.x : Math.cos(mob.facing || 0);
+            const dy = target ? target.y - mob.y : Math.sin(mob.facing || 0);
+            const distance = Math.hypot(dx, dy) || 1;
+            const transitionDuration =
+                (mob.craftrasWormSegmentCount || 0) * CRAFTRAS_WORM_TRANSITION_PART_DELAY +
+                CRAFTRAS_WORM_TRANSITION_PART_DURATION;
+            mob.craftrasWormDash = {
+                directionX: dx / distance,
+                directionY: dy / distance,
+                endsAt: now + Math.max(CRAFTRAS_WORM_DASH_DURATION, transitionDuration),
+            };
+            mob.craftrasWormTravelAngle = Math.atan2(dy, dx);
+            mob.craftrasWormRevealUntil = now + CRAFTRAS_WORM_REVEAL_DURATION;
+        } else {
+            this.stopWormMovement(mob, target);
+        }
+    }
+
+    updateWormBurrowVisual(mob, now) {
+        const transition = mob.craftrasWormTransition;
+        const parts = [mob, ...(mob.craftrasWormSegments || [])];
+        const applyPartAppearance = (part, progress, toBurrowed) => {
+            if (!part || part.isDead?.()) return;
+            const burrowProgress = toBurrowed ? progress : 1 - progress;
+            part.color.base = burrowProgress > 0.001
+                ? CRAFTRAS_WORM_BURROW_COLOR
+                : mob.craftrasWormSurfaceColor || CRAFTRAS_WORM_SURFACE_COLOR;
+            part.alpha = 1 - (1 - CRAFTRAS_WORM_BURROW_ALPHA) * burrowProgress;
+        };
+
+        if (!transition) {
+            const buried = !!mob.craftrasWormBurrowed;
+            for (const part of parts) applyPartAppearance(part, buried ? 1 : 0, true);
+            return false;
+        }
+
+        const segmentCount = Math.max(mob.craftrasWormSegmentCount || 0, parts.length - 1);
+        for (let index = 0; index < parts.length; index++) {
+            const elapsed = now - transition.startedAt - index * CRAFTRAS_WORM_TRANSITION_PART_DELAY;
+            const progress = Math.max(0, Math.min(1, elapsed / CRAFTRAS_WORM_TRANSITION_PART_DURATION));
+            applyPartAppearance(parts[index], progress, transition.toBurrowed);
+        }
+
+        const totalDuration = segmentCount * CRAFTRAS_WORM_TRANSITION_PART_DELAY + CRAFTRAS_WORM_TRANSITION_PART_DURATION;
+        if (now - transition.startedAt < totalDuration) return true;
+
+        mob.craftrasWormTransition = null;
+        mob.craftrasWormBurrowed = transition.toBurrowed;
+        mob.craftrasWormDamageImmune = transition.toBurrowed;
+        mob.craftrasFinalDashPhasing = transition.toBurrowed;
+        mob.intangibility = transition.toBurrowed;
+        if (transition.toBurrowed) {
+            mob.craftrasNextWormDashAt = now + CRAFTRAS_WORM_DASH_INTERVAL;
+        }
+        this.updateWormBurrowVisual(mob, now);
+        return false;
+    }
+
+    moveWormDirectly(mob, target, elapsed, speedBlocksPerSecond, ignoreBlocks = false) {
+        const dx = target.x - mob.x;
+        const dy = target.y - mob.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const desiredAngle = Math.atan2(dy, dx);
+        let travelAngle = Number.isFinite(mob.craftrasWormTravelAngle)
+            ? mob.craftrasWormTravelAngle
+            : Number.isFinite(mob.facing) ? mob.facing : desiredAngle;
+        const angleDifference = Math.atan2(
+            Math.sin(desiredAngle - travelAngle),
+            Math.cos(desiredAngle - travelAngle),
+        );
+        const maxTurn = CRAFTRAS_WORM_TURN_RADIANS_PER_SECOND * elapsed / 1000;
+        travelAngle += Math.max(-maxTurn, Math.min(maxTurn, angleDifference));
+        const directionX = Math.cos(travelAngle);
+        const directionY = Math.sin(travelAngle);
+        const step = Math.min(distance, BLOCK_SIZE * speedBlocksPerSecond * elapsed / 1000);
+        const nextX = mob.x + directionX * step;
+        const nextY = mob.y + directionY * step;
+        if (!ignoreBlocks && !this.canWormOccupy(mob, nextX, nextY)) return false;
+        mob.x = nextX;
+        mob.y = nextY;
+        mob.craftrasWormTravelAngle = travelAngle;
+        mob.facing = travelAngle;
+        mob.vfacing = travelAngle;
+        this.stopWormMovement(mob, {
+            x: mob.x + directionX,
+            y: mob.y + directionY,
+        });
+        return true;
+    }
+
+    wormTouchesTarget(mob, target) {
+        const targetSize = target.realSize || target.size || target.SIZE || 12;
+        const parts = [mob, ...(mob.craftrasWormSegments || [])];
+        for (const part of parts) {
+            if (!part || part.isDead?.()) continue;
+            const partSize = part.realSize || part.size || part.SIZE || mob.craftrasWormSegmentSize || 20;
+            if (Math.hypot(part.x - target.x, part.y - target.y) <= partSize + targetSize + 3) return true;
+        }
+        return false;
+    }
+
+    getTheWormTargetSpeed(target) {
+        return Math.max(0, Math.hypot(target?.velocity?.x || 0, target?.velocity?.y || 0));
+    }
+
+    stopTheWormMovement(mob, direction = null) {
+        if (!mob) return;
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
+        if (mob.accel) {
+            mob.accel.x = 0;
+            mob.accel.y = 0;
+        }
+        const facing = direction
+            ? Math.atan2(direction.y, direction.x)
+            : Number.isFinite(mob.craftrasWormTravelAngle) ? mob.craftrasWormTravelAngle : mob.facing || 0;
+        mob.craftrasWormTravelAngle = facing;
+        mob.facing = facing;
+        mob.vfacing = facing;
+        mob.craftrasControl = {
+            goal: { x: mob.x, y: mob.y },
+            target: { x: Math.cos(facing), y: Math.sin(facing) },
+            fire: false,
+            power: 0,
+        };
+    }
+
+    moveTheWormStraight(mob, direction, speed, elapsed) {
+        const length = Math.hypot(direction?.x || 0, direction?.y || 0) || 1;
+        const unit = { x: direction.x / length, y: direction.y / length };
+        const previous = { x: mob.x, y: mob.y };
+        const step = Math.max(0, speed) * CRAFTRAS_THE_WORM_TICKS_PER_SECOND * elapsed / 1000;
+        mob.x += unit.x * step;
+        mob.y += unit.y * step;
+        this.stopTheWormMovement(mob, unit);
+        return previous;
+    }
+
+    startTheWormDash(mob, target, now) {
+        const dx = target.x - mob.x;
+        const dy = target.y - mob.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        mob.craftrasTheWormAction = {
+            type: "dash",
+            direction: { x: dx / distance, y: dy / distance },
+            speed: (this.getTheWormTargetSpeed(target) + CRAFTRAS_THE_WORM_SPEED_BONUS) * 1.3,
+            endsAt: now + CRAFTRAS_THE_WORM_DASH_DURATION,
+        };
+    }
+
+    startTheWormIntercept(mob, target, now) {
+        const targetSpeed = this.getTheWormTargetSpeed(target);
+        const speed = (targetSpeed + CRAFTRAS_THE_WORM_SPEED_BONUS) * 3;
+        const distance = Math.hypot(target.x - mob.x, target.y - mob.y);
+        const predictionSeconds = Math.max(0.5, Math.min(2.5, distance / Math.max(1, speed * CRAFTRAS_THE_WORM_TICKS_PER_SECOND)));
+        const predicted = {
+            x: target.x + (target.velocity?.x || 0) * CRAFTRAS_THE_WORM_TICKS_PER_SECOND * predictionSeconds,
+            y: target.y + (target.velocity?.y || 0) * CRAFTRAS_THE_WORM_TICKS_PER_SECOND * predictionSeconds,
+        };
+        const dx = predicted.x - mob.x;
+        const dy = predicted.y - mob.y;
+        const directDistance = Math.hypot(dx, dy) || 1;
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const curveOffset = Math.max(BLOCK_SIZE * 12, directDistance * 0.65) * CRAFTRAS_THE_WORM_INTERCEPT_CURVE_SCALE * side;
+        const control = {
+            x: (mob.x + predicted.x) * 0.5 - dy / directDistance * curveOffset,
+            y: (mob.y + predicted.y) * 0.5 + dx / directDistance * curveOffset,
+        };
+        const approximateLength = directDistance + Math.abs(curveOffset) * 1.25;
+        const duration = Math.max(700, Math.min(5_000, approximateLength / Math.max(1, speed * CRAFTRAS_THE_WORM_TICKS_PER_SECOND) * 1000));
+        mob.craftrasTheWormAction = {
+            type: "intercept",
+            startsAt: now,
+            endsAt: now + duration,
+            start: { x: mob.x, y: mob.y },
+            control,
+            end: predicted,
+        };
+        mob.craftrasTheWormSkillTwoReadyAt = now + CRAFTRAS_THE_WORM_SKILL_TWO_COOLDOWN;
+    }
+
+    spawnTheWormSpikes(mob, target, now) {
+        if (!mob || !target) return;
+        const baseAngle = Math.atan2(target.y - mob.y, target.x - mob.x);
+        for (let index = 0; index < CRAFTRAS_THE_WORM_SPIKE_COUNT; index++) {
+            const offset = (index - (CRAFTRAS_THE_WORM_SPIKE_COUNT - 1) * 0.5) * 0.28;
+            const angle = baseAngle + offset;
+            const radius = Math.max(48, (mob.realSize || mob.size || mob.craftrasWormSegmentSize || 96) * 0.62);
+            const spike = this.spawnMobAt({
+                x: mob.x + Math.cos(angle) * radius,
+                y: mob.y + Math.sin(angle) * radius,
+            }, "spiker_spike");
+            if (!spike) continue;
+            spike.craftrasTheWormSpike = true;
+            spike.craftrasTheWormOwner = mob;
+            spike.craftrasTheWormTarget = target;
+            spike.craftrasTheWormDirection = { x: Math.cos(angle), y: Math.sin(angle) };
+            spike.craftrasTheWormExpiresAt = now + CRAFTRAS_THE_WORM_SPIKE_LIFETIME;
+            spike.craftrasTheWormLastUpdateAt = now;
+            spike.craftrasFinalDashPhasing = true;
+            spike.intangibility = true;
+            spike.craftrasNoKnockback = true;
+            spike.alwaysActive = true;
+        }
+    }
+
+    theWormSweptTouchesTarget(mob, target, previous) {
+        if (this.wormTouchesTarget(mob, target)) return true;
+        if (!previous) return false;
+        const dx = mob.x - previous.x;
+        const dy = mob.y - previous.y;
+        const lengthSquared = dx * dx + dy * dy;
+        const blend = lengthSquared > 0
+            ? Math.max(0, Math.min(1, ((target.x - previous.x) * dx + (target.y - previous.y) * dy) / lengthSquared))
+            : 0;
+        const closestX = previous.x + dx * blend;
+        const closestY = previous.y + dy * blend;
+        const hitRadius = (mob.realSize || mob.size || mob.craftrasWormSegmentSize || 96)
+            + (target.realSize || target.size || target.SIZE || 12)
+            + 4;
+        return Math.hypot(target.x - closestX, target.y - closestY) <= hitRadius;
+    }
+
+    applyTheWormContactDamage(mob, players, now, previous) {
+        for (const { body } of players) {
+            if (!body || body.isDead?.() || body.craftrasSpectator) continue;
+            const lastHit = mob.craftrasTheWormContactHits.get(body.id) || 0;
+            if (now - lastHit < 750 || !this.theWormSweptTouchesTarget(mob, body, previous)) continue;
+            mob.craftrasTheWormContactHits.set(body.id, now);
+            let closestPart = mob;
+            let closestDistanceSquared = Infinity;
+            for (const part of [mob, ...(mob.craftrasWormSegments || [])]) {
+                if (!part || part.isDead?.()) continue;
+                const dx = body.x - part.x;
+                const dy = body.y - part.y;
+                const distanceSquared = dx * dx + dy * dy;
+                if (distanceSquared >= closestDistanceSquared) continue;
+                closestDistanceSquared = distanceSquared;
+                closestPart = part;
+            }
+            const hitBodySegment = closestPart !== mob;
+            if (!hitBodySegment) this.applyCombatTargetDamage(body, CRAFTRAS_THE_WORM_CONTACT_DAMAGE, mob);
+            let pushX = body.x - closestPart.x;
+            let pushY = body.y - closestPart.y;
+            let pushDistance = Math.hypot(pushX, pushY);
+            if (pushDistance < 0.001) {
+                const facing = Number.isFinite(closestPart.facing) ? closestPart.facing : mob.facing || 0;
+                pushX = Math.cos(facing);
+                pushY = Math.sin(facing);
+                pushDistance = 1;
+            }
+            const knockback = hitBodySegment
+                ? CRAFTRAS_THE_WORM_BODY_CONTACT_KNOCKBACK
+                : CRAFTRAS_THE_WORM_CONTACT_KNOCKBACK;
+            body.velocity.x += pushX / pushDistance * knockback;
+            body.velocity.y += pushY / pushDistance * knockback;
+        }
+    }
+
+    updateTheWormProximityShake(mob, players, now) {
+        if (now < (mob.craftrasTheWormNextProximityShakeAt || 0)) return;
+        mob.craftrasTheWormNextProximityShakeAt = now + CRAFTRAS_THE_WORM_SHAKE_INTERVAL;
+        const parts = [mob, ...(mob.craftrasWormSegments || [])].filter(part => part && !part.isDead?.());
+        for (const { socket, body } of players) {
+            if (!socket || !body || body.isDead?.() || body.craftrasSpectator) continue;
+            let distance = Infinity;
+            for (const part of parts) distance = Math.min(distance, Math.hypot(body.x - part.x, body.y - part.y));
+            if (distance >= CRAFTRAS_THE_WORM_SHAKE_RANGE) continue;
+            const proximity = 1 - Math.max(0, distance) / CRAFTRAS_THE_WORM_SHAKE_RANGE;
+            const shakeMultiplier = CRAFTRAS_THE_WORM_PROXIMITY_SHAKE_MULTIPLIER * (mob.craftrasTheWormFinalStand
+                ? CRAFTRAS_THE_WORM_FINAL_STAND_SHAKE_MULTIPLIER
+                : 1);
+            socket.talk?.("SH", JSON.stringify({
+                type: "camera",
+                duration: CRAFTRAS_THE_WORM_SHAKE_INTERVAL + 80,
+                amount: (1.5 + proximity * proximity * 18) * shakeMultiplier,
+                keepShake: false,
+                push: false,
+            }));
+        }
+    }
+
+    updateTheWorm(mob, players, now) {
+        const nearest = this.nearestPlayer(mob, players);
+        const elapsed = Math.max(8, Math.min(50, now - (mob.craftrasWormLastUpdateAt || now - 16)));
+        mob.craftrasWormLastUpdateAt = now;
+        mob.craftrasWormDamageImmune = false;
+        mob.craftrasWormBurrowed = false;
+        mob.color.base = CRAFTRAS_WORM_SURFACE_COLOR;
+        mob.alpha = 1;
+        if (!nearest) {
+            this.stopTheWormMovement(mob);
+            return null;
+        }
+
+        const target = nearest.body;
+        mob.craftrasTarget = target;
+        const healthRatio = Math.max(0, mob.health?.amount || 0) / Math.max(1, mob.health?.max || 1);
+        if (healthRatio < CRAFTRAS_THE_WORM_FINAL_STAND_HEALTH_RATIO && !mob.craftrasTheWormFinalStand) {
+            mob.craftrasTheWormFinalStand = true;
+            mob.craftrasTheWormNextDashAt = Math.min(
+                mob.craftrasTheWormNextDashAt || now + CRAFTRAS_THE_WORM_FINAL_STAND_DASH_INTERVAL,
+                now + CRAFTRAS_THE_WORM_FINAL_STAND_DASH_INTERVAL,
+            );
+        }
+        this.updateTheWormProximityShake(mob, players, now);
+        if (now >= (mob.craftrasTheWormNextSpikeAt || 0)) {
+            mob.craftrasTheWormNextSpikeAt = now + CRAFTRAS_THE_WORM_SPIKE_INTERVAL;
+            this.spawnTheWormSpikes(mob, target, now);
+        }
+
+        if (!mob.craftrasTheWormAction && now >= (mob.craftrasTheWormNextDashAt || 0)) {
+            mob.craftrasTheWormNextDashAt = now + (mob.craftrasTheWormFinalStand
+                ? CRAFTRAS_THE_WORM_FINAL_STAND_DASH_INTERVAL
+                : CRAFTRAS_THE_WORM_DASH_INTERVAL);
+            if (
+                now >= (mob.craftrasTheWormSkillTwoReadyAt || 0)
+                && Math.random() < CRAFTRAS_THE_WORM_SKILL_TWO_CHANCE
+            ) this.startTheWormIntercept(mob, target, now);
+            else this.startTheWormDash(mob, target, now);
+        }
+
+        let previous = { x: mob.x, y: mob.y };
+        const action = mob.craftrasTheWormAction;
+        if (action?.type === "dash") {
+            if (now >= action.endsAt) mob.craftrasTheWormAction = null;
+            else {
+                previous = this.moveTheWormStraight(mob, action.direction, action.speed, elapsed);
+            }
+        } else if (action?.type === "intercept") {
+            if (now >= action.endsAt) {
+                mob.x = action.end.x;
+                mob.y = action.end.y;
+                mob.craftrasTheWormAction = null;
+            } else {
+                const progress = Math.max(0, Math.min(1, (now - action.startsAt) / Math.max(1, action.endsAt - action.startsAt)));
+                const inverse = 1 - progress;
+                const next = {
+                    x: inverse * inverse * action.start.x + 2 * inverse * progress * action.control.x + progress * progress * action.end.x,
+                    y: inverse * inverse * action.start.y + 2 * inverse * progress * action.control.y + progress * progress * action.end.y,
+                };
+                const direction = { x: next.x - mob.x, y: next.y - mob.y };
+                mob.x = next.x;
+                mob.y = next.y;
+                this.stopTheWormMovement(mob, direction);
+            }
+        } else {
+            const dx = target.x - mob.x;
+            const dy = target.y - mob.y;
+            const desiredAngle = Math.atan2(dy, dx);
+            const currentAngle = Number.isFinite(mob.craftrasWormTravelAngle) ? mob.craftrasWormTravelAngle : desiredAngle;
+            const difference = Math.atan2(Math.sin(desiredAngle - currentAngle), Math.cos(desiredAngle - currentAngle));
+            const maxTurn = CRAFTRAS_THE_WORM_TURN_RADIANS_PER_SECOND * elapsed / 1000;
+            const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, difference));
+            const speed = this.getTheWormTargetSpeed(target) + CRAFTRAS_THE_WORM_SPEED_BONUS;
+            previous = this.moveTheWormStraight(mob, { x: Math.cos(nextAngle), y: Math.sin(nextAngle) }, speed, elapsed);
+        }
+
+        this.applyTheWormContactDamage(mob, players, now, previous);
+        return nearest;
+    }
+
+    updateTheWormSpike(spike, players, now) {
+        const owner = spike.craftrasTheWormOwner;
+        if (!owner || owner.isDead?.() || now >= (spike.craftrasTheWormExpiresAt || 0)) {
+            spike.destroy?.();
+            this.mobs.delete(spike);
+            return;
+        }
+        let target = spike.craftrasTheWormTarget;
+        if (!target || target.isDead?.() || target.craftrasSpectator || !players.some(({ body }) => body === target)) {
+            target = this.nearestPlayer(spike, players)?.body || null;
+            spike.craftrasTheWormTarget = target;
+        }
+        if (!target) {
+            this.stopTheWormMovement(spike);
+            return;
+        }
+        const elapsed = Math.max(8, Math.min(50, now - (spike.craftrasTheWormLastUpdateAt || now - 16)));
+        spike.craftrasTheWormLastUpdateAt = now;
+        const dx = target.x - spike.x;
+        const dy = target.y - spike.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const current = spike.craftrasTheWormDirection || { x: dx / distance, y: dy / distance };
+        const currentAngle = Math.atan2(current.y, current.x);
+        const desiredAngle = Math.atan2(dy, dx);
+        const difference = Math.atan2(Math.sin(desiredAngle - currentAngle), Math.cos(desiredAngle - currentAngle));
+        const maxTurn = CRAFTRAS_THE_WORM_SPIKE_TURN_RADIANS_PER_SECOND * elapsed / 1000;
+        const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, difference));
+        const direction = { x: Math.cos(nextAngle), y: Math.sin(nextAngle) };
+        spike.craftrasTheWormDirection = direction;
+        const playerSpeed = Math.max(
+            this.getTheWormTargetSpeed(target),
+            Number(target.topSpeed) || 0,
+            12,
+        );
+        this.moveTheWormStraight(spike, direction, playerSpeed * 2, elapsed);
+        const hitRange = (spike.realSize || spike.size || 24) + (target.realSize || target.size || 12) + 3;
+        if (Math.hypot(target.x - spike.x, target.y - spike.y) > hitRange) return;
+        this.applyCombatTargetDamage(target, CRAFTRAS_THE_WORM_SPIKE_DAMAGE, spike);
+        spike.destroy?.();
+        this.mobs.delete(spike);
+    }
+
+    sendWorld2ChallengeMessage(duration, message, color = "#ffffff") {
+        for (const socket of this.gameManager.clients || []) socket?.talk?.("BM", duration, message, color);
+    }
+
+    findWorld2ChallengeBossSpawn(players) {
+        const living = (players || []).filter(({ body }) => body && !body.isDead?.() && !body.craftrasSpectator);
+        if (!living.length) return null;
+        const halfWorld = this.worldSize * 0.5 - BLOCK_SIZE * 12;
+        for (let attempt = 0; attempt < 120; attempt++) {
+            const owner = living[Math.floor(Math.random() * living.length)].body;
+            const angle = Math.random() * Math.PI * 2;
+            const distance = BLOCK_SIZE * (16 + Math.random() * 12);
+            const location = {
+                x: Math.max(-halfWorld, Math.min(halfWorld, owner.x + Math.cos(angle) * distance)),
+                y: Math.max(-halfWorld, Math.min(halfWorld, owner.y + Math.sin(angle) * distance)),
+            };
+            const cell = worldToBlock(location.x, location.y);
+            if (this.getBlock(cell.x, cell.y) !== BLOCKS.AIR || this.placementOverlapsEntity(cell.x, cell.y)) continue;
+            if (living.some(({ body }) => Math.hypot(body.x - location.x, body.y - location.y) < BLOCK_SIZE * 10)) continue;
+            return location;
+        }
+        const owner = living[Math.floor(Math.random() * living.length)].body;
+        const angle = Math.random() * Math.PI * 2;
+        return {
+            x: Math.max(-halfWorld, Math.min(halfWorld, owner.x + Math.cos(angle) * BLOCK_SIZE * 20)),
+            y: Math.max(-halfWorld, Math.min(halfWorld, owner.y + Math.sin(angle) * BLOCK_SIZE * 20)),
+        };
+    }
+
+    startWorld2Challenge(players, now = Date.now()) {
+        if (!Config.craftras_world2_challenge_builder || this.world2ChallengeStage !== "waiting") return false;
+        this.world2ChallengeStage = "countdown";
+        this.world2ChallengeStartedAt = now;
+        this.world2ChallengeSpawnAt = now + CRAFTRAS_WORLD2_CHALLENGE_SPAWN_DELAY;
+        this.sendWorld2ChallengeMessage(
+            CRAFTRAS_WORLD2_CHALLENGE_WARNING_DURATION,
+            "You feel a tremendous vibration...",
+            "#e9dfcf",
+        );
+        const shake = JSON.stringify({
+            type: "camera",
+            duration: 1_200,
+            amount: 12,
+            keepShake: false,
+            push: false,
+        });
+        for (const { socket } of players || []) socket?.talk?.("SH", shake);
+        return true;
+    }
+
+    spawnWorld2ChallengeBoss(players, now = Date.now()) {
+        if (this.world2ChallengeStage !== "countdown") return null;
+        const location = this.findWorld2ChallengeBossSpawn(players);
+        if (!location) return null;
+        const boss = this.spawnMobAt(location, "the_worm");
+        if (!boss) return null;
+        boss.craftrasWorld2ChallengeBoss = true;
+        boss.craftrasChallengeNoLoot = true;
+        boss.craftrasScoreMultiplier = 0;
+        boss.skill.score = 0;
+        boss.craftrasTheWormNextDashAt = now + CRAFTRAS_THE_WORM_DASH_INTERVAL;
+        boss.craftrasTheWormNextSpikeAt = now + CRAFTRAS_THE_WORM_SPIKE_INTERVAL;
+        this.world2ChallengeBoss = boss;
+        this.world2ChallengeStage = "active";
+        return boss;
+    }
+
+    startWorld2ChallengeWormDefeat(mob, now = Date.now()) {
+        if (!Config.craftras_world2_challenge_builder || !mob?.craftrasWorld2ChallengeBoss || mob.craftrasWorld2ChallengeDefeating) return false;
+        mob.craftrasWorld2ChallengeDefeating = true;
+        mob.craftrasChallengeNoLoot = true;
+        mob.craftrasLootDropped = true;
+        mob.craftrasWormDamageImmune = true;
+        mob.craftrasContactDamage = 0;
+        mob.craftrasTheWormAction = null;
+        mob.damageReceived = 0;
+        mob.health.amount = 1;
+        mob.readyToDie = false;
+        mob.invuln = true;
+        this.stopTheWormMovement(mob);
+        for (const entity of [...this.mobs]) {
+            if (entity?.craftrasTheWormOwner !== mob) continue;
+            entity.destroy?.();
+            this.mobs.delete(entity);
+        }
+        const parts = [mob, ...(mob.craftrasWormSegments || [])];
+        this.world2ChallengeDefeat = {
+            mob,
+            startedAt: now,
+            originalColors: parts.map(part => part?.color?.base || CRAFTRAS_WORM_SURFACE_COLOR),
+            finished: false,
+        };
+        this.world2ChallengeStage = "defeat";
+        return true;
+    }
+
+    blendChallengeWormColor(from, to, progress) {
+        const parse = value => {
+            const normalized = /^#[0-9a-f]{6}$/i.test(String(value || "")) ? String(value) : "#ffffff";
+            return [1, 3, 5].map(index => parseInt(normalized.slice(index, index + 2), 16));
+        };
+        const start = parse(from);
+        const end = parse(to);
+        const t = Math.max(0, Math.min(1, Number(progress) || 0));
+        return `#${start.map((value, index) => Math.round(value + (end[index] - value) * t).toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    startWorld2ChallengeCompletion(now = Date.now()) {
+        if (this.world2ChallengeCompletion) return false;
+        this.world2ChallengeStage = "complete";
+        this.world2ChallengeCompletion = {
+            fadeAt: now + CRAFTRAS_WORLD2_CHALLENGE_CLEAR_DURATION,
+            transferAt: now + CRAFTRAS_WORLD2_CHALLENGE_CLEAR_DURATION + CRAFTRAS_CHALLENGE_TRANSFER_DELAY_MS,
+            fadeStarted: false,
+            transferred: false,
+        };
+        for (const socket of this.gameManager.clients || []) {
+            const tokenReward = this.gameManager.socketManager.grantCraftrasChallengeToken(socket, "world2", 1);
+            if (tokenReward.granted) {
+                socket?.talk?.("m", 6_000, "World 2 Challenge Token earned.");
+            } else if (tokenReward.reason === "claimed") {
+                socket?.talk?.("m", 6_000, "The World 2 Challenge Token was already claimed.");
+            } else if (tokenReward.reason === "blocked") {
+                socket?.talk?.("m", 6_000, "Admin or Creative sessions cannot earn Tokens.");
+            }
+        }
+        this.sendWorld2ChallengeMessage(CRAFTRAS_WORLD2_CHALLENGE_CLEAR_DURATION, "CHALLENGE CLEAR", "#38e56f");
+        return true;
+    }
+
+    updateWorld2ChallengeWormDefeat(now = Date.now()) {
+        const defeat = this.world2ChallengeDefeat;
+        const mob = defeat?.mob;
+        if (!defeat || defeat.finished || !mob) return false;
+        mob.damageReceived = 0;
+        mob.health.amount = 1;
+        mob.readyToDie = false;
+        mob.invuln = true;
+        this.stopTheWormMovement(mob);
+        const parts = [mob, ...(mob.craftrasWormSegments || [])];
+        for (let index = 0; index < parts.length; index++) {
+            const part = parts[index];
+            if (!part || part.isDead?.()) continue;
+            const progress = (now - defeat.startedAt - index * CRAFTRAS_WORLD2_CHALLENGE_WORM_PART_DELAY)
+                / CRAFTRAS_WORLD2_CHALLENGE_WORM_WHITEN_DURATION;
+            const originalColor = defeat.originalColors[index] || CRAFTRAS_WORM_SURFACE_COLOR;
+            part.craftrasWormDefeatColor = this.blendChallengeWormColor(originalColor, "#ffffff", progress);
+            part.craftrasWormDefeatAlpha = 1;
+            part.color.base = part.craftrasWormDefeatColor;
+            part.alpha = 1;
+        }
+        const whitenEnd = defeat.startedAt
+            + Math.max(0, parts.length - 1) * CRAFTRAS_WORLD2_CHALLENGE_WORM_PART_DELAY
+            + CRAFTRAS_WORLD2_CHALLENGE_WORM_WHITEN_DURATION;
+        if (now < whitenEnd) return true;
+        const fadeProgress = Math.max(0, Math.min(1, (now - whitenEnd) / CRAFTRAS_WORLD2_CHALLENGE_WORM_FADE_DURATION));
+        for (const part of parts) {
+            if (!part || part.isDead?.()) continue;
+            part.craftrasWormDefeatColor = "#ffffff";
+            part.craftrasWormDefeatAlpha = 1 - fadeProgress;
+            part.color.base = part.craftrasWormDefeatColor;
+            part.alpha = part.craftrasWormDefeatAlpha;
+        }
+        if (fadeProgress < 1) return true;
+        defeat.finished = true;
+        mob.health.amount = 0;
+        for (const segment of mob.craftrasWormSegments || []) segment?.destroy?.();
+        mob.craftrasWormSegments = [];
+        mob.destroy?.();
+        this.mobs.delete(mob);
+        this.world2ChallengeBoss = null;
+        this.startWorld2ChallengeCompletion(now);
+        return true;
+    }
+
+    updateWorld2ChallengeCompletion(now = Date.now()) {
+        const completion = this.world2ChallengeCompletion;
+        if (!completion) return false;
+        if (!completion.fadeStarted && now >= completion.fadeAt) {
+            completion.fadeStarted = true;
+            for (const socket of this.gameManager.clients || []) socket?.talk?.("CTR", 1, CRAFTRAS_CHALLENGE_TRANSITION_OUT_MS);
+        }
+        if (!completion.transferred && now >= completion.transferAt) {
+            completion.transferred = true;
+            this.transferChallengeClientsToWorld1(now);
+        }
+        return true;
+    }
+
+    updateWorld2ChallengeLifecycle(players, now = Date.now()) {
+        const living = (players || []).filter(({ body }) => body && !body.isDead?.() && !body.craftrasSpectator);
+        if (this.world2ChallengeStage === "waiting" && living.length) this.startWorld2Challenge(living, now);
+        if (this.world2ChallengeStage === "countdown" && now >= this.world2ChallengeSpawnAt) {
+            if (!this.spawnWorld2ChallengeBoss(living, now)) this.world2ChallengeSpawnAt = now + 1_000;
+        }
+        if (this.world2ChallengeStage === "defeat") this.updateWorld2ChallengeWormDefeat(now);
+        if (this.world2ChallengeStage === "complete") this.updateWorld2ChallengeCompletion(now);
+    }
+
+    updateWorld2ChallengeMobs(players, now) {
+        this.updateWorld2ChallengeLifecycle(players, now);
+        for (const mob of this.mobs) {
+            if (!mob || mob.isDead?.()) {
+                this.mobs.delete(mob);
+                continue;
+            }
+            if (mob.craftrasMobType === "the_worm") {
+                if (mob.craftrasWorld2ChallengeDefeating) continue;
+                this.restoreEntityFlash(mob, now);
+                this.updateParrySlowedMob(mob, now);
+                this.updateTheWorm(mob, players, now);
+            } else if (mob.craftrasTheWormSpike) {
+                this.updateTheWormSpike(mob, players, now);
+            }
+        }
+    }
+
+    updateWorm(mob, players, now) {
+        const nearest = this.nearestPlayer(mob, players);
+        let currentHealth = Number(mob.health?.amount) || 0;
+        if (
+            mob.craftrasWormDamageImmune &&
+            Number.isFinite(mob.craftrasWormLastHealth) &&
+            currentHealth < mob.craftrasWormLastHealth
+        ) {
+            mob.health.amount = mob.craftrasWormLastHealth;
+            currentHealth = mob.craftrasWormLastHealth;
+            mob.damageReceived = 0;
+            mob.readyToDie = false;
+        }
+        if (
+            !mob.craftrasWormDamageImmune &&
+            !mob.craftrasWormIgnoresHitStop &&
+            Number.isFinite(mob.craftrasWormLastHealth) &&
+            currentHealth < mob.craftrasWormLastHealth - 0.001
+        ) {
+            mob.craftrasWormStunnedUntil = Math.max(
+                mob.craftrasWormStunnedUntil || 0,
+                now + CRAFTRAS_WORM_HIT_STOP_DURATION,
+            );
+            mob.craftrasWormDash = null;
+        }
+        mob.craftrasWormLastHealth = currentHealth;
+        this.updateWormBurrowVisual(mob, now);
+
+        if (!nearest) {
+            this.clearMobAggro(mob);
+            this.stopWormMovement(mob);
+            return null;
+        }
+
+        const target = nearest.body;
+        mob.craftrasTarget = target;
+        const elapsed = Math.max(8, Math.min(50, now - (mob.craftrasWormLastUpdateAt || now - 16)));
+        mob.craftrasWormLastUpdateAt = now;
+        if (mob.craftrasWormTransition) {
+            const transition = mob.craftrasWormTransition;
+            const dash = mob.craftrasWormDash;
+            if (!transition.toBurrowed && dash && now < dash.endsAt) {
+                const giantMultiplier = mob.craftrasMobType === "giant_worm" ? 2 : 1;
+                const step = BLOCK_SIZE * CRAFTRAS_WORM_DASH_BLOCKS_PER_SECOND * giantMultiplier * elapsed / 1000;
+                mob.x += dash.directionX * step;
+                mob.y += dash.directionY * step;
+                const facing = Math.atan2(dash.directionY, dash.directionX);
+                mob.craftrasWormTravelAngle = facing;
+                mob.facing = facing;
+                mob.vfacing = facing;
+                this.stopWormMovement(mob, {
+                    x: mob.x + dash.directionX,
+                    y: mob.y + dash.directionY,
+                });
+            } else {
+                this.stopWormMovement(mob, target);
+            }
+            return nearest;
+        }
+
+        if (mob.craftrasWormBurrowed) {
+            mob.craftrasFinalDashPhasing = true;
+            const giantMultiplier = mob.craftrasMobType === "giant_worm" ? 2 : 1;
+            this.moveWormDirectly(
+                mob,
+                target,
+                elapsed,
+                CRAFTRAS_WORM_BURROW_BLOCKS_PER_SECOND * giantMultiplier,
+                true,
+            );
+            if (now >= (mob.craftrasNextWormDashAt || 0)) {
+                this.startWormBurrowTransition(mob, false, now, target);
+            }
+            return {
+                body: target,
+                distance: Math.hypot(target.x - mob.x, target.y - mob.y),
+                visible: true,
+            };
+        }
+
+        mob.craftrasFinalDashPhasing = false;
+        if (now < (mob.craftrasWormStunnedUntil || 0)) {
+            this.stopWormMovement(mob, target);
+            return nearest;
+        }
+
+        if (now >= (mob.craftrasWormRevealUntil || 0)) {
+            this.startWormBurrowTransition(mob, true, now, target);
+            return nearest;
+        }
+
+        const dash = mob.craftrasWormDash;
+        if (dash) {
+            if (now >= dash.endsAt) {
+                mob.craftrasWormDash = null;
+                mob.craftrasWormLastUpdateAt = now;
+            } else {
+                const elapsed = Math.max(8, Math.min(50, now - (mob.craftrasWormLastUpdateAt || now - 16)));
+                const giantMultiplier = mob.craftrasMobType === "giant_worm" ? 2 : 1;
+                const step = BLOCK_SIZE * CRAFTRAS_WORM_DASH_BLOCKS_PER_SECOND * giantMultiplier * elapsed / 1000;
+                const nextX = mob.x + dash.directionX * step;
+                const nextY = mob.y + dash.directionY * step;
+                if (this.canWormOccupy(mob, nextX, nextY)) {
+                    mob.x = nextX;
+                    mob.y = nextY;
+                } else {
+                    this.startWormBurrowTransition(mob, true, now, target);
+                }
+                const facing = Math.atan2(dash.directionY, dash.directionX);
+                mob.craftrasWormTravelAngle = facing;
+                mob.facing = facing;
+                mob.vfacing = facing;
+                this.stopWormMovement(mob, {
+                    x: mob.x + dash.directionX,
+                    y: mob.y + dash.directionY,
+                });
+                mob.craftrasWormLastUpdateAt = now;
+            }
+        } else {
+            const giantMultiplier = mob.craftrasMobType === "giant_worm" ? 2 : 1;
+            if (!this.moveWormDirectly(mob, target, elapsed, CRAFTRAS_WORM_BURROW_BLOCKS_PER_SECOND * giantMultiplier)) {
+                this.startWormBurrowTransition(mob, true, now, target);
+            }
+        }
+
+        if (
+            !mob.craftrasWormBurrowed &&
+            !mob.craftrasWormTransition &&
+            this.wormTouchesTarget(mob, target) &&
+            now >= (mob.craftrasNextContactAt || 0)
+        ) {
+            mob.craftrasNextContactAt = now + 750;
+            this.applyCombatTargetDamage(target, mob.craftrasContactDamage ?? 80, mob);
+            if (mob.craftrasFireOnHit) this.applyPlayerFire(target, mob);
+        }
+        return {
+            body: target,
+            distance: Math.hypot(target.x - mob.x, target.y - mob.y),
+            visible: this.hasLineOfSight(mob, target),
+        };
+    }
+
+    stopSpikerMovement(mob, target = null) {
+        if (!mob) return;
+        mob.velocity.x = 0;
+        mob.velocity.y = 0;
+        if (mob.accel) {
+            mob.accel.x = 0;
+            mob.accel.y = 0;
+        }
+        const direction = target
+            ? { x: target.x - mob.x, y: target.y - mob.y }
+            : mob.craftrasControl?.target || { x: 1, y: 0 };
+        mob.craftrasControl = {
+            goal: { x: mob.x, y: mob.y },
+            target: direction,
+            fire: false,
+            power: 0,
+        };
+        if (target) {
+            const angle = Math.atan2(direction.y, direction.x);
+            mob.facing = angle;
+            mob.vfacing = angle;
+        }
+    }
+
+    setSpikerState(mob, state, now) {
+        if (!mob || mob.craftrasSpikerState === state) return;
+        mob.craftrasSpikerState = state;
+        mob.craftrasSpikerStateStartedAt = now;
+        if (state === "burrowed") {
+            mob.craftrasSpikerDamageImmune = true;
+            mob.craftrasSpikerLastHealth = Number(mob.health?.amount) || mob.health?.max || MOB_HEALTH.spiker;
+            mob.craftrasFinalDashPhasing = true;
+            mob.intangibility = true;
+            mob.alpha = CRAFTRAS_SPIKER_BURROW_ALPHA;
+            mob.color.base = "#17130f";
+        } else if (state === "waiting") {
+            mob.craftrasSpikerDamageImmune = true;
+            mob.craftrasFinalDashPhasing = true;
+            mob.intangibility = true;
+            mob.alpha = CRAFTRAS_SPIKER_BURROW_ALPHA;
+            mob.color.base = "#17130f";
+        } else if (state === "pulling") {
+            mob.craftrasSpikerDamageImmune = true;
+            mob.craftrasFinalDashPhasing = true;
+            mob.intangibility = true;
+            mob.alpha = CRAFTRAS_SPIKER_BURROW_ALPHA;
+            mob.color.base = mob.craftrasBaseColor || "#76543b";
+            mob.craftrasNextSpikerPullTrailAt = now;
+        } else if (state === "emerging") {
+            mob.craftrasSpikerDamageImmune = true;
+            mob.craftrasSpikerLastHealth = Number(mob.health?.amount) || mob.health?.max || MOB_HEALTH.spiker;
+            mob.craftrasFinalDashPhasing = true;
+            mob.intangibility = true;
+            mob.craftrasNextSpikerEmergeEffectAt = now;
+            this.spawnExplosionEffect(mob, {
+                duration: 700,
+                startSize: Math.max(36, (mob.realSize || mob.size || 288) * 0.28),
+                endSize: Math.max(180, (mob.realSize || mob.size || 288) * 1.25),
+                color: "#d8b86d",
+                alpha: 0.72,
+                fade: true,
+            });
+        } else if (state === "exposed") {
+            mob.craftrasSpikerDamageImmune = false;
+            mob.craftrasFinalDashPhasing = false;
+            mob.intangibility = false;
+            mob.alpha = 1;
+            mob.color.base = mob.craftrasBaseColor || "#76543b";
+            mob.craftrasNextSpikerShotAt = now;
+            mob.craftrasSpikerGiantShotAt = now + CRAFTRAS_SPIKER_GIANT_SHOT_DELAY;
+            mob.craftrasSpikerGiantShotFired = false;
+        } else if (state === "burrowing") {
+            mob.craftrasSpikerDamageImmune = true;
+            mob.craftrasSpikerLastHealth = Number(mob.health?.amount) || mob.health?.max || MOB_HEALTH.spiker;
+            mob.craftrasFinalDashPhasing = true;
+            mob.intangibility = true;
+        }
+    }
+
+    getSpikerShade(progress, reverse = false) {
+        const amount = Math.max(0, Math.min(1, reverse ? 1 - progress : progress));
+        const from = { r: 118, g: 84, b: 59 };
+        const to = { r: 18, g: 15, b: 12 };
+        const channel = (start, end) => Math.round(start + (end - start) * amount)
+            .toString(16)
+            .padStart(2, "0");
+        return `#${channel(from.r, to.r)}${channel(from.g, to.g)}${channel(from.b, to.b)}`;
+    }
+
+    pullPlayerTowardSpiker(mob, body, progress, elapsed, strength = 1, pullRadius = CRAFTRAS_SPIKER_PULL_RADIUS) {
+        const dx = mob.x - body.x;
+        const dy = mob.y - body.y;
+        const distance = Math.hypot(dx, dy);
+        if (!distance || distance > pullRadius) return false;
+        const directionX = dx / distance;
+        const directionY = dy / distance;
+        const speed = BLOCK_SIZE * 1.35 * strength;
+        const step = Math.min(distance, speed * elapsed / 1000);
+        const tryMove = (nextX, nextY) => {
+            const cell = worldToBlock(nextX, nextY);
+            if (this.isBodyCollisionBlockForEntity(this.getBlock(cell.x, cell.y), body)) return false;
+            body.x = nextX;
+            body.y = nextY;
+            return true;
+        };
+        if (!tryMove(body.x + directionX * step, body.y + directionY * step)) {
+            if (!tryMove(body.x + directionX * step, body.y)) {
+                tryMove(body.x, body.y + directionY * step);
+            }
+        }
+        body.velocity.x += directionX * 0.14 * strength;
+        body.velocity.y += directionY * 0.14 * strength;
+        return true;
+    }
+
+    spawnSpikerPullTrail(mob, body, now) {
+        const dx = mob.x - body.x;
+        const dy = mob.y - body.y;
+        const distance = Math.hypot(dx, dy);
+        if (!distance || distance > CRAFTRAS_SPIKER_PULL_RADIUS) return;
+        const perpendicularX = -dy / distance;
+        const perpendicularY = dx / distance;
+        for (let strand = 0; strand < 2; strand++) {
+            const stream = ((now * (strand ? 1.35 : 1) + body.id * 97 + strand * 310) % 700) / 700;
+            const jitter = Math.sin(now / 75 + body.id + strand * Math.PI)
+                * Math.min(BLOCK_SIZE * 0.55, distance * 0.11);
+            this.spawnExplosionEffect({
+                x: body.x + dx * stream + perpendicularX * jitter,
+                y: body.y + dy * stream + perpendicularY * jitter,
+            }, {
+                duration: 520,
+                startSize: strand ? 24 : 30,
+                endSize: 3,
+                color: strand ? "#edce7b" : "#c99d4b",
+                alpha: strand ? 0.62 : 0.72,
+                fade: true,
+            });
+        }
+    }
+
+    spawnSpikerProjectile(mob, target, giant, now) {
+        if (!mob || !target) return null;
+        const activeNormalCount = [...this.mobs].filter(entity => (
+            entity?.craftrasSpikerOwner === mob &&
+            entity.craftrasMobType === "spiker_spike" &&
+            !entity.isDead?.()
+        )).length;
+        if (!giant && activeNormalCount >= CRAFTRAS_SPIKER_MAX_NORMAL_SPIKES) return null;
+        const angle = Math.atan2(target.y - mob.y, target.x - mob.x);
+        const side = giant ? 0 : (Math.random() - 0.5) * 0.9;
+        const spawnAngle = angle + side;
+        const spawnRadius = (mob.realSize || mob.size || 96) * (giant ? 0.48 : 0.72);
+        const projectile = this.spawnMobAt({
+            x: mob.x + Math.cos(spawnAngle) * spawnRadius,
+            y: mob.y + Math.sin(spawnAngle) * spawnRadius,
+        }, giant ? "spiker_giant_spike" : "spiker_spike");
+        if (!projectile) return null;
+        projectile.craftrasSpikerOwner = mob;
+        projectile.craftrasSpikerProjectile = true;
+        projectile.craftrasSpikerGiant = giant;
+        projectile.craftrasSpikerExpiresAt = now + CRAFTRAS_SPIKER_PROJECTILE_LIFETIME;
+        projectile.craftrasSpikerLastUpdateAt = now;
+        projectile.craftrasSpikerTarget = target;
+        projectile.craftrasSpikerHitCooldowns = new Map();
+        projectile.craftrasSpikerDirection = { x: Math.cos(angle), y: Math.sin(angle) };
+        projectile.craftrasFinalDashPhasing = true;
+        projectile.intangibility = true;
+        projectile.alwaysActive = true;
+        projectile.craftrasNoKnockback = true;
+        return projectile;
+    }
+
+    resolveSpikerProjectileOverlap(projectile, now) {
+        for (const other of this.mobs) {
+            if (
+                !other ||
+                other === projectile ||
+                other.id <= projectile.id ||
+                other.isDead?.() ||
+                projectile.craftrasSpikerGiant ||
+                other.craftrasSpikerGiant ||
+                (other.craftrasMobType !== "spiker_spike" && other.craftrasMobType !== "spiker_giant_spike")
+            ) continue;
+            const desiredDistance = Math.max(
+                8,
+                (projectile.realSize || projectile.size || 24)
+                + (other.realSize || other.size || 24)
+                + 3,
+            );
+            let dx = projectile.x - other.x;
+            let dy = projectile.y - other.y;
+            let distance = Math.hypot(dx, dy);
+            if (distance >= desiredDistance) continue;
+            if (distance < 0.001) {
+                const angle = ((projectile.id * 97 + other.id * 131) % 628) / 100;
+                dx = Math.cos(angle);
+                dy = Math.sin(angle);
+                distance = 1;
+            }
+            const normalX = dx / distance;
+            const normalY = dy / distance;
+            const separation = (desiredDistance - distance) * 0.5;
+            projectile.x += normalX * separation;
+            projectile.y += normalY * separation;
+            other.x -= normalX * separation;
+            other.y -= normalY * separation;
+            projectile.craftrasSpikerBounce = {
+                x: normalX,
+                y: normalY,
+                until: now + CRAFTRAS_SPIKER_PROJECTILE_BOUNCE_DURATION,
+            };
+            other.craftrasSpikerBounce = {
+                x: -normalX,
+                y: -normalY,
+                until: now + CRAFTRAS_SPIKER_PROJECTILE_BOUNCE_DURATION,
+            };
+        }
+    }
+
+    updateSpiker(mob, players, now) {
+        const nearest = this.nearestPlayer(mob, players);
+        const elapsed = Math.max(8, Math.min(50, now - (mob.craftrasSpikerLastUpdateAt || now - 16)));
+        mob.craftrasSpikerLastUpdateAt = now;
+        this.stopSpikerMovement(mob);
+        mob.craftrasSpikerRotation = (
+            (mob.craftrasSpikerRotation || 0)
+            + CRAFTRAS_SPIKER_ROTATION_RADIANS_PER_SECOND * elapsed / 1000
+        ) % (Math.PI * 2);
+        mob.facing = mob.craftrasSpikerRotation;
+        mob.vfacing = mob.craftrasSpikerRotation;
+
+        if (mob.craftrasSpikerDamageImmune) {
+            const protectedHealth = mob.craftrasSpikerLastHealth ?? mob.health.max;
+            if ((mob.health?.amount ?? 0) < protectedHealth) {
+                mob.health.amount = protectedHealth;
+                mob.damageReceived = 0;
+                mob.readyToDie = false;
+            }
+        } else {
+            mob.craftrasSpikerLastHealth = Number(mob.health?.amount) || 0;
+        }
+
+        const state = mob.craftrasSpikerState || "burrowed";
+        const stateElapsed = now - (mob.craftrasSpikerStateStartedAt || now);
+        if (!nearest && state !== "burrowed" && state !== "burrowing") {
+            this.setSpikerState(mob, "burrowing", now);
+            return;
+        }
+        if (state === "burrowed") {
+            if (!nearest) return;
+            const dx = nearest.body.x - mob.x;
+            const dy = nearest.body.y - mob.y;
+            const distance = Math.hypot(dx, dy);
+            const arrivalDistance = BLOCK_SIZE * 0.35;
+            if (distance <= arrivalDistance) {
+                mob.x = nearest.body.x;
+                mob.y = nearest.body.y;
+                mob.craftrasSpikerBurrowVelocity = { x: 0, y: 0 };
+                this.setSpikerState(mob, "waiting", now);
+                return;
+            }
+            const velocity = mob.craftrasSpikerBurrowVelocity ||= { x: 0, y: 0 };
+            const slowRadius = BLOCK_SIZE * 3;
+            const speedScale = Math.max(0.3, Math.min(1, distance / slowRadius));
+            const desiredSpeed = BLOCK_SIZE * CRAFTRAS_SPIKER_BURROW_BLOCKS_PER_SECOND * speedScale;
+            const desiredX = dx / distance * desiredSpeed;
+            const desiredY = dy / distance * desiredSpeed;
+            const steering = 1 - Math.exp(-elapsed / 120);
+            velocity.x += (desiredX - velocity.x) * steering;
+            velocity.y += (desiredY - velocity.y) * steering;
+            const stepX = velocity.x * elapsed / 1000;
+            const stepY = velocity.y * elapsed / 1000;
+            if (Math.hypot(stepX, stepY) >= distance) {
+                mob.x = nearest.body.x;
+                mob.y = nearest.body.y;
+                velocity.x = 0;
+                velocity.y = 0;
+                this.setSpikerState(mob, "waiting", now);
+            } else {
+                mob.x += stepX;
+                mob.y += stepY;
+            }
+            return;
+        }
+        if (state === "waiting") {
+            if (stateElapsed >= CRAFTRAS_SPIKER_WAIT_DURATION) {
+                this.setSpikerState(mob, "pulling", now);
+            }
+            return;
+        }
+        if (state === "pulling") {
+            const progress = Math.min(1, stateElapsed / CRAFTRAS_SPIKER_PULL_DURATION);
+            mob.color.base = this.getSpikerShade(progress);
+            mob.alpha = CRAFTRAS_SPIKER_BURROW_ALPHA;
+            for (const { body } of players) this.pullPlayerTowardSpiker(mob, body, progress, elapsed);
+            if (now >= (mob.craftrasNextSpikerPullTrailAt || 0)) {
+                mob.craftrasNextSpikerPullTrailAt = now + CRAFTRAS_SPIKER_PULL_TRAIL_INTERVAL;
+                for (const { body } of players) this.spawnSpikerPullTrail(mob, body, now);
+            }
+            if (progress >= 1) this.setSpikerState(mob, "emerging", now);
+            return;
+        }
+        if (state === "emerging") {
+            const progress = Math.min(1, stateElapsed / CRAFTRAS_SPIKER_EMERGE_DURATION);
+            mob.color.base = this.getSpikerShade(progress, true);
+            mob.alpha = CRAFTRAS_SPIKER_BURROW_ALPHA + (1 - CRAFTRAS_SPIKER_BURROW_ALPHA) * progress;
+            if (now >= (mob.craftrasNextSpikerEmergeEffectAt || 0)) {
+                mob.craftrasNextSpikerEmergeEffectAt = now + CRAFTRAS_SPIKER_EMERGE_EFFECT_INTERVAL;
+                const angle = Math.random() * Math.PI * 2;
+                const size = Math.max(48, mob.realSize || mob.size || 288);
+                const radius = size * (0.25 + Math.random() * 0.55);
+                this.spawnExplosionEffect({
+                    x: mob.x + Math.cos(angle) * radius,
+                    y: mob.y + Math.sin(angle) * radius,
+                }, {
+                    duration: 460,
+                    startSize: Math.max(16, size * 0.09),
+                    endSize: Math.max(52, size * 0.28),
+                    color: Math.random() < 0.5 ? "#d8b86d" : "#b8914e",
+                    alpha: 0.58,
+                    fade: true,
+                });
+            }
+            if (progress >= 1) {
+                this.spawnExplosionEffect(mob, {
+                    duration: 520,
+                    startSize: Math.max(28, (mob.realSize || mob.size || 96) * 0.35),
+                    endSize: Math.max(80, (mob.realSize || mob.size || 96) * 1.2),
+                    color: "#d8b86d",
+                    alpha: 0.62,
+                    fade: true,
+                });
+                this.setSpikerState(mob, "exposed", now);
+            }
+            return;
+        }
+        if (state === "exposed") {
+            if (nearest) {
+                const contactRange = (mob.realSize || mob.size || 96)
+                    + (nearest.body.realSize || nearest.body.size || 12)
+                    + 5;
+                for (const { body } of players) {
+                    const distance = Math.hypot(body.x - mob.x, body.y - mob.y);
+                    const lastHit = mob.craftrasSpikerContactHits.get(body.id) || 0;
+                    if (distance > contactRange || now - lastHit < 750) continue;
+                    mob.craftrasSpikerContactHits.set(body.id, now);
+                    this.applyCombatTargetDamage(body, CRAFTRAS_SPIKER_CONTACT_DAMAGE, mob);
+                }
+                if (now >= (mob.craftrasNextSpikerShotAt || 0)) {
+                    mob.craftrasNextSpikerShotAt = now + CRAFTRAS_SPIKER_NORMAL_SHOT_INTERVAL;
+                    this.spawnSpikerProjectile(mob, nearest.body, false, now);
+                }
+                if (!mob.craftrasSpikerGiantShotFired && now >= (mob.craftrasSpikerGiantShotAt || Infinity)) {
+                    mob.craftrasSpikerGiantShotFired = true;
+                    this.spawnSpikerProjectile(mob, nearest.body, true, now);
+                }
+            }
+            if (stateElapsed >= CRAFTRAS_SPIKER_EXPOSED_DURATION) this.setSpikerState(mob, "burrowing", now);
+            return;
+        }
+        if (state === "burrowing") {
+            const progress = Math.min(1, stateElapsed / CRAFTRAS_SPIKER_BURROW_DURATION);
+            mob.color.base = this.getSpikerShade(progress);
+            mob.alpha = 1 - (1 - CRAFTRAS_SPIKER_BURROW_ALPHA) * progress;
+            if (progress >= 1) this.setSpikerState(mob, "burrowed", now);
+        }
+    }
+
+    updateSpikerProjectile(projectile, players, now) {
+        const owner = projectile.craftrasSpikerOwner;
+        if (!owner || owner.isDead?.() || now >= (projectile.craftrasSpikerExpiresAt || 0)) {
+            projectile.destroy?.();
+            this.mobs.delete(projectile);
+            return;
+        }
+        let target = projectile.craftrasSpikerTarget;
+        if (!target || target.isDead?.() || !players.some(({ body }) => body === target)) {
+            target = this.nearestPlayer(projectile, players)?.body || null;
+            projectile.craftrasSpikerTarget = target;
+        }
+        if (!target) return;
+        const elapsed = Math.max(8, Math.min(50, now - (projectile.craftrasSpikerLastUpdateAt || now - 16)));
+        projectile.craftrasSpikerLastUpdateAt = now;
+        const dx = target.x - projectile.x;
+        const dy = target.y - projectile.y;
+        const distance = Math.hypot(dx, dy) || 1;
+        const bounce = projectile.craftrasSpikerGiant ? null : projectile.craftrasSpikerBounce;
+        const bouncing = bounce && now < bounce.until;
+        let direction = projectile.craftrasSpikerDirection || { x: dx / distance, y: dy / distance };
+        if (bouncing) {
+            direction = { x: bounce.x, y: bounce.y };
+        } else if (!projectile.craftrasSpikerGiant) {
+            projectile.craftrasSpikerBounce = null;
+            const currentAngle = Math.atan2(direction.y, direction.x);
+            const desiredAngle = Math.atan2(dy, dx);
+            const angleDifference = Math.atan2(
+                Math.sin(desiredAngle - currentAngle),
+                Math.cos(desiredAngle - currentAngle),
+            );
+            const maxTurn = CRAFTRAS_SPIKER_NORMAL_TURN_RADIANS_PER_SECOND * elapsed / 1000;
+            const nextAngle = currentAngle + Math.max(-maxTurn, Math.min(maxTurn, angleDifference));
+            direction = { x: Math.cos(nextAngle), y: Math.sin(nextAngle) };
+        }
+        projectile.craftrasSpikerDirection = direction;
+        const directionX = direction.x;
+        const directionY = direction.y;
+        const speed = BLOCK_SIZE * (projectile.craftrasSpikerGiant ? 3.6 : 5);
+        const step = bouncing
+            ? speed * 1.25 * elapsed / 1000
+            : speed * elapsed / 1000;
+        projectile.x += directionX * step;
+        projectile.y += directionY * step;
+        this.stopSpikerMovement(projectile, target);
+        projectile.facing = Math.atan2(directionY, directionX);
+        projectile.vfacing = projectile.facing;
+        if (!projectile.craftrasSpikerGiant) this.resolveSpikerProjectileOverlap(projectile, now);
+
+        if (projectile.craftrasSpikerGiant) {
+            for (const { body } of players) {
+                const hitRange = (projectile.realSize || projectile.size || 48)
+                    + (body.realSize || body.size || 12)
+                    + 3;
+                if (
+                    Math.hypot(body.x - projectile.x, body.y - projectile.y) > hitRange ||
+                    projectile.craftrasSpikerHitCooldowns.has(body.id)
+                ) continue;
+                projectile.craftrasSpikerHitCooldowns.set(body.id, now);
+                if (this.isBlockingWithUsableShield(body, now)) {
+                    this.spawnExplosionEffect(projectile, {
+                        duration: 520,
+                        startSize: Math.max(20, projectile.realSize || projectile.size || 48),
+                        endSize: Math.max(90, (projectile.realSize || projectile.size || 48) * 2.2),
+                        color: "#3aa8ff",
+                        alpha: 0.68,
+                        fade: true,
+                    });
+                } else {
+                    this.applyCombatTargetDamage(body, CRAFTRAS_SPIKER_GIANT_SPIKE_DAMAGE, projectile);
+                }
+            }
+            return;
+        }
+        const hitRange = (projectile.realSize || projectile.size || 24)
+            + (target.realSize || target.size || 12)
+            + 3;
+        if (Math.hypot(target.x - projectile.x, target.y - projectile.y) > hitRange) return;
+        const lastHit = projectile.craftrasSpikerHitCooldowns.get(target.id) || 0;
+        if (now - lastHit < 750) return;
+        projectile.craftrasSpikerHitCooldowns.set(target.id, now);
+        this.applyCombatTargetDamage(target, CRAFTRAS_SPIKER_SPIKE_DAMAGE, projectile);
     }
 
     updateKingZombie(mob, nearest, now) {
@@ -10951,10 +25024,19 @@ class Craftras {
                         if (push <= 0) continue;
                         const normalX = dx / distance;
                         const normalY = dy / distance;
-                        mob.x += normalX * push;
-                        mob.y += normalY * push;
-                        other.x -= normalX * push;
-                        other.y -= normalY * push;
+                        if (mob.craftrasSpikerAnchored && other.craftrasSpikerAnchored) continue;
+                        if (mob.craftrasSpikerAnchored) {
+                            other.x -= normalX * push * 2;
+                            other.y -= normalY * push * 2;
+                        } else if (other.craftrasSpikerAnchored) {
+                            mob.x += normalX * push * 2;
+                            mob.y += normalY * push * 2;
+                        } else {
+                            mob.x += normalX * push;
+                            mob.y += normalY * push;
+                            other.x -= normalX * push;
+                            other.y -= normalY * push;
+                        }
                     }
                 }
             }
@@ -10962,9 +25044,26 @@ class Craftras {
     }
 
     updateMobs(players, now) {
+        this.updateJaneSkillEntities(players, now);
         const challengeServer = !!Config.craftras_world1_challenge_builder;
         const challengeWaiting = challengeServer && this.challengeStage !== "active";
-        const undergroundPlayers = players.filter(({ body }) => {
+        const world2Players = players.filter(({ body }) => {
+            const cell = worldToBlock(body.x, body.y);
+            return isInsideWorld2(cell.x, cell.y);
+        });
+        const world2SurfacePlayers = world2Players.filter(({ body }) => {
+            const cell = worldToBlock(body.x, body.y);
+            return this.getCell(cell.x, cell.y)?.region === "surface";
+        });
+        const world2GiantCavePlayers = world2Players.filter(({ body }) => {
+            const cell = worldToBlock(body.x, body.y);
+            return this.isWorld2GiantCaveCell(cell.x, cell.y);
+        });
+        const world1Players = players.filter(({ body }) => {
+            const cell = worldToBlock(body.x, body.y);
+            return !isInsideWorld2(cell.x, cell.y);
+        });
+        const undergroundPlayers = world1Players.filter(({ body }) => {
             const cell = worldToBlock(body.x, body.y);
             return this.getCell(cell.x, cell.y)?.region === "underground";
         });
@@ -10973,12 +25072,13 @@ class Craftras {
         const passiveMonsterPlaces = this.getPassiveBossCavePlaces(activePlaceIds);
         this.resetInactiveZombieCavePressure(activePlaceIds, now);
         if (!challengeServer && !challengeWaiting) this.spawnMonsterPlaceMobs([...activeMonsterPlaces, ...passiveMonsterPlaces], now);
-        const roamingSpawnPlayers = this.getDayPhase() === "night" ? players : undergroundPlayers;
+        const roamingSpawnPlayers = this.getDayPhase() === "night" ? world1Players : undergroundPlayers;
         const roamingMonsterCount = [...this.mobs].filter(mob => mob
             && !mob.isDead?.()
             && !mob.craftrasSpawnPlaceId
             && mob.craftrasMobFamily !== "animal"
-            && mob.craftrasMobFamily !== "npc").length;
+            && mob.craftrasMobFamily !== "npc"
+            && !isInsideWorld2(worldToBlock(mob.x, mob.y).x, worldToBlock(mob.x, mob.y).y)).length;
         if (!challengeServer && !challengeWaiting && ++this.mobSpawnCounter % 180 === 0 && Math.random() < 0.35 && roamingSpawnPlayers.length && roamingMonsterCount < 20) {
             const mobCounts = new Map(roamingSpawnPlayers.map(player => [player.body.id, 0]));
             for (const mob of this.mobs) {
@@ -11010,7 +25110,9 @@ class Craftras {
                 if (this.spawnMob([player], mode)) break;
             }
         }
-        const surfacePlayers = players.filter(({ body }) => {
+        if (!challengeServer && !challengeWaiting) this.updateWorld2NaturalSpawns(world2SurfacePlayers, now);
+        if (!challengeServer && !challengeWaiting) this.updateWorld2GiantCaveSpawns(world2GiantCavePlayers, now);
+        const surfacePlayers = world1Players.filter(({ body }) => {
             const cell = worldToBlock(body.x, body.y);
             return this.getCell(cell.x, cell.y)?.region === "surface";
         });
@@ -11025,8 +25127,51 @@ class Craftras {
                 this.mobs.delete(mob);
                 continue;
             }
+            if (mob.craftrasStaticWormGrave) {
+                mob.health.amount = mob.health.max;
+                mob.damageReceived = 0;
+                mob.readyToDie = false;
+                mob.velocity.x = 0;
+                mob.velocity.y = 0;
+                if (mob.accel) {
+                    mob.accel.x = 0;
+                    mob.accel.y = 0;
+                }
+                mob.x = mob.craftrasHome?.x ?? mob.x;
+                mob.y = mob.craftrasHome?.y ?? mob.y;
+                mob.color.base = CRAFTRAS_THE_WORM_GRAVE_COLOR;
+                mob.alpha = 1;
+                mob.team = TEAM_ROOM;
+                mob.type = "wall";
+                mob.intangibility = false;
+                if (mob.settings) {
+                    mob.settings.no_collisions = false;
+                    mob.settings.hitsOwnType = "never";
+                }
+                for (const segment of mob.craftrasWormSegments || []) {
+                    if (!segment || segment.isDead?.()) continue;
+                    segment.type = "wall";
+                    segment.intangibility = false;
+                    segment.pushability = 0;
+                    if (segment.settings) {
+                        segment.settings.no_collisions = false;
+                        segment.settings.hitsOwnType = "never";
+                    }
+                }
+                continue;
+            }
+            const expectedTeam = mob.craftrasMobFamily === "npc" ? TEAM_ROOM : TEAM_ENEMIES;
+            if (mob.team !== expectedTeam) mob.team = expectedTeam;
             mob.skill.points = 0;
             this.restoreEntityFlash(mob, now);
+            this.updateParrySlowedMob(mob, now);
+            this.updateInfernoMobAppearance(mob, now);
+            if (
+                mob.craftrasJanePersistentSkillOneClone
+                || mob.craftrasJanePhaseTwoEscapeClone
+                || mob.craftrasJanePhaseTwoLaserClone
+            ) continue;
+            if (mob.craftrasMobType === "phoenix_skeleton" && this.updatePhoenixSkeleton(mob, now)) continue;
             this.updateMobSunlight(mob, now);
             if (this.updateMobPoison(mob, now)) {
                 this.mobs.delete(mob);
@@ -11048,8 +25193,12 @@ class Craftras {
                 this.updateChallengeMagicalZombie(mob, players, now);
                 continue;
             }
+            if (mob.craftrasWorld2MagicBoss) {
+                this.updateWorld2MagicalZombie(mob, world2GiantCavePlayers, now);
+                continue;
+            }
             if (mob.craftrasMobType === "titan_zombie" && mob.craftrasChallengeHostile) {
-                this.updateChallengeTitanZombie(mob, players, now);
+                this.updateChallengeTitanZombie(mob, mob.craftrasWorld2MagicTitan ? world2GiantCavePlayers : players, now);
                 continue;
             }
             if (mob.craftrasMobFamily === "npc") {
@@ -11099,6 +25248,7 @@ class Craftras {
                     mob.craftrasWanderPathIndex = 0;
                 }
                 if (mob.craftrasMobType === "cleric" && this.updateVillageCleric(mob, players, now, home)) continue;
+                if (mob.craftrasMobType === "healer" && this.updateWorld2Healer(mob, players, now)) continue;
                 if (VILLAGE_COMBAT_NPC_TYPES.has(mob.craftrasMobType) && this.updateVillageCombatNpc(mob, now, home)) continue;
                 if (VILLAGE_IDLE_SHOP_NPC_TYPES.has(mob.craftrasMobType)) {
                     this.updateIdleShopNpcLook(mob, players, home);
@@ -11117,6 +25267,18 @@ class Craftras {
                 this.updateAnimalWander(mob, now);
                 continue;
             }
+            if (mob.craftrasSwordGuy2SummonOwner) {
+                this.updateSwordGuy2SkeletonSummon(mob, now);
+                continue;
+            }
+            if (mob.craftrasJaneEncounterHost) {
+                this.updateJaneEncounterSwordGuy(mob, now);
+                continue;
+            }
+            if (mob.craftrasMobType === "jane") {
+                this.updateJaneBoss(mob, now);
+                continue;
+            }
             if (mob.craftrasMobType === "sword_guy" && (
                 mob.craftrasSwordGuyPhase === 2 ||
                 mob.craftrasSwordGuyPhase === "intro" ||
@@ -11127,11 +25289,49 @@ class Craftras {
                 this.updateSwordGuy(mob, null, now);
                 continue;
             }
+            if (mob.craftrasMobType === "sword_guy_2") {
+                this.updateSwordGuy2(mob, now);
+                continue;
+            }
+            if (mob.craftrasMobType === "spiker") {
+                const block = worldToBlock(mob.x, mob.y);
+                this.updateSpiker(mob, isInsideWorld2(block.x, block.y) ? world2SurfacePlayers : players, now);
+                continue;
+            }
+            if (mob.craftrasMobType === "spiker_spike" || mob.craftrasMobType === "spiker_giant_spike") {
+                if (mob.craftrasTheWormSpike) {
+                    this.updateTheWormSpike(mob, players, now);
+                    continue;
+                }
+                const block = worldToBlock(mob.x, mob.y);
+                this.updateSpikerProjectile(mob, isInsideWorld2(block.x, block.y) ? world2SurfacePlayers : players, now);
+                continue;
+            }
             let targetPlayers = mob.craftrasChallengeHostile
                 ? [...players, ...[...this.challengeActors]
                     .filter(actor => actor && !actor.isDead?.())
                     .map(body => ({ socket: null, body }))]
                 : players;
+            if (mob.craftrasWorld2SurfaceMob) {
+                targetPlayers = world2SurfacePlayers;
+                const currentTargetIsPlayer = mob.craftrasTarget && !!this.findSocketByBody(mob.craftrasTarget);
+                const targetStillOnWorld2Surface = targetPlayers.some(({ body }) => body === mob.craftrasTarget);
+                if (currentTargetIsPlayer && !targetStillOnWorld2Surface) this.clearMobAggro(mob);
+                if (!targetPlayers.length) {
+                    this.clearMobAggro(mob);
+                    continue;
+                }
+            }
+            if (mob.craftrasWorld2GiantCaveMob) {
+                targetPlayers = world2GiantCavePlayers;
+                const currentTargetIsPlayer = mob.craftrasTarget && !!this.findSocketByBody(mob.craftrasTarget);
+                const targetStillInGiantCave = targetPlayers.some(({ body }) => body === mob.craftrasTarget);
+                if (currentTargetIsPlayer && !targetStillInGiantCave) this.clearMobAggro(mob);
+                if (!targetPlayers.length) {
+                    this.clearMobAggro(mob);
+                    continue;
+                }
+            }
             if (mob.craftrasSpawnPlaceId) {
                 const activePlace = activeMonsterPlaces.find(({ place }) => place.id === mob.craftrasSpawnPlaceId);
                 if (!activePlace) {
@@ -11157,7 +25357,11 @@ class Craftras {
                 this.mobs.delete(mob);
                 continue;
             }
-            const nearest = this.updateMobNavigation(mob, targetPlayers, now);
+            const nearest = mob.craftrasMobType === "the_worm"
+                ? this.updateTheWorm(mob, targetPlayers, now)
+                : mob.craftrasMobFamily === "worm"
+                ? this.updateWorm(mob, targetPlayers, now)
+                : this.updateMobNavigation(mob, targetPlayers, now);
             if (!nearest) {
                 if (mob.craftrasMobType === "sword_guy") {
                     this.updateSwordGuy(mob, null, now);
@@ -11177,12 +25381,20 @@ class Craftras {
                     this.updateKingZombie(mob, nearest, now);
                     continue;
                 }
+                if (mob.craftrasRangedMob) {
+                    this.updateSkeletonMovement(mob, nearest, now);
+                    mob.craftrasControl.fire = nearest.visible && nearest.distance <= (mob.craftrasSkeletonApproachRange || BLOCK_SIZE * 11);
+                    continue;
+                }
                 if (this.mobCanBreakBlocks(mob) && !nearest.visible) this.damageBlockTowardTarget(mob, nearest.body, now);
                 const contactRange = (mob.realSize || mob.size || 12) + (nearest.body.realSize || nearest.body.size || 12) + 3;
                 if (nearest.distance <= contactRange && now >= (mob.craftrasNextContactAt || 0)) {
                     mob.craftrasNextContactAt = now + 750;
                     const contactDamage = mob.craftrasContactDamage ?? 20;
-                    if (contactDamage > 0) this.applyCombatTargetDamage(nearest.body, contactDamage, mob);
+                    if (contactDamage > 0) {
+                        this.applyCombatTargetDamage(nearest.body, contactDamage, mob);
+                        if (mob.craftrasFireOnHit) this.applyPlayerFire(nearest.body, mob);
+                    }
                 }
                 if (mob.craftrasGuardian) this.updateKingGuardian(mob, nearest, now);
                 else if (mob.craftrasSwordZombie) this.updateSwordZombie(mob, nearest, now);
@@ -11628,11 +25840,13 @@ class Craftras {
             y: owner.y + direction.y * offset,
         });
         projectile.define("craftrasGuardianSlashProjectile");
-        projectile.team = options.friendly ? TEAM_ROOM : TEAM_ENEMIES;
+        const bossFormOwner = owner?.craftrasBossFormType ? owner : null;
+        projectile.team = bossFormOwner?.team ?? (options.friendly ? TEAM_ROOM : TEAM_ENEMIES);
         projectile.alwaysActive = true;
         projectile.facing = angle;
         projectile.vfacing = angle;
         projectile.craftrasGuardianSlashOwner = owner;
+        projectile.craftrasBossFormOwner = bossFormOwner;
         projectile.craftrasGuardianSlashDamage = options.damage || CRAFTRAS_GUARDIAN_SLASH_DAMAGE;
         projectile.craftrasTheSwordDamageKind = options.theSwordDamageKind || null;
         projectile.craftrasGuardianSlashKnockback = options.knockback || CRAFTRAS_GUARDIAN_SLASH_KNOCKBACK;
@@ -11684,6 +25898,20 @@ class Craftras {
             const radius = Math.max(10, projectile.realSize || projectile.size || 18);
             projectile.craftrasHitIds ??= new Set();
             if (projectile.craftrasFadeUntil) continue;
+            if (projectile.craftrasBossFormOwner) {
+                for (const target of this.mobs) {
+                    if (!this.isValidGreatFriendMonsterTarget(target) || projectile.craftrasHitIds.has(target.id)) continue;
+                    const dx = target.x - projectile.x;
+                    const dy = target.y - projectile.y;
+                    const hitRadius = radius + Math.max(8, target.realSize || target.size || 12);
+                    if (dx * dx + dy * dy > hitRadius * hitRadius) continue;
+                    projectile.craftrasHitIds.add(target.id);
+                    const kind = projectile.craftrasTheSwordDamageKind || "slash";
+                    this.damageMobFromGreatFriend(target, projectile.craftrasBossFormOwner, this.getPlayerBossFormDamage(target, kind), now);
+                    this.applyCraftrasMobKnockback(target, dx, dy, knockback);
+                }
+                continue;
+            }
             if (!projectile.craftrasGuardianSlashFriendly) for (const { body } of players || []) {
                 if (!body || body.isDead?.() || projectile.craftrasHitIds.has(body.id)) continue;
                 const dx = body.x - projectile.x;
@@ -11698,18 +25926,14 @@ class Craftras {
                 body.velocity.y += dy / distance * knockback;
             }
             if (projectile.craftrasGuardianSlashFriendly) for (const target of this.getChallengeHostiles()) {
-                if (!target || target.isDead?.() || target.craftrasMobType === "magical_zombie" || projectile.craftrasHitIds.has(target.id)) continue;
+                if (!target || target.isDead?.() || projectile.craftrasHitIds.has(target.id)) continue;
                 const dx = target.x - projectile.x;
                 const dy = target.y - projectile.y;
                 const hitRadius = radius + Math.max(8, target.realSize || target.size || 12);
                 if (dx * dx + dy * dy > hitRadius * hitRadius) continue;
                 projectile.craftrasHitIds.add(target.id);
                 this.applyVillageGuardHit(projectile.craftrasGuardianSlashOwner, target, damage, now);
-                const distance = Math.hypot(dx, dy) || 1;
-                if (!target.craftrasNoKnockback) {
-                    target.velocity.x += dx / distance * knockback;
-                    target.velocity.y += dy / distance * knockback;
-                }
+                this.applyCraftrasMobKnockback(target, dx, dy, knockback);
             }
         }
     }
@@ -11744,9 +25968,14 @@ class Craftras {
         return best;
     }
 
-    damageMobFromGreatFriend(mob, owner, damage = CRAFTRAS_GREAT_FRIEND_COMPANION_DAMAGE, now = Date.now()) {
+    damageMobFromGreatFriend(mob, owner, damage = null, now = Date.now()) {
         if (!mob || mob.isDead?.() || mob.craftrasInvulnerableNpc || mob.craftrasMobFamily === "npc" || mob.craftrasMobFamily === "animal") return false;
-        let amount = damage;
+        if (this.isWormDamageImmune(mob)) return false;
+        if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) return false;
+        let amount = Number.isFinite(damage)
+            ? damage
+            : this.getGreatFriendLevelDamage(owner, CRAFTRAS_GREAT_FRIEND_COMPANION_LEVEL_MULTIPLIER);
+        amount = this.scalePlayerProgressionDamage(owner, amount);
         amount = this.capKingDamageByGuardian(mob, amount);
         if (mob.craftrasGuardian) amount = this.absorbGuardianShieldDamage(mob, amount, now);
         if (amount <= 0) return false;
@@ -11756,10 +25985,17 @@ class Craftras {
             return true;
         }
         mob.health.amount -= amount;
+        this.recordPlayerDamageTarget(owner, mob, amount, now);
+        this.markBossHealthHit(mob, owner, now);
         if (owner && !owner.isDead?.()) this.setMobAggro(mob, owner, now);
         this.handleSwordGuyDamaged(mob, amount, owner, now);
         this.flashEntity(mob);
         if (mob.health.amount <= 0) {
+            if (mob.craftrasMagicBoss) {
+                mob.health.amount = 1;
+                this.finishChallengeMagicalBoss(mob, now);
+                return true;
+            }
             if (owner && !owner.isDead?.()) this.awardCraftrasScore(owner, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
             mob.kill?.();
         }
@@ -11857,7 +26093,12 @@ class Craftras {
                 const hitDy = target.y - closestY;
                 if (hitDx * hitDx + hitDy * hitDy <= hitRadius * hitRadius) {
                     friend.craftrasCompanionHitIds.add(target.id);
-                    this.damageMobFromGreatFriend(target, owner, CRAFTRAS_GREAT_FRIEND_COMPANION_DAMAGE, now);
+                    this.damageMobFromGreatFriend(
+                        target,
+                        owner,
+                        this.getGreatFriendLevelDamage(owner, CRAFTRAS_GREAT_FRIEND_COMPANION_LEVEL_MULTIPLIER),
+                        now,
+                    );
                 }
             }
 
@@ -11918,6 +26159,249 @@ class Craftras {
         }
     }
 
+    updateSwordGuy2PhaseTwoProjectile(projectile, players, now = Date.now()) {
+        if (!projectile || projectile.isDead?.()) return false;
+        const owner = projectile.craftrasOwner;
+        if (!owner || owner.isDead?.() || owner.craftrasSwordGuy2State === "dismissed") {
+            projectile.destroy?.();
+            this.theGreatProjectiles.delete(projectile);
+            return false;
+        }
+        if (
+            projectile.craftrasSwordGuy2PhaseThreeOrb
+            && !projectile.craftrasLingerUntil
+        ) {
+            return this.updateSwordGuy2PhaseThreeOrb(projectile, players, now);
+        }
+        if (projectile.craftrasLingerUntil) {
+            const remaining = projectile.craftrasLingerUntil - now;
+            if (remaining <= 0) {
+                projectile.destroy?.();
+                this.theGreatProjectiles.delete(projectile);
+                return false;
+            }
+            projectile.alpha = Math.max(0.02, remaining / CRAFTRAS_SWORD_GUY_2_PHASE_TWO_PROJECTILE_LINGER);
+            return true;
+        }
+        if (now >= (projectile.craftrasExpiresAt || 0)) {
+            this.beginSwordGuy2ProjectileLinger(projectile, now);
+            return true;
+        }
+        if (projectile.craftrasBurst?.burstAt && now >= projectile.craftrasBurst.burstAt) {
+            const burst = projectile.craftrasBurst;
+            const target = projectile.craftrasTarget;
+            const projectileOptions = burst.projectileOptions || {};
+            const baseAngle = target
+                ? Math.atan2(target.y - projectile.y, target.x - projectile.x)
+                : projectile.facing || 0;
+            const rotation = burst.rotateWithBominik
+                ? this.nextSwordGuy2BominikPatternRotation(owner)
+                : Number(burst.rotation) || 0;
+            for (let index = 0; index < burst.count; index++) {
+                this.spawnSwordGuy2PhaseTwoProjectile(owner, {
+                    location: projectile,
+                    target,
+                    angle: baseAngle + rotation + index * Math.PI * 2 / burst.count,
+                    motion: projectileOptions.motion || "straight",
+                    speed: projectileOptions.speed || 30,
+                    size: projectileOptions.size || 18,
+                    color: projectileOptions.color || "#ca7aff",
+                    damageRatio: projectileOptions.damageRatio ?? burst.damageRatio,
+                    parryMode: projectileOptions.parryMode || "vanish",
+                    life: projectileOptions.life || 6_000,
+                    slash: !!projectileOptions.slash,
+                    friend: !!projectileOptions.friend,
+                    alpha: projectileOptions.alpha,
+                    parryable: projectileOptions.parryable !== false,
+                });
+            }
+            this.spawnExplosionEffect(projectile, {
+                duration: 340,
+                startSize: 16,
+                endSize: 44,
+                color: "#b058ff",
+                alpha: 0.48,
+                fade: true,
+            });
+            this.beginSwordGuy2ProjectileLinger(projectile, now);
+            return true;
+        }
+        if (projectile.craftrasBurst?.burstAt) return true;
+        if (projectile.craftrasReflected) {
+            const actor = projectile.craftrasReflectDuoTarget
+                ? this.getSwordGuy2PhaseTwoReflectTarget(owner)
+                : projectile.craftrasReflectTarget;
+            if (!actor || actor.isDead?.()) {
+                this.beginSwordGuy2ProjectileLinger(projectile, now);
+                return true;
+            }
+            if (actor !== projectile.craftrasReflectTarget) {
+                projectile.craftrasReflectTarget = actor;
+                projectile.craftrasTarget = actor;
+            }
+            const radius = Math.max(8, projectile.realSize || projectile.size || 8)
+                + Math.max(10, actor.realSize || actor.size || 24);
+            if ((projectile.x - actor.x) ** 2 + (projectile.y - actor.y) ** 2 <= radius ** 2) {
+                this.damageSwordGuy2PhaseTwoActor(owner, actor, projectile.craftrasReflectDamage, now);
+                this.beginSwordGuy2ProjectileLinger(projectile, now);
+                return true;
+            }
+        }
+        if (projectile.craftrasAwaitingParry) return true;
+
+        if (projectile.craftrasParryRearmAt && now >= projectile.craftrasParryRearmAt) {
+            projectile.craftrasParryRearmAt = 0;
+            projectile.craftrasMotion = "homing";
+            projectile.craftrasTurn = 0.32;
+            projectile.craftrasMaxTurn = 0.45;
+            projectile.craftrasTurnGrowthInterval = 0;
+            projectile.craftrasTurnGrowthStep = 0;
+            projectile.craftrasHitIds.clear();
+            projectile.craftrasParryResolved = false;
+        }
+        const target = projectile.craftrasTarget;
+        if (projectile.craftrasDelayedLaunchAt) {
+            const point = projectile.craftrasDelayedTargetPoint || projectile.craftrasTargetPoint || target;
+            if (now < projectile.craftrasDelayedLaunchAt) {
+                projectile.craftrasVelocity.x = 0;
+                projectile.craftrasVelocity.y = 0;
+                if (point) {
+                    projectile.facing = Math.atan2(point.y - projectile.y, point.x - projectile.x);
+                    projectile.vfacing = projectile.facing;
+                }
+                return true;
+            }
+            const dx = (point?.x ?? projectile.x + 1) - projectile.x;
+            const dy = (point?.y ?? projectile.y) - projectile.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            projectile.craftrasSpeed = projectile.craftrasDelayedLaunchSpeed || projectile.craftrasSpeed || 32;
+            projectile.craftrasVelocity.x = dx / distance * projectile.craftrasSpeed;
+            projectile.craftrasVelocity.y = dy / distance * projectile.craftrasSpeed;
+            projectile.craftrasMotion = "straight";
+            projectile.craftrasDelayedLaunchAt = 0;
+            projectile.craftrasHitIds.clear();
+        }
+        let customPositioned = false;
+        if (projectile.craftrasPhaseThreeVortex) {
+            const vortex = projectile.craftrasPhaseThreeVortex;
+            if (now >= vortex.endsAt) {
+                this.beginSwordGuy2ProjectileLinger(projectile, now);
+                return true;
+            }
+            const elapsed = Math.max(0, now - vortex.startedAt);
+            const progress = Math.max(0, Math.min(1, elapsed / Math.max(1, vortex.endsAt - vortex.startedAt)));
+            const eased = progress * progress * (3 - 2 * progress);
+            const radius = vortex.startRadius + (vortex.endRadius - vortex.startRadius) * eased;
+            const angle = vortex.angle + elapsed * vortex.angularSpeed;
+            projectile.x = vortex.centerX + Math.cos(angle) * radius;
+            projectile.y = vortex.centerY + Math.sin(angle) * radius;
+            projectile.facing = angle + (vortex.angularSpeed >= 0 ? Math.PI / 2 : -Math.PI / 2);
+            projectile.vfacing = projectile.facing;
+            projectile.craftrasVelocity.x = 0;
+            projectile.craftrasVelocity.y = 0;
+            customPositioned = true;
+        }
+        if (
+            !customPositioned
+            && (projectile.craftrasMotion === "homing" || projectile.craftrasMotion === "poor_homing")
+            && target
+            && !target.isDead?.()
+        ) {
+            const dx = target.x - projectile.x;
+            const dy = target.y - projectile.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const turnGrowthSteps = projectile.craftrasTurnGrowthInterval > 0
+                ? Math.floor(
+                    Math.max(0, now - projectile.craftrasSpawnedAt)
+                    / projectile.craftrasTurnGrowthInterval,
+                )
+                : 0;
+            const turn = Math.max(0, Math.min(
+                projectile.craftrasMaxTurn ?? 1,
+                (projectile.craftrasTurn || 0.12)
+                    + turnGrowthSteps * (projectile.craftrasTurnGrowthStep || 0),
+            ));
+            projectile.craftrasVelocity.x = projectile.craftrasVelocity.x * (1 - turn)
+                + dx / distance * projectile.craftrasSpeed * turn;
+            projectile.craftrasVelocity.y = projectile.craftrasVelocity.y * (1 - turn)
+                + dy / distance * projectile.craftrasSpeed * turn;
+            const velocityLength = Math.hypot(projectile.craftrasVelocity.x, projectile.craftrasVelocity.y) || 1;
+            projectile.craftrasVelocity.x = projectile.craftrasVelocity.x / velocityLength * projectile.craftrasSpeed;
+            projectile.craftrasVelocity.y = projectile.craftrasVelocity.y / velocityLength * projectile.craftrasSpeed;
+        }
+        if (!customPositioned && projectile.craftrasBurst && target && !target.isDead?.()) {
+            const distance = Math.hypot(target.x - projectile.x, target.y - projectile.y);
+            if (distance <= projectile.craftrasBurst.distance) {
+                projectile.craftrasBurst.burstAt = now + projectile.craftrasBurst.delay;
+                projectile.craftrasVelocity.x = 0;
+                projectile.craftrasVelocity.y = 0;
+            }
+        }
+        if (!customPositioned) {
+            projectile.x += projectile.craftrasVelocity?.x || 0;
+            projectile.y += projectile.craftrasVelocity?.y || 0;
+        }
+        const velocityLength = Math.hypot(
+            projectile.craftrasVelocity?.x || 0,
+            projectile.craftrasVelocity?.y || 0,
+        );
+        if (velocityLength > 0.01) {
+            projectile.facing = Math.atan2(projectile.craftrasVelocity.y, projectile.craftrasVelocity.x);
+            projectile.vfacing = projectile.facing;
+        }
+        if (now >= (projectile.craftrasNextTrailAt || 0)) {
+            projectile.craftrasNextTrailAt = now + 65;
+            this.spawnExplosionEffect(projectile, {
+                duration: 360,
+                startSize: Math.max(5, (projectile.realSize || projectile.size || 18) * 0.35),
+                endSize: Math.max(8, (projectile.realSize || projectile.size || 18) * 0.58),
+                color: projectile.craftrasReflected
+                    ? "#45a7ff"
+                    : projectile.craftrasTheGreatKind === "friend" ? "#fff4b8" : "#b35cff",
+                alpha: 0.14,
+                fade: true,
+            });
+        }
+        if (projectile.craftrasReflected || projectile.craftrasHarmless || projectile.craftrasDamageRatio <= 0) return true;
+        if (now < (projectile.craftrasParryRearmAt || 0)) return true;
+        const projectileRadius = Math.max(8, projectile.realSize || projectile.size || 8);
+        if (projectile.craftrasBossFormOwner) {
+            for (const mob of this.mobs) {
+                if (!this.isValidGreatFriendMonsterTarget(mob) || projectile.craftrasHitIds.has(mob.id)) continue;
+                const radius = projectileRadius + Math.max(8, mob.realSize || mob.size || 12);
+                if ((projectile.x - mob.x) ** 2 + (projectile.y - mob.y) ** 2 > radius ** 2) continue;
+                projectile.craftrasHitIds.add(mob.id);
+                this.damageMobFromGreatFriend(
+                    mob,
+                    projectile.craftrasBossFormOwner,
+                    Math.max(1, mob.health.max * projectile.craftrasDamageRatio),
+                    now,
+                );
+                this.beginSwordGuy2ProjectileLinger(projectile, now);
+                break;
+            }
+            return true;
+        }
+        for (const { body } of players || []) {
+            if (!body || body.isDead?.() || body.craftrasSpectator || projectile.craftrasHitIds.has(body.id)) continue;
+            const radius = projectileRadius + Math.max(8, body.realSize || body.size || 12);
+            if ((projectile.x - body.x) ** 2 + (projectile.y - body.y) ** 2 > radius ** 2) continue;
+            projectile.craftrasHitIds.add(body.id);
+            const canParry = projectile.craftrasCanParry !== false && this.canPlayerParry(body);
+            projectile.craftrasAwaitingParry = canParry;
+            projectile.craftrasParryResolved = false;
+            this.applyPlayerDamage(
+                body,
+                Math.max(1, body.health.max * projectile.craftrasDamageRatio),
+                projectile,
+                { noKnockback: true, swordGuyAttack: true },
+            );
+            if (!canParry) this.beginSwordGuy2ProjectileLinger(projectile, now);
+            break;
+        }
+        return true;
+    }
+
     updateTheGreatProjectiles(players, now) {
         for (const warning of [...this.theGreatWarnings]) {
             const linkedFriend = warning?.craftrasLinkedFriend;
@@ -11935,6 +26419,10 @@ class Craftras {
             if (!projectile || projectile.isDead?.()) {
                 projectile?.destroy?.();
                 this.theGreatProjectiles.delete(projectile);
+                continue;
+            }
+            if (projectile.craftrasSwordGuy2PhaseTwoProjectile) {
+                this.updateSwordGuy2PhaseTwoProjectile(projectile, players, now);
                 continue;
             }
             if (projectile.craftrasCompanionFriend) {
@@ -11995,10 +26483,11 @@ class Craftras {
                     const dx = target.x - projectile.x;
                     const dy = target.y - projectile.y;
                     const distance = Math.hypot(dx, dy) || 1;
-                    if (distance > BLOCK_SIZE * 4) {
+                    if (projectile.craftrasSwordGuy2Projectile || distance > BLOCK_SIZE * 4) {
                         const speed = projectile.craftrasSpeed || CRAFTRAS_THE_SWORD_FRIEND_SPEED;
-                        projectile.craftrasVelocity.x = projectile.craftrasVelocity.x * 0.84 + dx / distance * speed * 0.16;
-                        projectile.craftrasVelocity.y = projectile.craftrasVelocity.y * 0.84 + dy / distance * speed * 0.16;
+                        const turn = projectile.craftrasSwordGuy2Projectile ? 0.24 : 0.16;
+                        projectile.craftrasVelocity.x = projectile.craftrasVelocity.x * (1 - turn) + dx / distance * speed * turn;
+                        projectile.craftrasVelocity.y = projectile.craftrasVelocity.y * (1 - turn) + dy / distance * speed * turn;
                     }
                 }
             }
@@ -12050,6 +26539,24 @@ class Craftras {
             const hitRadius = Math.max(8, projectile.realSize || projectile.size || 8);
             projectile.craftrasHitIds ??= new Set();
             if (projectile.craftrasTheGreatKind === "friend" && projectile.craftrasSlashFadeUntil) continue;
+            if (projectile.craftrasBossFormOwner) {
+                for (const target of this.mobs) {
+                    if (!this.isValidGreatFriendMonsterTarget(target) || projectile.craftrasHitIds.has(target.id)) continue;
+                    const dx = target.x - projectile.x;
+                    const dy = target.y - projectile.y;
+                    const radius = hitRadius + Math.max(8, target.realSize || target.size || 12);
+                    if (dx * dx + dy * dy > radius * radius) continue;
+                    projectile.craftrasHitIds.add(target.id);
+                    const kind = projectile.craftrasTheGreatKind === "friend" ? "friend" : "bullet";
+                    this.damageMobFromGreatFriend(target, projectile.craftrasBossFormOwner, this.getPlayerBossFormDamage(target, kind), now);
+                    if (projectile.craftrasTheGreatKind === "bullet") {
+                        projectile.destroy();
+                        this.theGreatProjectiles.delete(projectile);
+                    }
+                    break;
+                }
+                continue;
+            }
             for (const { body } of players || []) {
                 if (!body || body.isDead?.() || projectile.craftrasHitIds.has(body.id)) continue;
                 const dx = body.x - projectile.x;
@@ -12057,12 +26564,153 @@ class Craftras {
                 const radius = hitRadius + Math.max(8, body.realSize || body.size || 12);
                 if (dx * dx + dy * dy > radius * radius) continue;
                 projectile.craftrasHitIds.add(body.id);
+                if (projectile.craftrasSwordGuy2Projectile) {
+                    this.applyPlayerDamage(
+                        body,
+                        this.getSwordGuy2Damage(body, projectile.craftrasSwordGuy2DamageKind || "friend"),
+                        projectile.craftrasOwner || projectile,
+                        { noKnockback: true, swordGuyAttack: true },
+                    );
+                    projectile.destroy();
+                    this.theGreatProjectiles.delete(projectile);
+                    break;
+                }
                 this.applyTheSwordPlayerDamage(body, projectile.craftrasTheGreatKind === "friend" ? "friend" : "bullet", projectile.craftrasOwner || projectile);
                 if (projectile.craftrasTheGreatKind === "bullet") {
                     projectile.destroy();
                     this.theGreatProjectiles.delete(projectile);
                 }
                 break;
+            }
+        }
+    }
+
+    updateMagicBookEntities(players, now = Date.now()) {
+        for (const entity of [...this.magicBookEntities]) {
+            const owner = entity?.craftrasMagicBookOwner;
+            if (!entity || entity.isDead?.() || !owner || owner.isDead?.() || now >= (entity.craftrasMagicBookExpiresAt || 0)) {
+                entity?.destroy?.();
+                this.magicBookEntities.delete(entity);
+                continue;
+            }
+            const kind = entity.craftrasMagicBookKind;
+            const magicColor = kind === "slash"
+                ? "#e8f2ff"
+                : kind === "barrage"
+                ? this.getMagicBookColor(now, entity.craftrasMagicBookOffset, ["#ad50ff", "#ffffff"])
+                : this.getMagicBookColor(now, entity.craftrasMagicBookOffset);
+            if (entity.color) entity.color.base = magicColor;
+            const slashFading = kind === "slash" && now >= (entity.craftrasMagicBookActiveUntil || 0);
+            if (slashFading) {
+                entity.alpha = Math.max(
+                    0.02,
+                    Math.min(0.95, (entity.craftrasMagicBookExpiresAt - now) / CRAFTRAS_GUARDIAN_SLASH_FADE),
+                );
+            }
+
+            if (kind === "anchor") {
+                const facing = Math.atan2(owner.control?.target?.y || 0, owner.control?.target?.x || 1);
+                const sideAngle = facing + entity.craftrasMagicBookSide * Math.PI / 2;
+                const distance = Math.max(
+                    24,
+                    (owner.realSize || owner.size || 12) * CRAFTRAS_MAGIC_BOOK_BARRAGE_ORBIT_DISTANCE,
+                );
+                entity.x = owner.x + Math.cos(sideAngle) * distance;
+                entity.y = owner.y + Math.sin(sideAngle) * distance;
+                entity.facing = facing;
+                entity.vfacing = facing;
+                entity.alpha = 0.86;
+                continue;
+            }
+
+            if (kind === "parry") {
+                if (!entity.craftrasMagicBookTarget || entity.craftrasMagicBookTarget.isDead?.()) {
+                    entity.craftrasMagicBookTarget = this.findMagicBookTarget(owner, entity.x, entity.y);
+                }
+                const target = entity.craftrasMagicBookTarget;
+                if (target && !target.isDead?.()) {
+                    const dx = target.x - entity.x;
+                    const dy = target.y - entity.y;
+                    const distance = Math.hypot(dx, dy) || 1;
+                    const age = now - entity.craftrasMagicBookSpawnedAt;
+                    const turn = Math.min(0.42, 0.035 + Math.floor(age / 2_000) * 0.10);
+                    const speed = 18;
+                    entity.craftrasMagicBookVelocity.x =
+                        entity.craftrasMagicBookVelocity.x * (1 - turn) + dx / distance * speed * turn;
+                    entity.craftrasMagicBookVelocity.y =
+                        entity.craftrasMagicBookVelocity.y * (1 - turn) + dy / distance * speed * turn;
+                }
+            }
+
+            entity.x += entity.craftrasMagicBookVelocity?.x || 0;
+            entity.y += entity.craftrasMagicBookVelocity?.y || 0;
+            entity.facing = Math.atan2(
+                entity.craftrasMagicBookVelocity?.y || 0,
+                entity.craftrasMagicBookVelocity?.x || 1,
+            );
+            entity.vfacing = entity.facing;
+
+            if (kind !== "slash" && now >= (entity.craftrasMagicBookNextTrailAt || 0)) {
+                entity.craftrasMagicBookNextTrailAt = now + (kind === "barrage" ? 75 : 55);
+                this.spawnExplosionEffect(entity, {
+                    duration: kind === "slash" ? 360 : 300,
+                    startSize: Math.max(4, (entity.realSize || entity.size || 8) * 0.8),
+                    endSize: Math.max(2, (entity.realSize || entity.size || 8) * 0.2),
+                    color: kind === "slash" ? "#2b9cff" : kind === "barrage" ? "#ff62dc" : magicColor,
+                    alpha: kind === "slash" ? 0.32 : 0.2,
+                    fade: true,
+                });
+            }
+
+            const block = worldToBlock(entity.x, entity.y);
+            if (this.isMovementBlockingBlock(this.getBlock(block.x, block.y))) {
+                if (kind === "slash") {
+                    entity.craftrasMagicBookActiveUntil = Math.min(entity.craftrasMagicBookActiveUntil, now);
+                    entity.craftrasMagicBookExpiresAt = Math.min(
+                        entity.craftrasMagicBookExpiresAt,
+                        now + CRAFTRAS_GUARDIAN_SLASH_FADE,
+                    );
+                } else {
+                    entity.destroy?.();
+                    this.magicBookEntities.delete(entity);
+                }
+                continue;
+            }
+
+            if (slashFading) continue;
+            const hitRadius = Math.max(7, entity.realSize || entity.size || 8);
+            let consumed = false;
+            for (const mob of this.mobs) {
+                if (!this.isValidGreatFriendMonsterTarget(mob) || entity.craftrasMagicBookHitIds.has(mob.id)) continue;
+                const dx = mob.x - entity.x;
+                const dy = mob.y - entity.y;
+                const radius = hitRadius + Math.max(8, mob.realSize || mob.size || 12);
+                if (dx * dx + dy * dy > radius * radius) continue;
+                entity.craftrasMagicBookHitIds.add(mob.id);
+                this.damageMobFromGreatFriend(mob, owner, entity.craftrasMagicBookDamage, now);
+                if (kind !== "slash") consumed = true;
+                break;
+            }
+            if (!consumed) for (const { body: target } of players || []) {
+                if (
+                    !target
+                    || target === owner
+                    || target.isDead?.()
+                    || this.areCraftrasPlayerAllies(owner, target)
+                    || entity.craftrasMagicBookHitIds.has(target.id)
+                ) continue;
+                const dx = target.x - entity.x;
+                const dy = target.y - entity.y;
+                const radius = hitRadius + Math.max(8, target.realSize || target.size || 12);
+                if (dx * dx + dy * dy > radius * radius) continue;
+                entity.craftrasMagicBookHitIds.add(target.id);
+                this.applyPlayerDamage(target, entity.craftrasMagicBookDamage, owner, { noKnockback: true });
+                if (kind !== "slash") consumed = true;
+                break;
+            }
+            if (consumed) {
+                entity.destroy?.();
+                this.magicBookEntities.delete(entity);
             }
         }
     }
@@ -12408,7 +27056,7 @@ class Craftras {
         this.setTheSwordWeaponPose(mob, 26 + pulse, 13.6 + pulse, 68 + shake - 80, -8 + shake * 0.18 - 80);
     }
 
-    setTheSwordSlashPose(mob, startedAt = Date.now(), now = Date.now(), duration = 650) {
+    setTheSwordSlashPose(mob, startedAt = Date.now(), now = Date.now(), duration = 650, reverse = false) {
         const pose = CRAFTRAS_THE_SWORD_POSE;
         const progress = Math.max(0, Math.min(1, (now - startedAt) / Math.max(1, duration)));
         let swordAngle;
@@ -12433,6 +27081,10 @@ class Craftras {
             gripAngle = this.craftrasTheSwordLerp(pose.cutGripAngle, pose.recoverGripAngle, motion);
             gripOffset = this.craftrasTheSwordLerp(pose.cutGripOffset, pose.idleGripOffset, motion);
             poseSize = this.craftrasTheSwordLerp(21, pose.idleSize, motion);
+        }
+        if (reverse) {
+            swordAngle = -swordAngle;
+            gripAngle = -gripAngle;
         }
         this.setTheSwordWeaponPose(mob, poseSize, gripOffset, swordAngle, gripAngle);
     }
@@ -12855,8 +27507,10 @@ class Craftras {
         return best;
     }
 
-    startTheSwordCombo(mob, target, now) {
-        const type = (mob.craftrasSwordGuyComboIndex || 0) % 3 + 1;
+    startTheSwordCombo(mob, target, now, requestedType = null) {
+        const type = Number.isInteger(requestedType) && requestedType >= 1 && requestedType <= 3
+            ? requestedType
+            : (mob.craftrasSwordGuyComboIndex || 0) % 3 + 1;
         mob.craftrasSwordGuyComboIndex = type;
         mob.craftrasSwordGuyCombo = {
             type,
@@ -13141,7 +27795,8 @@ class Craftras {
         const direction = { x: dx / distance, y: dy / distance };
         const friend = new Entity({ x, y });
         friend.define("craftrasTheGreatFriend");
-        friend.team = TEAM_ENEMIES;
+        const bossFormOwner = owner?.craftrasBossFormType ? owner : null;
+        friend.team = bossFormOwner?.team ?? TEAM_ENEMIES;
         friend.alwaysActive = true;
         if (sizeMultiplier !== 1) {
             const scaledSize = (friend.SIZE || friend.size || 40) * sizeMultiplier;
@@ -13153,6 +27808,7 @@ class Craftras {
         friend.vfacing = friend.facing;
         friend.craftrasTheGreatKind = "friend";
         friend.craftrasOwner = owner;
+        friend.craftrasBossFormOwner = bossFormOwner;
         friend.craftrasTarget = target;
         friend.craftrasMode = mode;
         friend.craftrasTargetPoint = target ? { x: target.x, y: target.y } : { x: x + direction.x * BLOCK_SIZE * 10, y: y + direction.y * BLOCK_SIZE * 10 };
@@ -13249,12 +27905,14 @@ class Craftras {
     spawnTheGreatBullet({ x, y, angle, owner = null, speed = CRAFTRAS_THE_SWORD_BULLET_SPEED }) {
         const bullet = new Entity({ x, y });
         bullet.define("craftrasTheGreatBullet");
-        bullet.team = TEAM_ENEMIES;
+        const bossFormOwner = owner?.craftrasBossFormType ? owner : null;
+        bullet.team = bossFormOwner?.team ?? TEAM_ENEMIES;
         bullet.alwaysActive = true;
         bullet.facing = angle;
         bullet.vfacing = angle;
         bullet.craftrasTheGreatKind = "bullet";
         bullet.craftrasOwner = owner;
+        bullet.craftrasBossFormOwner = bossFormOwner;
         bullet.craftrasVelocity = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed };
         bullet.craftrasSpawnedAt = Date.now();
         bullet.craftrasExpiresAt = bullet.craftrasSpawnedAt + 3500;
@@ -13369,7 +28027,13 @@ class Craftras {
 
     getBlockHealth(x, y) {
         const block = this.getBlock(x, y);
-        return this.damagedWallHealth.get(this.wallKey(x, y)) ?? BLOCK_HEALTH[block] ?? 0;
+        return this.damagedWallHealth.get(this.wallKey(x, y)) ?? this.getBlockMaxHealth(x, y, block);
+    }
+
+    getBlockMaxHealth(x, y, block = this.getBlock(x, y)) {
+        if (Config.craftras_world2_challenge_builder && block === BLOCKS.ROCK) return 1;
+        if (isInsideWorld2(x, y) && WORLD2_BLOCK_HEALTH[block] != null) return WORLD2_BLOCK_HEALTH[block];
+        return BLOCK_HEALTH[block] ?? 0;
     }
 
     explosionBlockAbsorption(from, target) {
@@ -13392,9 +28056,10 @@ class Craftras {
         if (Config.craftras_world1_challenge_builder) return false;
         const block = this.getBlock(x, y);
         if (block === BLOCKS.AIR || isTextStoryBlock(block) || damage <= 0) return false;
-        const suppressDrops = !!options.suppressDrops || isBrokenKingdomSurfaceCell(x, y);
+        if (options.owner) damage = this.scalePlayerProgressionDamage(options.owner, damage);
+        const suppressDrops = !!options.suppressDrops || Config.craftras_world2_challenge_builder || isBrokenKingdomSurfaceCell(x, y);
         const key = this.wallKey(x, y);
-        const maxHealth = BLOCK_HEALTH[block] ?? 100;
+        const maxHealth = this.getBlockMaxHealth(x, y, block) || 100;
         const health = (this.damagedWallHealth.get(key) ?? maxHealth) - damage;
         if (!options.suppressShake) this.broadcastBlockShake(x, y);
         if (health > 0) {
@@ -13452,6 +28117,25 @@ class Craftras {
         return true;
     }
 
+    spawnPhoenixEffect(location, options = {}) {
+        const effect = new Entity(location);
+        effect.define("craftrasPhoenixEffect");
+        effect.team = TEAM_ROOM;
+        effect.craftrasExplosionStarted = Date.now();
+        effect.craftrasExplosionDuration = options.duration || 700;
+        effect.craftrasExplosionStartSize = options.startSize || 30;
+        effect.craftrasExplosionEndSize = options.endSize || effect.craftrasExplosionStartSize * 1.8;
+        effect.craftrasExplosionGrowth = 0;
+        effect.craftrasExplosionStartAlpha = 0.6;
+        effect.craftrasExplosionFade = true;
+        effect.SIZE = effect.craftrasExplosionStartSize;
+        effect.coreSize = effect.craftrasExplosionStartSize;
+        effect.sizeMultiplier = 1;
+        effect.alpha = 0.6;
+        this.explosionEffects.add(effect);
+        return effect;
+    }
+
     spawnExplosionEffect(location, options = {}) {
         const effect = new Entity(location);
         effect.define("craftrasExplosionEffect");
@@ -13470,6 +28154,169 @@ class Craftras {
         if (options.alpha != null) effect.alpha = options.alpha;
         this.explosionEffects.add(effect);
         return effect;
+    }
+
+    spawnProjectileHitRemnant(projectile, duration = CRAFTRAS_SWORD_GUY_2_PHASE_TWO_PROJECTILE_LINGER) {
+        if (!projectile) return null;
+        const size = Math.max(3, projectile.realSize || projectile.size || projectile.SIZE || 6);
+        return this.spawnExplosionEffect(projectile, {
+            duration,
+            startSize: size,
+            endSize: size,
+            color: projectile.color?.base || "#f4f4f4",
+            alpha: Math.max(0.12, Math.min(1, Number(projectile.alpha) || 0.85)),
+            fade: true,
+        });
+    }
+
+    isCraftrasPhoenixBullet(entity) {
+        return entity?.type === "bullet" && (entity.label || "").includes("Craftras Phoenix Bullet");
+    }
+
+    trackPhoenixProjectile(entity, now) {
+        if (!this.isCraftrasPhoenixBullet(entity) || entity.craftrasExploded || this.phoenixProjectiles.has(entity)) return;
+        entity.craftrasPhoenixExpiresAt = now + CRAFTRAS_PHOENIX_PROJECTILE_LIFE;
+        entity.alwaysActive = true;
+        this.phoenixProjectiles.add(entity);
+    }
+
+    explodePhoenixProjectile(projectile) {
+        if (!projectile || projectile.craftrasExploded) return false;
+        projectile.craftrasExploded = true;
+        const origin = { x: projectile.x, y: projectile.y };
+        const owner = projectile.master || projectile.source || projectile;
+        const radiusBlocks = 4;
+        const radius = BLOCK_SIZE * radiusBlocks;
+        for (const { body } of this.getLivingPlayers()) {
+            if (!body || body.isDead?.()) continue;
+            const distance = Math.hypot(body.x - origin.x, body.y - origin.y);
+            if (distance > radius) continue;
+            const rawDamage = CRAFTRAS_PHOENIX_EXPLOSION_DAMAGE * (1 - distance / radius);
+            const damage = Math.max(0, rawDamage - this.explosionBlockAbsorption(origin, body));
+            if (damage > 0) {
+                this.applyPlayerDamage(body, damage, owner, {
+                    noKnockback: true,
+                    parryExplosion: true,
+                });
+                this.applyPlayerFire(body, owner);
+            }
+        }
+        const center = worldToBlock(origin.x, origin.y);
+        for (let y = center.y - radiusBlocks; y <= center.y + radiusBlocks; y++) {
+            for (let x = center.x - radiusBlocks; x <= center.x + radiusBlocks; x++) {
+                const location = blockToWorld(x, y);
+                const distance = Math.hypot(location.x - origin.x, location.y - origin.y);
+                if (distance <= radius) {
+                    this.damageBlockAt(x, y, CRAFTRAS_PHOENIX_EXPLOSION_DAMAGE * (1 - distance / radius), { owner });
+                }
+            }
+        }
+        this.spawnExplosionEffect(origin, {
+            duration: 450,
+            startSize: 12,
+            endSize: 58,
+            color: "#ff5a1f",
+            alpha: 0.72,
+            fade: true,
+        });
+        this.spawnPhoenixEffect(origin, { duration: 700, startSize: 28, endSize: 64 });
+        this.phoenixProjectiles.delete(projectile);
+        projectile.destroy();
+        return true;
+    }
+
+    updatePhoenixProjectiles(now) {
+        for (const projectile of this.phoenixProjectiles) {
+            if (!projectile || projectile.craftrasExploded) {
+                this.phoenixProjectiles.delete(projectile);
+                continue;
+            }
+            if (projectile.isDead?.()) {
+                this.explodePhoenixProjectile(projectile);
+                continue;
+            }
+            const cell = worldToBlock(projectile.x, projectile.y);
+            if (
+                now >= (projectile.craftrasPhoenixExpiresAt || 0) ||
+                this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))
+            ) {
+                this.explodePhoenixProjectile(projectile);
+                continue;
+            }
+            const projectileRadius = Math.max(4, projectile.realSize || projectile.size || 8);
+            for (const { body } of this.getLivingPlayers()) {
+                if (!body || body.isDead?.()) continue;
+                const hitRadius = projectileRadius + Math.max(4, body.realSize || body.size || 12);
+                if ((projectile.x - body.x) ** 2 + (projectile.y - body.y) ** 2 > hitRadius ** 2) continue;
+                this.explodePhoenixProjectile(projectile);
+                break;
+            }
+        }
+    }
+
+    getPhoenixSkeletonColor(now) {
+        const palette = [
+            [236, 36, 20],
+            [255, 126, 18],
+            [255, 220, 48],
+        ];
+        const cycle = (now % 2400) / 800;
+        const index = Math.floor(cycle) % palette.length;
+        const next = (index + 1) % palette.length;
+        const amount = cycle - Math.floor(cycle);
+        const channels = palette[index].map((value, channel) => Math.round(value + (palette[next][channel] - value) * amount));
+        return `#${channels.map(value => value.toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    updateInfernoMobAppearance(mob, now) {
+        if (!mob?.craftrasInfernoMob) return;
+        const fireColor = this.getPhoenixSkeletonColor(now);
+        mob.craftrasBaseColor = fireColor;
+        if (mob.craftrasMobType === "fire_worm") {
+            mob.craftrasWormSurfaceColor = fireColor;
+            return;
+        }
+        if (!(mob.craftrasFlashUntil > now)) mob.color.base = fireColor;
+    }
+
+    updatePhoenixSkeleton(mob, now) {
+        if (!mob || mob.craftrasMobType !== "phoenix_skeleton") return false;
+        if (!mob.craftrasPhoenixDeathAt) {
+            mob.color.base = this.getPhoenixSkeletonColor(now);
+            return false;
+        }
+        mob.damageReceived = 0;
+        mob.health.amount = 1;
+        mob.readyToDie = false;
+        mob.velocity.x *= 0.45;
+        mob.velocity.y *= 0.45;
+        mob.craftrasControl.goal = { x: mob.x, y: mob.y };
+        mob.craftrasControl.fire = false;
+        mob.craftrasControl.power = 0;
+        const duration = CRAFTRAS_PHOENIX_DEATH_WINDUP;
+        const progress = Math.max(0, Math.min(1, (now - mob.craftrasPhoenixDeathStarted) / duration));
+        const baseSize = mob.craftrasPhoenixBaseSize || 24;
+        const size = baseSize * (1 + progress * 0.9);
+        mob.SIZE = size;
+        mob.coreSize = size;
+        mob.sizeMultiplier = 1;
+        const red = 255;
+        const green = Math.max(18, Math.round(126 * (1 - progress)));
+        const blue = Math.max(8, Math.round(18 * (1 - progress)));
+        mob.color.base = `#${[red, green, blue].map(value => value.toString(16).padStart(2, "0")).join("")}`;
+        if (now < mob.craftrasPhoenixDeathAt) return true;
+        const origin = { x: mob.x, y: mob.y };
+        const radius = BLOCK_SIZE * 4;
+        for (const { body } of this.getLivingPlayers()) {
+            if (Math.hypot(body.x - origin.x, body.y - origin.y) <= radius) this.applyPlayerFire(body, mob);
+        }
+        this.explodeCreeperLike(mob, {
+            radiusBlocks: 4,
+            damage: CRAFTRAS_PHOENIX_DEATH_DAMAGE,
+            blockDamage: CRAFTRAS_PHOENIX_DEATH_DAMAGE,
+            phoenixEffect: { duration: 1100, startSize: baseSize * 2, endSize: baseSize * 5 },
+        });
+        return true;
     }
 
     updateExplosionEffects(now) {
@@ -13534,6 +28381,216 @@ class Craftras {
         return true;
     }
 
+    findZombieWizardStaffProjectileHit(projectile, segment, owner, players) {
+        let best = null;
+        let bestDistance = Infinity;
+        const projectileRadius = Math.max(4, projectile.realSize || projectile.size || projectile.SIZE || 8);
+        const consider = target => {
+            if (!this.isZombieWizardStaffTarget(owner, target)) return;
+            const hitRadius = projectileRadius + Math.max(4, target.realSize || target.size || 12);
+            if (this.pointToSegmentDistanceSquared(target.x, target.y, segment) > hitRadius * hitRadius) return;
+            const distance = (target.x - segment.startX) ** 2 + (target.y - segment.startY) ** 2;
+            if (distance >= bestDistance) return;
+            best = target;
+            bestDistance = distance;
+        };
+        for (const mob of this.mobs) consider(mob);
+        for (const entry of players || []) consider(entry?.body || entry);
+        return best;
+    }
+
+    damageZombieWizardStaffTarget(target, owner, baseDamage, now = Date.now()) {
+        if (!this.isZombieWizardStaffTarget(owner, target)) return false;
+        if (this.getSocketForBody(target)) {
+            return this.applyPlayerDamage(target, baseDamage, owner, { noKnockback: true });
+        }
+        let damage = this.scalePlayerProgressionDamage(owner, Math.max(0, Number(baseDamage) || 0));
+        damage = this.capKingDamageByGuardian(target, damage);
+        if (target.craftrasMobFamily === "npc") {
+            return this.applyVillageCombatNpcDamage(target, damage, owner);
+        }
+        if (target.craftrasGuardian) damage = this.absorbGuardianShieldDamage(target, damage, now);
+        if (damage <= 0 || (target.craftrasGuardian && this.tryGuardianDodge(target, owner, now))) return false;
+        if (this.tryGuardianLastStand(target, damage)) {
+            this.flashEntity(target, 350);
+            return true;
+        }
+        const actualDamage = Math.min(Math.max(0, target.health.amount), damage);
+        target.health.amount -= damage;
+        this.recordPlayerDamageTarget(owner, target, actualDamage, now);
+        this.markBossHealthHit(target, owner, now);
+        this.setMobAggro(target, owner, now);
+        this.handleSwordGuyDamaged(target, damage, owner, now);
+        this.flashEntity(target);
+        if (target.health.amount > 0) return true;
+        if (target.craftrasWorld2MagicBoss) {
+            if (!target.craftrasWorld2MagicEnraged) {
+                target.health.amount = target.health.max * 0.5;
+                this.startWorld2MagicalZombieEnrage(target, this.getWorld2MagicalZombieAudience(), now);
+            } else {
+                target.health.amount = 1;
+                this.startWorld2MagicalZombieDeath(target, now);
+            }
+            return true;
+        }
+        if (target.craftrasMagicBoss) {
+            target.health.amount = 1;
+            this.finishChallengeMagicalBoss(target, now);
+            return true;
+        }
+        this.awardCraftrasScore(owner, (MOB_SCORES[target.craftrasMobType] || 0) * (target.craftrasScoreMultiplier || 1));
+        target.kill?.();
+        return true;
+    }
+
+    removeZombieWizardStaffProjectile(projectile, effect = null) {
+        if (!projectile) return;
+        if (effect) this.spawnExplosionEffect(projectile, effect);
+        this.zombieWizardStaffProjectiles.delete(projectile);
+        projectile.destroy?.();
+    }
+
+    spawnZombieWizardStaffHomingProjectiles(owner, origin, target, now = Date.now(), fallbackAngle = 0) {
+        const hasTarget = this.isZombieWizardStaffTarget(owner, target);
+        const targetAngle = hasTarget
+            ? Math.atan2(target.y - origin.y, target.x - origin.x)
+            : fallbackAngle;
+        for (let index = 0; index < 5; index++) {
+            const angle = targetAngle + (index - 2) * 0.28;
+            const projectile = new Entity({ x: origin.x, y: origin.y });
+            projectile.define("craftrasZombieWizardStaffHomingOrb");
+            projectile.team = projectile.id;
+            projectile.color.base = "#125f20";
+            projectile.master = owner;
+            projectile.source = owner;
+            projectile.parent = owner;
+            projectile.craftrasOwner = owner;
+            projectile.craftrasZombieWizardStaffKind = "homing";
+            projectile.craftrasZombieWizardStaffTarget = hasTarget ? target : null;
+            projectile.craftrasZombieWizardStaffArmedAt = now + 180;
+            projectile.craftrasZombieWizardStaffPrevious = { x: origin.x, y: origin.y };
+            projectile.craftrasZombieWizardStaffExpiresAt = now + CRAFTRAS_ZOMBIE_WIZARD_STAFF_PROJECTILE_LIFE;
+            projectile.velocity.x = Math.cos(angle) * CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_SPEED;
+            projectile.velocity.y = Math.sin(angle) * CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_SPEED;
+            projectile.facing = angle;
+            projectile.vfacing = angle;
+            projectile.alwaysActive = true;
+            projectile.on("dead", () => this.zombieWizardStaffProjectiles.delete(projectile));
+            this.zombieWizardStaffProjectiles.add(projectile);
+        }
+        return 5;
+    }
+
+    updateZombieWizardStaffProjectiles(players, now) {
+        for (const projectile of this.zombieWizardStaffProjectiles) {
+            if (!projectile || projectile.isDead?.()) {
+                this.zombieWizardStaffProjectiles.delete(projectile);
+                continue;
+            }
+            const owner = projectile.craftrasOwner;
+            if (!owner || owner.isDead?.() || now >= (projectile.craftrasZombieWizardStaffExpiresAt || 0)) {
+                this.removeZombieWizardStaffProjectile(projectile, {
+                    duration: 260,
+                    startSize: Math.max(6, projectile.realSize || projectile.size || 8),
+                    growth: 0.1,
+                    color: projectile.craftrasZombieWizardStaffKind === "main" ? "#62ff38" : "#125f20",
+                    alpha: 0.4,
+                    fade: true,
+                });
+                continue;
+            }
+
+            projectile.color.base = projectile.craftrasZombieWizardStaffKind === "main" ? "#62ff38" : "#125f20";
+
+            if (projectile.craftrasZombieWizardStaffKind === "homing") {
+                let target = projectile.craftrasZombieWizardStaffTarget;
+                if (!this.isZombieWizardStaffTarget(owner, target)) {
+                    target = this.getZombieWizardStaffTarget(owner);
+                    projectile.craftrasZombieWizardStaffTarget = target;
+                }
+                if (target) {
+                    const desired = Math.atan2(target.y - projectile.y, target.x - projectile.x);
+                    const current = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+                    const difference = Math.atan2(Math.sin(desired - current), Math.cos(desired - current));
+                    const angle = current + Math.max(
+                        -CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_TURN,
+                        Math.min(CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_TURN, difference),
+                    );
+                    projectile.velocity.x = Math.cos(angle) * CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_SPEED;
+                    projectile.velocity.y = Math.sin(angle) * CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_SPEED;
+                    projectile.facing = angle;
+                    projectile.vfacing = angle;
+                }
+            }
+
+            const previous = projectile.craftrasZombieWizardStaffPrevious || { x: projectile.x, y: projectile.y };
+            const segment = { startX: previous.x, startY: previous.y, endX: projectile.x, endY: projectile.y };
+            projectile.craftrasZombieWizardStaffPrevious = { x: projectile.x, y: projectile.y };
+            const armed = now >= (projectile.craftrasZombieWizardStaffArmedAt || 0);
+            const hit = armed
+                ? this.findZombieWizardStaffProjectileHit(projectile, segment, owner, players)
+                : null;
+            if (hit) {
+                const main = projectile.craftrasZombieWizardStaffKind === "main";
+                this.damageZombieWizardStaffTarget(
+                    hit,
+                    owner,
+                    main ? CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_DAMAGE : CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_DAMAGE,
+                    now,
+                );
+                if (main) {
+                    const target = this.getZombieWizardStaffTarget(owner);
+                    const fallbackAngle = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+                    this.spawnZombieWizardStaffHomingProjectiles(owner, { x: projectile.x, y: projectile.y }, target, now, fallbackAngle);
+                }
+                this.removeZombieWizardStaffProjectile(projectile, {
+                    duration: main ? 480 : 240,
+                    startSize: main ? CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SIZE : CRAFTRAS_ZOMBIE_WIZARD_STAFF_HOMING_SIZE,
+                    growth: main ? 0.8 : 0.25,
+                    color: main ? "#62ff38" : "#125f20",
+                    alpha: main ? 0.68 : 0.5,
+                    fade: true,
+                });
+                continue;
+            }
+
+            const cell = worldToBlock(projectile.x, projectile.y);
+            if (this.isMovementBlockingBlock(this.getBlock(cell.x, cell.y))) {
+                if (projectile.craftrasZombieWizardStaffKind === "main") {
+                    const target = this.getZombieWizardStaffTarget(owner);
+                    const fallbackAngle = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+                    this.spawnZombieWizardStaffHomingProjectiles(owner, { x: projectile.x, y: projectile.y }, target, now, fallbackAngle);
+                }
+                this.removeZombieWizardStaffProjectile(projectile, {
+                    duration: 240,
+                    startSize: Math.max(6, projectile.realSize || projectile.size || 8),
+                    growth: 0.15,
+                    color: "#2c9b38",
+                    alpha: 0.42,
+                    fade: true,
+                });
+                continue;
+            }
+
+            if (projectile.craftrasZombieWizardStaffKind !== "main") continue;
+            const destination = projectile.craftrasZombieWizardStaffDestination;
+            const arrivalRadius = Math.max(8, CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SPEED * 1.5);
+            if (destination && this.pointToSegmentDistanceSquared(destination.x, destination.y, segment) <= arrivalRadius ** 2) {
+                const target = this.getZombieWizardStaffTarget(owner);
+                const fallbackAngle = Math.atan2(projectile.velocity.y, projectile.velocity.x);
+                this.spawnZombieWizardStaffHomingProjectiles(owner, { x: projectile.x, y: projectile.y }, target, now, fallbackAngle);
+                this.removeZombieWizardStaffProjectile(projectile, {
+                    duration: 320,
+                    startSize: CRAFTRAS_ZOMBIE_WIZARD_STAFF_MAIN_SIZE,
+                    growth: 0.35,
+                    color: "#62ff38",
+                    alpha: 0.48,
+                    fade: true,
+                });
+            }
+        }
+    }
+
     updateRocketProjectiles(now) {
         for (const rocket of this.rocketProjectiles) {
             if (!rocket || rocket.isDead?.()) {
@@ -13554,6 +28611,7 @@ class Craftras {
             let hit = false;
             for (const mob of this.mobs) {
                 if (!mob || mob.isDead?.()) continue;
+                if (this.isWormDamageImmune(mob)) continue;
                 const hitRadius = rocketRadius + Math.max(4, mob.realSize || mob.size || 12);
                 if ((rocket.x - mob.x) ** 2 + (rocket.y - mob.y) ** 2 <= hitRadius ** 2) {
                     hit = true;
@@ -13563,6 +28621,7 @@ class Craftras {
             if (!hit) {
                 for (const { body } of this.getLivingPlayers()) {
                     if (!body || body === rocket.craftrasRocketOwner) continue;
+                    if (this.areCraftrasPlayerAllies(body, rocket.craftrasRocketOwner)) continue;
                     const hitRadius = rocketRadius + Math.max(4, body.realSize || body.size || 12);
                     if ((rocket.x - body.x) ** 2 + (rocket.y - body.y) ** 2 <= hitRadius ** 2) {
                         hit = true;
@@ -13603,6 +28662,7 @@ class Craftras {
             if (!hit) {
                 for (const { body } of this.getLivingPlayers()) {
                     if (!body || body === bomb.craftrasBoneBombOwner) continue;
+                    if (this.areCraftrasPlayerAllies(body, bomb.craftrasBoneBombOwner)) continue;
                     const hitRadius = bombRadius + Math.max(4, body.realSize || body.size || 12);
                     if ((bomb.x - body.x) ** 2 + (bomb.y - body.y) ** 2 <= hitRadius ** 2) {
                         hit = true;
@@ -13627,14 +28687,22 @@ class Craftras {
             if (distance > radius) continue;
             const rawDamage = maxDamage * (1 - distance / radius);
             const damage = Math.max(0, rawDamage - this.explosionBlockAbsorption(origin, body));
-            if (damage > 0) this.applyPlayerDamage(body, damage, owner || rocket);
+            if (damage > 0) {
+                this.applyPlayerDamage(body, damage, owner || rocket, {
+                    noKnockback: true,
+                    parryExplosion: true,
+                });
+            }
         }
         for (const mob of this.mobs) {
             if (!mob || mob.isDead?.()) continue;
+            if (this.isWormDamageImmune(mob)) continue;
+            if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) continue;
             const distance = Math.hypot(mob.x - origin.x, mob.y - origin.y);
             if (distance > radius) continue;
             const rawDamage = maxDamage * (1 - distance / radius);
             let damage = Math.max(0, rawDamage - this.explosionBlockAbsorption(origin, mob));
+            damage = this.scalePlayerProgressionDamage(owner, damage);
             damage = this.capKingDamageByGuardian(mob, damage);
             if (damage <= 0) continue;
             if (mob.craftrasMobFamily === "npc") {
@@ -13650,10 +28718,17 @@ class Craftras {
                 continue;
             }
             mob.health.amount -= damage;
+            this.recordPlayerDamageTarget(owner, mob, damage);
+            this.markBossHealthHit(mob, owner, Date.now());
             if (owner) this.setMobAggro(mob, owner);
             this.handleSwordGuyDamaged(mob, damage, owner || rocket);
             this.flashEntity(mob);
             if (mob.health.amount <= 0) {
+                if (mob.craftrasMagicBoss) {
+                    mob.health.amount = 1;
+                    this.finishChallengeMagicalBoss(mob);
+                    continue;
+                }
                 if (owner) this.awardCraftrasScore(owner, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
                 this.mobs.delete(mob);
                 mob.kill?.();
@@ -13664,7 +28739,7 @@ class Craftras {
             for (let x = center.x - 8; x <= center.x + 8; x++) {
                 const location = blockToWorld(x, y);
                 const distance = Math.hypot(location.x - origin.x, location.y - origin.y);
-                if (distance <= radius) this.damageBlockAt(x, y, maxDamage * (1 - distance / radius));
+                if (distance <= radius) this.damageBlockAt(x, y, maxDamage * (1 - distance / radius), { owner });
             }
         }
         this.spawnExplosionEffect(origin, { duration: 500, startSize: 10, growth: 1 });
@@ -13686,14 +28761,22 @@ class Craftras {
             if (distance > radius) continue;
             const rawDamage = maxDamage * (1 - distance / radius);
             const damage = Math.max(0, rawDamage - this.explosionBlockAbsorption(origin, body));
-            if (damage > 0) this.applyPlayerDamage(body, damage, owner || bomb);
+            if (damage > 0) {
+                this.applyPlayerDamage(body, damage, owner || bomb, {
+                    noKnockback: true,
+                    parryExplosion: true,
+                });
+            }
         }
         for (const mob of this.mobs) {
             if (!mob || mob.isDead?.()) continue;
+            if (this.isWormDamageImmune(mob)) continue;
+            if (mob.craftrasMagicBoss && !mob.craftrasMagicVulnerable) continue;
             const distance = Math.hypot(mob.x - origin.x, mob.y - origin.y);
             if (distance > radius) continue;
             const rawDamage = maxDamage * (1 - distance / radius);
             let damage = Math.max(0, rawDamage - this.explosionBlockAbsorption(origin, mob));
+            damage = this.scalePlayerProgressionDamage(owner, damage);
             damage = this.capKingDamageByGuardian(mob, damage);
             if (damage <= 0) continue;
             if (mob.craftrasMobFamily === "npc") {
@@ -13709,10 +28792,17 @@ class Craftras {
                 continue;
             }
             mob.health.amount -= damage;
+            this.recordPlayerDamageTarget(owner, mob, damage);
+            this.markBossHealthHit(mob, owner, Date.now());
             if (owner) this.setMobAggro(mob, owner);
             this.handleSwordGuyDamaged(mob, damage, owner || bomb);
             this.flashEntity(mob);
             if (mob.health.amount <= 0) {
+                if (mob.craftrasMagicBoss) {
+                    mob.health.amount = 1;
+                    this.finishChallengeMagicalBoss(mob);
+                    continue;
+                }
                 if (owner) this.awardCraftrasScore(owner, (MOB_SCORES[mob.craftrasMobType] || 0) * (mob.craftrasScoreMultiplier || 1));
                 this.mobs.delete(mob);
                 mob.kill?.();
@@ -13723,7 +28813,7 @@ class Craftras {
             for (let x = center.x - radiusBlocks; x <= center.x + radiusBlocks; x++) {
                 const location = blockToWorld(x, y);
                 const distance = Math.hypot(location.x - origin.x, location.y - origin.y);
-                if (distance <= radius) this.damageBlockAt(x, y, maxDamage * (1 - distance / radius));
+                if (distance <= radius) this.damageBlockAt(x, y, maxDamage * (1 - distance / radius), { owner });
             }
         }
         this.spawnExplosionEffect(origin, { duration: 420, startSize: 9, growth: 0.8, color: "#d9dde2", alpha: 0.5 });
@@ -13779,6 +28869,7 @@ class Craftras {
         }
         for (const other of this.mobs) {
             if (!other || other === mob || other.isDead?.()) continue;
+            if (other.craftrasMagicBoss && !other.craftrasMagicVulnerable) continue;
             const distance = Math.hypot(other.x - origin.x, other.y - origin.y);
             if (distance > radius) continue;
             let damage = maxDamage * (1 - distance / radius);
@@ -13792,6 +28883,11 @@ class Craftras {
             this.handleSwordGuyDamaged(other, damage, mob);
             this.flashEntity(other);
             if (other.health.amount <= 0) {
+                if (other.craftrasMagicBoss) {
+                    other.health.amount = 1;
+                    this.finishChallengeMagicalBoss(other);
+                    continue;
+                }
                 this.mobs.delete(other);
                 other.kill?.();
             }
@@ -13821,10 +28917,14 @@ class Craftras {
             if (distance > radius) continue;
             const rawDamage = maxDamage * (1 - distance / radius);
             const damage = Math.max(0, rawDamage - this.explosionBlockAbsorption(origin, body));
-            this.applyPlayerDamage(body, damage, mob);
+            this.applyPlayerDamage(body, damage, mob, {
+                noKnockback: true,
+                parryExplosion: true,
+            });
         }
         for (const other of this.mobs) {
             if (!other || other === mob || other.isDead?.()) continue;
+            if (other.craftrasMagicBoss && !other.craftrasMagicVulnerable) continue;
             const distance = Math.hypot(other.x - origin.x, other.y - origin.y);
             if (distance > radius) continue;
             const rawDamage = maxDamage * (1 - distance / radius);
@@ -13852,6 +28952,11 @@ class Craftras {
             other.velocity.x += dx / pushDistance * Math.min(36, radiusBlocks * 4.5);
             other.velocity.y += dy / pushDistance * Math.min(36, radiusBlocks * 4.5);
             if (other.health.amount <= 0) {
+                if (other.craftrasMagicBoss) {
+                    other.health.amount = 1;
+                    this.finishChallengeMagicalBoss(other);
+                    continue;
+                }
                 this.mobs.delete(other);
                 other.kill?.();
             }
@@ -13864,8 +28969,11 @@ class Craftras {
                 if (distance <= radius) this.damageBlockAt(x, y, blockDamage * (1 - distance / radius));
             }
         }
-        this.spawnExplosionEffect(origin, options.effect || {});
-        this.spawnMobDeathEffect(mob);
+        if (options.phoenixEffect) this.spawnPhoenixEffect(origin, options.phoenixEffect);
+        else {
+            this.spawnExplosionEffect(origin, options.effect || {});
+            this.spawnMobDeathEffect(mob);
+        }
         this.mobs.delete(mob);
         mob.destroy();
     }
@@ -13878,11 +28986,12 @@ class Craftras {
         return entity?.type === "bullet" && (entity.label || "").includes("Craftras Skeleton Bullet");
     }
 
-    updateCraftrasM134Projectiles() {
+    updateCraftrasM134Projectiles(now = Date.now()) {
         const m134Bullets = [];
         const skeletonBullets = [];
         for (const entity of entities.values()) {
             if (!entity || entity.isDead?.() || entity.type !== "bullet") continue;
+            if (this.isCraftrasPhoenixBullet(entity)) this.trackPhoenixProjectile(entity, now);
             if (this.isCraftrasM134Bullet(entity)) {
                 m134Bullets.push(entity);
                 const cell = worldToBlock(entity.x, entity.y);
@@ -13933,6 +29042,7 @@ class Craftras {
         }
         for (const other of this.mobs) {
             if (!other || other === mob || other.isDead?.()) continue;
+            if (other.craftrasMagicBoss && !other.craftrasMagicVulnerable) continue;
             const distance = Math.hypot(other.x - origin.x, other.y - origin.y);
             if (distance > radius) continue;
             const rawDamage = 210 * (1 - distance / radius);
@@ -13960,6 +29070,11 @@ class Craftras {
             other.velocity.x += dx / pushDistance * 18;
             other.velocity.y += dy / pushDistance * 18;
             if (other.health.amount <= 0) {
+                if (other.craftrasMagicBoss) {
+                    other.health.amount = 1;
+                    this.finishChallengeMagicalBoss(other);
+                    continue;
+                }
                 this.mobs.delete(other);
                 other.kill?.();
             }
@@ -14024,7 +29139,7 @@ class Craftras {
         }
     }
 
-    damageWallsInSlash(body, { toolSegments, damage = 100 }) {
+    damageWallsInSlash(body, { toolSegments, toolPolygons, damage = 100 }) {
         if (Config.craftras_world1_challenge_builder || !body || body.craftrasSpectator || !toolSegments?.length) return;
         if (body.craftrasHeldItem === "destroyer") {
             this.damageDestroyerArea(body, toolSegments);
@@ -14039,6 +29154,9 @@ class Craftras {
                 Math.hypot(segment.endX - body.x, segment.endY - body.y) + segment.radius,
             );
         }
+        for (const polygon of toolPolygons || []) for (const point of polygon.points || []) {
+            maxReach = Math.max(maxReach, Math.hypot(point.x - body.x, point.y - body.y));
+        }
         const blockRadius = Math.ceil((maxReach + WALL_SIZE * 0.5) / BLOCK_SIZE) + 1;
         body.craftrasMiningHitKeys ??= new Set();
 
@@ -14048,13 +29166,25 @@ class Craftras {
                 if (body.craftrasMiningHitKeys.has(key)) continue;
                 const block = this.getBlock(x, y);
                 const location = blockToWorld(x, y);
-                if (!toolSegments.some(segment => this.toolSegmentHitsBlock(segment, x, y))) continue;
+                const polygonHit = this.toolPolygonsHitCircle(toolPolygons, {
+                    x: location.x,
+                    y: location.y,
+                    size: WALL_SIZE * 0.5,
+                    realSize: WALL_SIZE * 0.5,
+                });
+                const hit = toolPolygons?.length
+                    ? polygonHit
+                    : toolSegments.some(segment => this.toolSegmentHitsBlock(segment, x, y));
+                if (!hit) continue;
                 if (isTextStoryBlock(block)) continue;
                 if (block === BLOCKS.AIR) {
                     if (!Config.craftras_village_builder || this.getFloor(x, y) === BLOCKS.AIR) continue;
                     body.craftrasMiningHitKeys.add(key);
                     const heldItem = body.craftrasHeldItem || "";
-                    const floorDamage = heldItem === "admin_pickaxe" ? 1e100 : heldItem.endsWith("_shovel") ? damage * 2 : damage;
+                    const floorDamage = this.scalePlayerProgressionDamage(
+                        body,
+                        heldItem === "admin_pickaxe" ? 1e100 : heldItem.endsWith("_shovel") ? damage * 2 : damage,
+                    );
                     this.damageFloorAt(x, y, floorDamage);
                     continue;
                 }
@@ -14067,14 +29197,23 @@ class Craftras {
                 }
 
                 body.craftrasMiningHitKeys.add(key);
-                const maxHealth = BLOCK_HEALTH[block] ?? 100;
+                const maxHealth = this.getBlockMaxHealth(x, y, block) || 100;
                 const heldItem = body.craftrasHeldItem || "";
                 const correctTool = heldItem.endsWith("_axe") ? AXE_BLOCKS.has(block)
                     : heldItem.endsWith("_pickaxe") ? PICKAXE_BLOCKS.has(block)
                     : heldItem.endsWith("_shovel") ? SHOVEL_BLOCKS.has(block)
                     : false;
-                const effectiveDamage = builderDemolition ? VILLAGE_BUILDER_BLOCK_DAMAGE : heldItem === "admin_pickaxe" ? damage : correctTool ? damage * 2 : 10;
-                const harvestLevel = BLOCK_HARVEST_LEVEL[block] ?? 1;
+                const effectiveDamage = this.scalePlayerProgressionDamage(
+                    body,
+                    builderDemolition ? VILLAGE_BUILDER_BLOCK_DAMAGE : heldItem === "admin_pickaxe" ? damage : correctTool ? damage * 2 : 10,
+                );
+                const harvestLevel = isInsideWorld2(x, y)
+                    ? block === BLOCKS.CRYSTAL_ORE
+                        ? 4
+                        : block === BLOCKS.IRON_ORE
+                            ? 5
+                            : BLOCK_HARVEST_LEVEL[block] ?? 1
+                    : BLOCK_HARVEST_LEVEL[block] ?? 1;
                 const canHarvest = ALWAYS_HARVESTABLE_BLOCKS.has(block)
                     || correctTool && harvestLevel <= getToolHarvestLevel(heldItem) + 1;
                 const health = (this.damagedWallHealth.get(key) ?? maxHealth) - effectiveDamage;
@@ -14195,6 +29334,10 @@ class Craftras {
 
     resolveBodyBlockCollisions(body) {
         if (!body || body.craftrasSpectator) return;
+        if (Config.craftras_world2_challenge_builder && this.getSocketForBody(body)) {
+            this.resolveWorld2ChallengeRockImpacts(body);
+            return;
+        }
         this.resolveEntityOutOfWall(body);
         const radius = Math.max(1, body.realSize || body.size || 1);
         const halfWall = WALL_SIZE * 0.5;
@@ -14255,6 +29398,49 @@ class Craftras {
         this.resolveEntityOutOfWall(body);
     }
 
+    resolveWorld2ChallengeRockImpacts(body) {
+        const speed = Math.hypot(body.velocity?.x || 0, body.velocity?.y || 0);
+        const roomSpeed = Math.max(0.001, Number(this.gameManager.roomSpeed) || 1);
+        const fromX = body.x - (body.velocity?.x || 0) / roomSpeed;
+        const fromY = body.y - (body.velocity?.y || 0) / roomSpeed;
+        const distance = Math.hypot(body.x - fromX, body.y - fromY);
+        const steps = Math.max(1, Math.ceil(distance / (BLOCK_SIZE * 0.28)));
+        const radius = Math.max(1, body.realSize || body.size || 1);
+        const halfWall = WALL_SIZE * 0.5;
+        const cellRadius = Math.ceil((radius + halfWall) / BLOCK_SIZE);
+        const hitCells = new Set();
+
+        for (let step = 0; step <= steps; step++) {
+            const progress = step / steps;
+            const sampleX = fromX + (body.x - fromX) * progress;
+            const sampleY = fromY + (body.y - fromY) * progress;
+            const center = worldToBlock(sampleX, sampleY);
+            for (let y = center.y - cellRadius; y <= center.y + cellRadius; y++) {
+                for (let x = center.x - cellRadius; x <= center.x + cellRadius; x++) {
+                    if (this.getBlock(x, y) !== BLOCKS.ROCK) continue;
+                    const wall = blockToWorld(x, y);
+                    const nearestX = Math.max(wall.x - halfWall, Math.min(sampleX, wall.x + halfWall));
+                    const nearestY = Math.max(wall.y - halfWall, Math.min(sampleY, wall.y + halfWall));
+                    if ((sampleX - nearestX) ** 2 + (sampleY - nearestY) ** 2 > radius ** 2) continue;
+                    hitCells.add(this.wallKey(x, y));
+                }
+            }
+        }
+
+        if (!hitCells.size) return false;
+        const impactDamage = Math.max(1, speed * 10);
+        for (const key of hitCells) {
+            const [x, y] = key.split(",").map(Number);
+            this.damageBlockAt(x, y, impactDamage, {
+                suppressDrops: true,
+                owner: body,
+            });
+        }
+        body.velocity.x *= CRAFTRAS_WORLD2_CHALLENGE_ROCK_SPEED_RETAINED;
+        body.velocity.y *= CRAFTRAS_WORLD2_CHALLENGE_ROCK_SPEED_RETAINED;
+        return true;
+    }
+
     removeInwardMotion(vector, normalX, normalY) {
         if (!vector) return;
         const inward = vector.x * normalX + vector.y * normalY;
@@ -14310,7 +29496,19 @@ class Craftras {
             this.clientStates.set(socket, state);
         }
         if (!state.initialized) {
-            socket.talk("CR", 1, this.worldSize || WORLD_SIZE, BLOCK_SIZE, WALL_SIZE, CHUNK_SIZE, Config.craftras_world1_challenge_builder ? 1 : 0);
+            socket.talk(
+                "CR",
+                1,
+                this.worldSize || WORLD_SIZE,
+                BLOCK_SIZE,
+                WALL_SIZE,
+                CHUNK_SIZE,
+                Config.craftras_world1_challenge_builder ? 1 : 0,
+                Config.craftras_world2 ? 1 : 0,
+                WORLD_SIZE / 2,
+                WORLD_SIZE,
+                Config.craftras_world2_challenge_builder ? 1 : 0,
+            );
             state.initialized = true;
         }
         if (state.routeMarkerRevision !== this.routeMarkerRevision) {
@@ -14336,7 +29534,9 @@ class Craftras {
                 needed.add(key);
                 if (!state.chunks.has(key)) {
                     socket.talk("CH", chunkX, chunkY, ...this.buildChunkData(chunkX, chunkY));
-                    socket.talk("FH", chunkX, chunkY, ...this.buildFloorChunkData(chunkX, chunkY));
+                    if (!Config.craftras_world2_challenge_builder) {
+                        socket.talk("FH", chunkX, chunkY, ...this.buildFloorChunkData(chunkX, chunkY));
+                    }
                 }
             }
         }
@@ -14383,11 +29583,46 @@ class Craftras {
         }
     }
 
+    recordPerformanceStage(name, duration) {
+        if (!Number.isFinite(duration) || duration < 0) return;
+        const window = this.performanceWindow ||= { startedAt: Date.now(), stages: Object.create(null) };
+        const stage = window.stages[name] ||= { count: 0, total: 0, max: 0 };
+        stage.count++;
+        stage.total += duration;
+        stage.max = Math.max(stage.max, duration);
+    }
+
+    flushPerformanceWindow(now = Date.now()) {
+        const window = this.performanceWindow;
+        if (!window || now - window.startedAt < 5_000) return;
+        let activeEntities = 0;
+        for (const entity of entities.values()) if (entity?.activation?.active || entity?.isPlayer) activeEntities++;
+        const stages = Object.entries(window.stages)
+            .map(([name, stage]) => `${name}=${(stage.total / Math.max(1, stage.count)).toFixed(2)}ms(avg)/${stage.max.toFixed(2)}ms(max)`)
+            .join(" ");
+        console.log(
+            `[Craftras Perf] server=${this.gameManager.name} clients=${this.gameManager.clients.length} `
+            + `entities=${entities.size} active=${activeEntities} mobs=${this.mobs.size} `
+            + `trees=${this.loadedTrees.size} drops=${this.itemDrops.size} ${stages}`,
+        );
+        this.performanceWindow = null;
+    }
+
     update(force = false) {
         if (!Config.craftras) return;
         const now = Date.now();
+        const profilePerformance = this.gameManager.clients.length >= 4;
+        if (!profilePerformance && this.performanceWindow) this.performanceWindow = null;
+        const performanceMarks = profilePerformance ? { start: performance.now(), last: 0 } : null;
+        if (performanceMarks) performanceMarks.last = performanceMarks.start;
+        const markPerformance = profilePerformance ? name => {
+            const current = performance.now();
+            this.recordPerformanceStage(name, current - performanceMarks.last);
+            performanceMarks.last = current;
+        } : null;
         const timeStopped = !!this.craftrasTimeStopped;
         const challengeServer = !!Config.craftras_world1_challenge_builder;
+        const world2ChallengeServer = !!Config.craftras_world2_challenge_builder;
         const challengeIdle = challengeServer && this.gameManager.clients.length === 0;
         if (challengeServer) {
             if (!challengeIdle) this.challengeHadClients = true;
@@ -14396,7 +29631,7 @@ class Craftras {
                 this.challengeHadClients = false;
             }
         }
-        if (timeStopped) {
+        if (timeStopped || world2ChallengeServer) {
             this.dayCycleLastUpdate = now;
             this.weatherLastUpdate = now;
         } else {
@@ -14406,24 +29641,30 @@ class Craftras {
         }
         const players = this.getLivingPlayers();
         const connectedPlayers = this.getConnectedPlayerBodies();
+        this.syncBossHealthBars(now);
         this.syncPlayerSurvivalState(connectedPlayers, now);
+        if (!timeStopped && !world2ChallengeServer) this.updateWhiteInfernoPlayers(players, now);
         if (challengeServer && ["intro", "active"].includes(this.challengeStage) && connectedPlayers.length && !players.length) {
             this.startWorld1ChallengeFailure(now);
         }
         const challengeFailureActive = challengeServer && this.updateWorld1ChallengeFailure(now);
+        if (challengeServer) this.updateWorld1ChallengeCompletion(now);
         this.updateSwordGuyTransformations(now);
         this.processDestroyerQueue();
         this.processWorldEditJobs();
         this.updateMerchantShop();
+        markPerformance?.("state");
         if (!timeStopped && !challengeIdle && !challengeFailureActive) {
             this.updateChallengeActors(now);
             this.updateChallengeEncounter(players, now);
         }
+        markPerformance?.("challenge");
         const runCombatSimulation = !Config.craftras_steel_torch_builder && (
             !Config.craftras_village_builder || Config.craftras_world1_challenge_builder
         );
-        if (!timeStopped && !challengeIdle && !challengeFailureActive && runCombatSimulation) {
-            if (!Config.craftras_world1_challenge_builder) {
+        const challengeFailureAllowsCombat = challengeFailureActive && !!this.challengeFailure?.allowCombat;
+        if (!timeStopped && !challengeIdle && (!challengeFailureActive || challengeFailureAllowsCombat) && runCombatSimulation) {
+            if (!Config.craftras_world1_challenge_builder && !world2ChallengeServer) {
                 this.updateArenaBuildCycle(now);
                 if (this.hasArenaBuilders()) this.ejectUndergroundPlayersForArenaBuild(players);
                 this.arenaBuildRepairBudget = ARENA_BUILD_REPAIR_BUDGET_PER_TICK;
@@ -14432,21 +29673,30 @@ class Craftras {
                 this.updateKingdomGhostRepairers(now);
                 this.updatePendingGuardianSpawns(now);
             }
-            this.updateMobs(players, now);
+            if (world2ChallengeServer) this.updateWorld2ChallengeMobs(players, now);
+            else this.updateMobs(players, now);
+            markPerformance?.("mobs");
+            this.updatePlayerBossFormSkills(connectedPlayers, now);
             this.resolveCraftrasMobSeparation();
+            markPerformance?.("separation");
             this.updateSpiderAbilities(players, now);
             this.updateClericHealCircles(now);
             this.updatePopeStaffProjectiles(players, now);
+            this.updateLaserTestBeams(players, now);
             this.updateGuardianSlashProjectiles(players, now);
             this.updateChallengeMagicEntities(players, now);
             this.updateTheGreatFriendCompanions(players, now);
             this.updateTheGreatProjectiles(players, now);
+            this.updateMagicBookEntities(players, now);
             this.updateTheSwordArenas(players, now);
             this.updateExplosionEffects(now);
+            this.updateZombieWizardStaffProjectiles(players, now);
             this.updateRocketProjectiles(now);
             this.updateBoneBombProjectiles(now);
-            this.updateCraftrasM134Projectiles();
+            this.updateCraftrasM134Projectiles(now);
+            this.updatePhoenixProjectiles(now);
         }
+        markPerformance?.("combatExtras");
         if (!timeStopped) this.updateDamagedBlockRegeneration(now);
         this.resolvePlayerBlockCollisions();
         this.syncStationTouches();
@@ -14455,7 +29705,14 @@ class Craftras {
             this.resolveItemDropBlockCollisions();
             this.updateFurnaces();
         }
-        if (!force && ++this.updateCounter % 3 !== 0) return;
+        markPerformance?.("worldCollision");
+        if (!force && ++this.updateCounter % 3 !== 0) {
+            if (performanceMarks) {
+                this.recordPerformanceStage("total", performance.now() - performanceMarks.start);
+                this.flushPerformanceWindow(now);
+            }
+            return;
+        }
         let chunksChanged = force;
         let activeClientCount = 0;
         for (const { socket, body } of connectedPlayers) {
@@ -14468,6 +29725,11 @@ class Craftras {
             chunksChanged = true;
         }
         if (chunksChanged) this.syncTreeEntities();
+        if (performanceMarks) {
+            markPerformance("chunkSync");
+            this.recordPerformanceStage("total", performance.now() - performanceMarks.start);
+            this.flushPerformanceWindow(now);
+        }
     }
 }
 

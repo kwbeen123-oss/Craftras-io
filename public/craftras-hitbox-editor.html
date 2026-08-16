@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Craftras Hitbox Editor</title>
+    <link rel="stylesheet" href="./client/craftras-hitbox-editor.css?v=20260808-item-studio-1">
+</head>
+<body>
+    <div class="app-shell">
+        <header class="topbar">
+            <div class="brand-block">
+                <strong>CRAFTRAS</strong>
+                <span>ITEM STUDIO</span>
+            </div>
+            <nav class="mode-tabs" aria-label="제작 단계">
+                <button type="button" class="active" data-editor-mode="hitbox"><b>1</b> 히트박스</button>
+                <button type="button" data-editor-mode="item"><b>2</b> 아이템</button>
+                <button type="button" data-editor-mode="animation"><b>3</b> 애니메이션</button>
+            </nav>
+            <div class="document-name" id="documentName">새 히트박스 프로젝트</div>
+            <div class="top-actions">
+                <button type="button" class="command" id="openImageButton">이미지 열기</button>
+                <button type="button" class="command" id="openProjectButton">프로젝트 열기</button>
+                <button type="button" class="icon-command" id="undoButton" title="실행 취소 (Ctrl+Z)" aria-label="실행 취소">↶</button>
+                <button type="button" class="icon-command" id="redoButton" title="다시 실행 (Ctrl+Y)" aria-label="다시 실행">↷</button>
+                <button type="button" class="command" id="saveProjectButton">프로젝트 저장</button>
+                <button type="button" class="command primary" id="exportButton">히트박스 내보내기</button>
+                <button type="button" class="command install-command" id="installItemTopButton">아이템 설치</button>
+            </div>
+        </header>
+
+        <aside class="toolrail" aria-label="편집 도구">
+            <button type="button" class="tool active" data-tool="select" title="선택 및 이동 (V)"><span>V</span><small>선택</small></button>
+            <button type="button" class="tool" data-tool="polygon" title="직접 다각형 그리기 (P)"><span>⬠</span><small>다각형</small></button>
+            <button type="button" class="tool" data-tool="addVertex" title="변에 꼭짓점 추가 (A)"><span>＋</span><small>점 추가</small></button>
+            <button type="button" class="tool" data-tool="deleteVertex" title="꼭짓점 삭제 (D)"><span>−</span><small>점 삭제</small></button>
+            <button type="button" class="tool" data-tool="pan" title="화면 이동 (H 또는 Space)"><span>✥</span><small>이동</small></button>
+            <div class="toolrail-spacer"></div>
+            <button type="button" class="tool" id="fitButton" title="이미지에 맞추기 (F)"><span>⌗</span><small>맞춤</small></button>
+        </aside>
+
+        <main class="workspace" id="workspace">
+            <canvas id="editorCanvas" aria-label="히트박스 편집 캔버스"></canvas>
+            <div class="empty-state" id="emptyState">
+                <div class="empty-mark">⬡</div>
+                <strong>이미지를 열어 히트박스를 만드세요</strong>
+                <span>PNG, JPG, WEBP, GIF 지원</span>
+                <button type="button" class="command primary" id="emptyOpenButton">이미지 선택</button>
+            </div>
+            <div class="canvas-hint" id="canvasHint">꼭짓점을 드래그하거나 다각형 내부를 드래그하세요.</div>
+
+            <section class="studio-workspace item-workspace" id="itemWorkspace" aria-label="아이템 설정">
+                <div class="studio-heading">
+                    <div><span>STEP 2</span><h1>아이템 설정</h1></div>
+                    <p>게임 안에서 사용할 무기의 이름, 피해량, 크기와 트레일을 설정합니다.</p>
+                </div>
+                <div class="studio-grid">
+                    <section class="studio-panel">
+                        <h2>기본 정보</h2>
+                        <label class="studio-field"><span>아이템 ID</span><input id="itemId" type="text" value="custom_sword" spellcheck="false"><small>영문 소문자, 숫자, 밑줄만 사용</small></label>
+                        <label class="studio-field"><span>표시 이름</span><input id="itemName" type="text" value="Custom Sword"></label>
+                        <label class="studio-field"><span>설명</span><textarea id="itemDescription" rows="4">A weapon made with Craftras Item Studio.</textarea></label>
+                        <label class="studio-field"><span>피해량</span><input id="itemDamage" type="number" min="0" step="1" value="100"></label>
+                        <label class="studio-check"><input id="itemDamageWalls" type="checkbox" checked> 블록에도 히트박스 피해 적용</label>
+                    </section>
+                    <section class="studio-panel">
+                        <h2>게임 표시</h2>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>무기 크기</span><input id="itemRenderScale" type="number" min="0.2" max="20" step="0.05" value="3.25"></label>
+                            <label class="studio-field"><span>이미지 회전 보정 (°)</span><input id="itemRotationOffset" type="number" step="1" value="-45"></label>
+                        </div>
+                        <div class="item-preview" id="itemPreview"><canvas id="itemPreviewCanvas"></canvas><span>게임 표시 미리보기</span></div>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>피해 시작 (%)</span><input id="itemHitStart" type="number" min="0" max="100" step="1" value="20"></label>
+                            <label class="studio-field"><span>피해 종료 (%)</span><input id="itemHitEnd" type="number" min="0" max="100" step="1" value="70"></label>
+                        </div>
+                    </section>
+                    <section class="studio-panel layer-panel">
+                        <div class="layer-panel-heading">
+                            <h2>이미지 레이어</h2>
+                            <button type="button" class="mini-button" id="addImageLayerButton" title="검집이나 두 번째 무기 이미지 추가">＋</button>
+                        </div>
+                        <div class="weapon-layer-list" id="weaponLayerList"></div>
+                        <label class="studio-field"><span>레이어 이름</span><input id="layerName" type="text"></label>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>우선순위</span><input id="layerPriority" type="number" min="-100" max="100" step="1"></label>
+                            <label class="studio-field"><span>크기 배율</span><input id="layerScale" type="number" min="0.05" max="20" step="0.05"></label>
+                        </div>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>위치 X</span><input id="layerOffsetX" type="number" step="0.01"></label>
+                            <label class="studio-field"><span>위치 Y</span><input id="layerOffsetY" type="number" step="0.01"></label>
+                        </div>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>회전 보정 (°)</span><input id="layerRotation" type="number" step="1"></label>
+                            <label class="studio-field"><span>투명도 (%)</span><input id="layerOpacity" type="number" min="0" max="100" step="1"></label>
+                        </div>
+                        <label class="studio-field"><span>애니메이션 기준점</span><select id="layerAnchorMode"><option value="weapon">손 기준: 포즈와 함께 이동/회전</option><option value="main">메인 검 기준: 검에 맞춰 따라감</option><option value="body">몸 기준: 캐릭터에 독립 고정</option></select></label>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>기준점 X (%)</span><input id="layerAnchorX" type="number" min="0" max="100" step="0.1"></label>
+                            <label class="studio-field"><span>기준점 Y (%)</span><input id="layerAnchorY" type="number" min="0" max="100" step="0.1"></label>
+                        </div>
+                        <label class="studio-check"><input id="layerDamageEnabled" type="checkbox"> 이 레이어의 히트박스로 피해 적용</label>
+                        <div class="layer-command-row">
+                            <button type="button" class="command" id="loadLayerHitboxButton">히트박스 JSON</button>
+                            <button type="button" class="command" id="layerFlipButton" title="선택한 이미지를 좌우로 뒤집습니다">좌우 반전</button>
+                            <button type="button" class="command" id="moveLayerBackButton">뒤로</button>
+                            <button type="button" class="command" id="moveLayerFrontButton">앞으로</button>
+                            <button type="button" class="command danger-outline" id="deleteLayerButton">삭제</button>
+                        </div>
+                        <div class="layer-hitbox-status" id="layerHitboxStatus">기본 이미지는 1단계 히트박스를 사용합니다.</div>
+                    </section>
+                    <section class="studio-panel">
+                        <h2>검기 잔상</h2>
+                        <label class="studio-check"><input id="trailEnabled" type="checkbox" checked> 휘두를 때 검기형 트레일 생성</label>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>색상</span><input id="trailColor" type="color" value="#ff4fb8"></label>
+                            <label class="studio-field"><span>투명도</span><input id="trailOpacity" type="number" min="0" max="100" step="1" value="55"></label>
+                        </div>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>크기 배율</span><input id="trailSize" type="number" min="0.1" max="8" step="0.1" value="1"></label>
+                            <label class="studio-field"><span>유지 시간 (ms)</span><input id="trailDuration" type="number" min="30" max="3000" step="10" value="300"></label>
+                        </div>
+                        <label class="studio-field"><span>생성 간격 (ms)</span><input id="trailInterval" type="number" min="16" max="1000" step="1" value="40"></label>
+                        <div class="studio-actions">
+                            <button type="button" class="command" id="downloadItemButton">아이템 JSON 다운로드</button>
+                            <button type="button" class="command primary" id="installItemButton">관리자 인벤토리에 설치</button>
+                        </div>
+                        <div class="install-status" id="installStatus">설치하면 서버 재시작 후 관리자 인벤토리에 나타납니다.</div>
+                    </section>
+                </div>
+            </section>
+
+            <section class="studio-workspace animation-workspace" id="animationWorkspace" aria-label="애니메이션 설정">
+                <div class="animation-stage"><canvas id="animationCanvas"></canvas><div class="animation-readout" id="animationReadout">0 ms</div></div>
+                <aside class="animation-controls">
+                    <div class="studio-heading compact"><div><span>STEP 3</span><h1>휘두르기 애니메이션</h1></div></div>
+                    <div class="animation-transport">
+                        <button type="button" class="icon-command" id="animationPlayButton" title="재생">▶</button>
+                        <input id="animationPlayhead" type="range" min="0" max="1000" value="0">
+                    </div>
+                    <div class="combo-panel" aria-label="공격 애니메이션 설정">
+                        <div class="keyframe-heading"><h2>콤보 시퀀스</h2><span class="combo-count" id="comboCount">1 / 100</span></div>
+                        <div class="combo-list" id="comboList" aria-label="편집할 공격 선택"></div>
+                        <div class="combo-commands">
+                            <button type="button" class="mini-button" id="newComboButton" title="현재 시퀀스를 3타와 자동 검집 넣기로 새로 만듭니다">새 3타 콤보</button>
+                            <button type="button" class="mini-button" id="addComboAttackButton">＋ 애니메이션</button>
+                            <button type="button" class="mini-button" id="addSheatheButton">자동 검집 넣기</button>
+                            <button type="button" class="mini-button danger" id="deleteComboAttackButton" title="선택한 애니메이션 삭제">−</button>
+                        </div>
+                        <div class="studio-field-row combo-options">
+                            <label class="check-field"><input id="comboDashEnabled" type="checkbox"><span>베는 동안 대시</span></label>
+                            <label class="studio-field"><span>대시 거리</span><input id="comboDashDistance" type="number" min="1" max="20" step="0.5" value="3"></label>
+                        </div>
+                        <div class="studio-field-row combo-options">
+                            <label class="studio-field"><span>이 단계 피해량</span><input id="comboDamage" type="number" min="0" max="1000000000000000" step="1" value="100"></label>
+                            <label class="studio-field"><span>이 단계 기준점</span><select id="comboAnchorMode"><option value="weapon">손 / 무기 기준</option><option value="body">본체 기준</option><option value="main">메인 검 기준</option></select></label>
+                        </div>
+                        <label class="studio-field"><span>이 단계 후 입력 대기 (ms)</span><input id="comboCooldown" type="number" min="0" max="60000" step="10" value="0"></label>
+                    </div>
+                    <div class="combo-panel" aria-label="특수 동작 설정">
+                        <div class="keyframe-heading"><h2>특수 동작</h2><span class="combo-count" id="specialActionCount">0 / 2</span></div>
+                        <div class="combo-list" id="specialActionList" aria-label="편집할 특수 동작 선택"></div>
+                        <div class="combo-commands">
+                            <button type="button" class="mini-button" id="addSpecialActionButton">＋ 특수 동작</button>
+                            <button type="button" class="mini-button danger" id="deleteSpecialActionButton">삭제</button>
+                        </div>
+                        <div class="studio-field-row combo-options">
+                            <label class="studio-field"><span>발동 키</span><select id="specialActionKey"><option value="z">Z</option><option value="x">X</option><option value="c">C</option><option value="v">V</option><option value="b">B</option><option value="n">N</option><option value="m">M</option></select></label>
+                            <label class="studio-field"><span>동작 이름</span><input id="specialActionName" type="text" value="Special action"></label>
+                        </div>
+                        <label class="studio-field"><span>특수 동작 쿨타임 (ms)</span><input id="specialActionCooldown" type="number" min="0" max="60000" step="10" value="0"></label>
+                    </div>
+                    <label class="studio-check"><input id="comboPreviewEnabled" type="checkbox" checked> 전체 콤보 미리보기</label>
+                    <label class="studio-field"><span>현재 단계 길이 (ms)</span><input id="animationDuration" type="number" min="80" max="10000" step="10" value="700"></label>
+                    <div class="keyframe-heading"><h2>키프레임</h2><button type="button" class="mini-button" id="addKeyframeButton" title="현재 시간에 키프레임 추가">＋</button></div>
+                    <div class="keyframe-list" id="keyframeList"></div>
+                    <div class="studio-field-row">
+                        <label class="studio-field"><span>무기 각도 (°)</span><input id="frameAngle" type="number" step="1"></label>
+                        <label class="studio-field"><span>손 위치 각도 (°)</span><input id="frameGripAngle" type="number" step="1"></label>
+                    </div>
+                    <div class="studio-field-row">
+                        <label class="studio-field"><span>몸과 거리</span><input id="frameGripOffset" type="number" step="0.1"></label>
+                        <label class="studio-field"><span>포즈 크기</span><input id="frameSize" type="number" min="1" step="0.1"></label>
+                    </div>
+                    <div class="animation-layer-block">
+                        <label class="studio-field"><span>편집할 이미지 레이어</span><select id="animationLayerSelect"></select></label>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>레이어 추가 회전 (°)</span><input id="frameLayerAngle" type="number" step="1"></label>
+                            <label class="studio-field"><span>레이어 크기 배율</span><input id="frameLayerScale" type="number" min="0.05" max="20" step="0.05"></label>
+                        </div>
+                        <div class="studio-field-row">
+                            <label class="studio-field"><span>레이어 이동 X</span><input id="frameLayerX" type="number" step="0.01"></label>
+                            <label class="studio-field"><span>레이어 이동 Y</span><input id="frameLayerY" type="number" step="0.01"></label>
+                        </div>
+                    </div>
+                    <button type="button" class="wide-button danger-outline" id="deleteKeyframeButton">선택 키프레임 삭제</button>
+                    <p class="animation-help">시간축을 옮기고 키프레임을 추가한 뒤 각도와 위치를 조절하세요. 사이 구간은 게임에서 부드럽게 보간됩니다.</p>
+                    <label class="screen-cut-toggle" id="screenCutToggle"><input id="comboScreenCutEnabled" type="checkbox"><span><b>화면 절단</b><small>현재 타격의 공격 판정과 함께 화면 베기 효과를 실행합니다.</small></span></label>
+                </aside>
+            </section>
+        </main>
+
+        <aside class="inspector">
+            <section class="panel-section layers-section">
+                <div class="section-heading">
+                    <h2>히트박스</h2>
+                    <div class="section-actions">
+                        <button type="button" class="mini-button" id="addRegularButton" title="정다각형 추가">＋</button>
+                        <button type="button" class="mini-button" id="duplicateButton" title="선택한 히트박스 복제">⧉</button>
+                        <button type="button" class="mini-button danger" id="deletePolygonButton" title="선택한 히트박스 삭제">⌫</button>
+                    </div>
+                </div>
+                <div class="layer-list" id="layerList"></div>
+            </section>
+
+            <section class="panel-section">
+                <div class="section-heading"><h2>도형</h2></div>
+                <label class="field full">
+                    <span>이름</span>
+                    <input id="polygonName" type="text" value="Hitbox 1">
+                </label>
+                <div class="field-row">
+                    <label class="field">
+                        <span>꼭짓점 수</span>
+                        <input id="vertexCount" type="number" min="3" max="64" step="1" value="4">
+                    </label>
+                    <button type="button" class="field-button" id="regenerateButton">정다각형 재생성</button>
+                </div>
+                <div class="preset-row">
+                    <button type="button" data-preset="3">삼각형</button>
+                    <button type="button" data-preset="4">사각형</button>
+                    <button type="button" data-preset="8">팔각형</button>
+                    <button type="button" data-preset="16">원형</button>
+                </div>
+                <div class="field-row">
+                    <label class="field">
+                        <span>회전</span>
+                        <input id="rotationInput" type="number" step="1" value="0">
+                    </label>
+                    <label class="field">
+                        <span>전체 크기</span>
+                        <input id="scaleInput" type="number" min="1" max="1000" step="1" value="100">
+                    </label>
+                </div>
+                <div class="field-row">
+                    <label class="field">
+                        <span>선택 점 X</span>
+                        <input id="vertexX" type="number" step="0.1">
+                    </label>
+                    <label class="field">
+                        <span>선택 점 Y</span>
+                        <input id="vertexY" type="number" step="0.1">
+                    </label>
+                </div>
+                <div class="field-row">
+                    <label class="field">
+                        <span>기준점 X (%)</span>
+                        <input id="anchorX" type="number" min="0" max="100" step="0.1" value="50">
+                    </label>
+                    <label class="field">
+                        <span>기준점 Y (%)</span>
+                        <input id="anchorY" type="number" min="0" max="100" step="0.1" value="50">
+                    </label>
+                </div>
+                <button type="button" class="wide-button" id="anchorCenterButton">기준점을 이미지 중심으로</button>
+            </section>
+
+            <section class="panel-section">
+                <div class="section-heading"><h2>자동 외곽선</h2></div>
+                <div class="field-row">
+                    <label class="field">
+                        <span>샘플 점</span>
+                        <input id="traceVertices" type="number" min="4" max="64" step="1" value="16">
+                    </label>
+                    <label class="field">
+                        <span>알파 기준</span>
+                        <input id="alphaThreshold" type="number" min="1" max="255" step="1" value="24">
+                    </label>
+                </div>
+                <button type="button" class="wide-button" id="traceButton">투명 영역 기준 자동 생성</button>
+            </section>
+
+            <section class="panel-section">
+                <div class="section-heading"><h2>표시</h2></div>
+                <div class="field-row compact">
+                    <label class="field color-field">
+                        <span>색상</span>
+                        <input id="polygonColor" type="color" value="#2ed6b7">
+                    </label>
+                    <label class="field">
+                        <span>채우기</span>
+                        <input id="fillOpacity" type="range" min="0" max="80" value="22">
+                    </label>
+                </div>
+                <label class="field full">
+                    <span>이미지 투명도</span>
+                    <input id="imageOpacity" type="range" min="5" max="100" value="100">
+                </label>
+                <div class="toggle-grid">
+                    <label><input id="showGrid" type="checkbox" checked> 격자 표시</label>
+                    <label><input id="snapGrid" type="checkbox"> 격자 맞춤</label>
+                    <label><input id="showIndices" type="checkbox" checked> 점 번호</label>
+                    <label><input id="showBounds" type="checkbox"> 경계 상자</label>
+                </div>
+                <label class="field full">
+                    <span>격자 크기</span>
+                    <input id="gridSize" type="number" min="1" max="256" step="1" value="8">
+                </label>
+            </section>
+
+            <section class="panel-section export-section">
+                <div class="section-heading"><h2>파일</h2></div>
+                <label class="toggle-line"><input id="embedImage" type="checkbox" checked> 원본 이미지를 JSON에 포함</label>
+                <button type="button" class="wide-button" id="previewButton">미리보기 PNG 저장</button>
+                <p>내보낸 JSON에는 원본 크기, 기준점, 픽셀 좌표와 Craftras용 정규화 좌표가 함께 저장됩니다.</p>
+            </section>
+        </aside>
+
+        <footer class="statusbar">
+            <span id="imageStatus">이미지 없음</span>
+            <span id="cursorStatus">X — / Y —</span>
+            <span id="selectionStatus">히트박스 0개</span>
+            <span class="status-spacer"></span>
+            <button type="button" id="zoomOutButton" aria-label="축소">−</button>
+            <span id="zoomStatus">100%</span>
+            <button type="button" id="zoomInButton" aria-label="확대">＋</button>
+        </footer>
+    </div>
+
+    <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+    <input id="projectInput" type="file" accept="application/json,.json,.craftras-hitbox.json,.craftras-item.json" hidden>
+    <input id="layerImageInput" type="file" accept="image/png,image/jpeg,image/webp" multiple hidden>
+    <input id="layerHitboxInput" type="file" accept="application/json,.json,.craftras-hitbox.json" hidden>
+    <script type="module" src="./client/craftras-hitbox-editor.js?v=20260808-item-studio-1"></script>
+    <script type="module" src="./client/craftras-item-editor.js?v=20260808-item-studio-1"></script>
+</body>
+</html>

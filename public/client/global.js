@@ -1,4 +1,4 @@
-import { util } from "./util.js?v=20260719-challenge-instance1";
+import { util } from "./util.js?v=20260815-play-fix1";
 
 const missingno = {
     index: -1,
@@ -128,7 +128,6 @@ const global = {
     KEY_REVERSE_MOUSE: 66,// B
     KEY_SPIN_LOCK: 88,// X
 
-    KEY_LEVEL_UP: 78, // N
     KEY_TOKEN: 80,// P
     KEY_CLASS_TREE: 84,// T
     KEY_MAX_STAT: 77,// M
@@ -191,6 +190,7 @@ const global = {
         teamName: "",
         memberCount: 1,
         isHost: true,
+        kind: "world1",
     },
     craftrasServerTransition: {
         active: false,
@@ -198,6 +198,39 @@ const global = {
         startedAt: 0,
         duration: 2400,
         alpha: 0,
+    },
+    craftrasChallengeStoryEffect: {
+        active: false,
+        startedAt: 0,
+        whiteoutDuration: 3000,
+        fogDuration: 8000,
+    },
+    craftrasChallengeBlueParry: {
+        active: false,
+        startedAt: 0,
+        numberDuration: 500,
+        bangDuration: 200,
+        flashDuration: 2000,
+    },
+    craftrasSwordGuy2Parry: {
+        active: false,
+        startedAt: 0,
+        stepDuration: 500,
+        nowDuration: 200,
+        flashDuration: 500,
+    },
+    craftrasWorld2MagicWarning: {
+        active: false,
+        startedAt: 0,
+        stepDuration: 500,
+        flashDuration: 500,
+    },
+    craftrasSwordGuy2Opening: {
+        active: false,
+        startedAt: 0,
+        chargeDuration: 3000,
+        stepDuration: 500,
+        nowDuration: 200,
     },
     showDebug: false,
     died: false,
@@ -214,14 +247,42 @@ const global = {
     message: "",
     player: {},
     messages: [],
+    craftrasDialogueSkipToken: null,
+    craftrasFastDialogueTokens: new Map(),
     mockups: [],
     missingno: [missingno],
     roomSetup: [],
     entities: [],
+    craftrasEconomy: {
+        points: 0,
+        tokens: 0,
+        status: "Survival",
+    },
+    craftrasBossHealth: {
+        active: false,
+        id: 0,
+        name: "",
+        amount: 0,
+        max: 1,
+        displayAmount: 0,
+        expiresAt: 0,
+    },
+    craftrasSwordGuy2DuoHealth: {
+        active: false,
+        expiresAt: 0,
+        bosses: [],
+    },
     craftrasWorld: {
         active: false,
         challengeMode: false,
+        challengeStoryEightReached: false,
         worldSize: 0,
+        regionSize: 0,
+        world2Enabled: false,
+        world2MinX: 0,
+        world2CenterX: 0,
+        displayRegion: 1,
+        pendingRegion: 0,
         blockSize: 82,
         wallSize: 80,
         chunkSize: 16,
@@ -236,6 +297,7 @@ const global = {
         cavePrewarmQueue: [],
         cavePrewarmCursor: 0,
         caveNextPrewarmAt: 0,
+        cavePrewarmChunksDirty: true,
         dayTorchLightAlpha: 0,
         curseDarknessUntil: 0,
         curseDarknessAlpha: 0,
@@ -248,6 +310,22 @@ const global = {
             { id: "sword", name: "Sword", count: 1 },
             null, null, null, null, null, null, null, null, null,
         ],
+    },
+    craftrasFriendSkill: {
+        cooldownEndsAt: 0,
+    },
+    craftrasBossForm: {
+        active: false,
+        type: null,
+        activeSkill: -1,
+        cooldownEndsAt: Array(8).fill(0),
+    },
+    craftrasParry: {
+        equipped: false,
+        reduction: 100,
+        counter: 0,
+        flashStartedAt: 0,
+        flashDuration: 200,
     },
     craftrasWorldEdit: {
         active: false,
@@ -285,6 +363,9 @@ const global = {
         type: "clear",
         remaining: 0,
         rainChance: 0.05,
+        whiteInfernoState: "clear",
+        whiteInfernoRemaining: 0,
+        whiteInfernoChance: 0.10,
         receivedAt: Date.now(),
     },
     craftrasKingdomWeather: {
@@ -354,6 +435,7 @@ const global = {
         deathRespawn: Region(1),
         teamInvite: Region(2),
         challengeEntry: Region(2),
+        dialogueSkip: Region(1),
         reconnect: Region(1),
         classTreeZoomOut: Region(2),
         classTreeZoomIn: Region(2),

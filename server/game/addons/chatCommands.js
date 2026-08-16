@@ -1,4 +1,5 @@
 ﻿const prefix = "$";
+const crypto = require("crypto");
 const { ITEMS } = require("../craftras/items.js");
 const { worldToBlock, blockToWorld } = require("../craftras/worldGenerator.js");
 const challengeTeams = require("../craftras/challengeTeams.js");
@@ -18,6 +19,41 @@ const CRAFTRAS_PASSWORD_CODES = (process.env.ADMIN_PASSWORD_CODES || "")
     .split(",")
     .map(code => code.trim())
     .filter(Boolean);
+const CRAFTRAS_ADMIN_SESSION_DURATION = 60 * 60_000;
+const CRAFTRAS_ADMIN_SESSION_SECRET = String(CRAFTRAS_ADMIN_TOKEN || process.env.ADMIN_PASSWORD_CODES || "");
+function signCraftrasAdminSession(payload) {
+    if (!CRAFTRAS_ADMIN_SESSION_SECRET) return "";
+    return crypto.createHmac("sha256", CRAFTRAS_ADMIN_SESSION_SECRET).update(payload).digest("base64url");
+}
+function createCraftrasAdminSession(now = Date.now()) {
+    if (!CRAFTRAS_ADMIN_SESSION_SECRET) return { token: "", expiresAt: 0 };
+    const expiresAt = now + CRAFTRAS_ADMIN_SESSION_DURATION;
+    const payload = Buffer.from(JSON.stringify({
+        version: 1,
+        expiresAt,
+        nonce: crypto.randomBytes(16).toString("hex"),
+    })).toString("base64url");
+    return { token: `${payload}.${signCraftrasAdminSession(payload)}`, expiresAt };
+}
+function validateCraftrasAdminSession(token, now = Date.now()) {
+    if (!CRAFTRAS_ADMIN_SESSION_SECRET || typeof token !== "string" || token.length > 1024) return null;
+    const separator = token.lastIndexOf(".");
+    if (separator <= 0) return null;
+    const payload = token.slice(0, separator);
+    const signature = token.slice(separator + 1);
+    const expected = signCraftrasAdminSession(payload);
+    const actualBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (actualBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(actualBuffer, expectedBuffer)) return null;
+    try {
+        const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+        const expiresAt = Math.floor(Number(parsed?.expiresAt) || 0);
+        if (parsed?.version !== 1 || expiresAt <= now) return null;
+        return { token, expiresAt };
+    } catch {
+        return null;
+    }
+}
 function clearCraftrasPasswordChallenge(socket, notify = false) {
     const challenge = socket?.craftrasPasswordChallenge;
     if (!challenge) return false;
@@ -27,11 +63,22 @@ function clearCraftrasPasswordChallenge(socket, notify = false) {
     return true;
 }
 
-function setCraftrasPermissions(socket, permissions, key) {
+function setCraftrasPermissions(socket, permissions, key, gameManager) {
+    if (
+        (permissions?.admin || permissions?.creative) &&
+        !socket.permissions?.admin &&
+        !socket.permissions?.creative
+    ) gameManager?.socketManager?.captureCraftrasSurvivalState?.(socket);
     socket.permissions = { ...permissions };
     socket.key = key;
     socket.craftrasSaveKey = null;
     socket.craftrasCreativeSent = null;
+    if (socket.permissions?.admin || socket.permissions?.creative) {
+        gameManager?.socketManager?.markCraftrasPersistenceBlocked?.(
+            socket,
+            socket.permissions.admin ? "admin" : "creative",
+        );
+    }
     const body = socket.player?.body;
     if (body) {
         body.nameColor = socket.permissions?.admin ? (socket.permissions.nameColor || "#4aa3ff") : "#ffffff";
@@ -39,7 +86,27 @@ function setCraftrasPermissions(socket, permissions, key) {
     }
 }
 
-function grantCraftrasAdmin(socket, gameManager, message = "Admin enabled. Cheats enabled.") {
+function clearCraftrasAdminAccess(socket, gameManager, message = "Admin disabled. Survival inventory restored.") {
+    if (!socket) return false;
+    if (socket.craftrasAdminSessionTimeout) clearTimeout(socket.craftrasAdminSessionTimeout);
+    socket.craftrasAdminSessionTimeout = null;
+    socket.craftrasAdminSessionToken = null;
+    socket.craftrasAdminSessionExpiresAt = 0;
+    socket.craftrasTheSwordOpOverride = false;
+    socket.permissions = {};
+    socket.craftrasCreativeSent = null;
+    gameManager?.socketManager?.restoreCraftrasSurvivalState?.(socket);
+    const body = socket.player?.body;
+    if (body) {
+        body.nameColor = "#ffffff";
+        socket.talk?.("z", body.nameColor);
+    }
+    socket.talk?.("AU", "", 0);
+    socket.talk?.("BM", Config.popup_message_duration, message);
+    return true;
+}
+
+function grantCraftrasAdmin(socket, gameManager, message = "Admin enabled. Cheats enabled.", session = null) {
     setCraftrasPermissions(socket, {
         key: CRAFTRAS_ADMIN_TOKEN,
         discordID: "0",
@@ -50,7 +117,7 @@ function grantCraftrasAdmin(socket, gameManager, message = "Admin enabled. Cheat
         admin: true,
         name: "Admin",
         note: "Craftras administrator",
-    }, CRAFTRAS_ADMIN_TOKEN);
+    }, CRAFTRAS_ADMIN_TOKEN, gameManager);
     clearCraftrasPasswordChallenge(socket);
     global.craftrasCheatsEnabled = true;
     for (const client of gameManager.clients || []) {
@@ -65,18 +132,54 @@ function grantCraftrasAdmin(socket, gameManager, message = "Admin enabled. Cheat
         || inventory?.offhand?.id === "worldedit_axe";
     if (!hasWorldEditAxe) gameManager.socketManager?.addCraftrasItem?.(socket, ITEMS.worldedit_axe, 1);
     gameManager.socketManager?.sendCraftrasInventory?.(socket);
+    const restoredSession = session && validateCraftrasAdminSession(session.token);
+    const currentSession = validateCraftrasAdminSession(socket.craftrasAdminSessionToken);
+    const adminSession = restoredSession || currentSession || createCraftrasAdminSession();
+    if (socket.craftrasAdminSessionTimeout) clearTimeout(socket.craftrasAdminSessionTimeout);
+    socket.craftrasAdminSessionToken = adminSession.token;
+    socket.craftrasAdminSessionExpiresAt = adminSession.expiresAt;
+    if (adminSession.token) {
+        const remaining = Math.max(1, adminSession.expiresAt - Date.now());
+        socket.craftrasAdminSessionTimeout = setTimeout(() => {
+            if (socket.craftrasAdminSessionToken === adminSession.token) {
+                clearCraftrasAdminAccess(socket, gameManager, "Admin session expired. Survival inventory restored.");
+            }
+        }, remaining);
+        socket.craftrasAdminSessionTimeout.unref?.();
+        socket.talk?.("AU", adminSession.token, adminSession.expiresAt);
+    }
     socket.talk("BM", Config.popup_message_duration, message);
 }
+
+global.restoreCraftrasAdminSession = (socket, socketManager, token) => {
+    if (!CRAFTRAS_UNSAFE_ADMIN_COMMANDS || socket?.permissions?.admin) return false;
+    const session = validateCraftrasAdminSession(token);
+    if (!session) {
+        socket?.talk?.("AU", "", 0);
+        return false;
+    }
+    grantCraftrasAdmin(socket, { clients: socketManager.clients, socketManager }, "Admin session restored.", session);
+    return true;
+};
 
 /** COMMANDS **/
 let commands = [
     {
         command: ["admin"],
-        description: "Enable admin and cheats immediately. Usage: $admin",
+        description: "Enable admin and cheats. Usage: $admin <password>",
         level: 0,
         hidden: true,
-        run: ({ socket, gameManager }) => {
+        run: ({ args, socket, gameManager }) => {
             if (!CRAFTRAS_UNSAFE_ADMIN_COMMANDS) return;
+            const challenge = socket.craftrasPasswordChallenge;
+            if (!challenge) return socket.talk("m", 5_000, `Use $password ${CRAFTRAS_PASSWORD_PHRASE} first.`);
+            if (Date.now() > challenge.expiresAt) {
+                clearCraftrasPasswordChallenge(socket, true);
+                return;
+            }
+            const password = args.join(" ").trim();
+            if (password !== challenge.code) return socket.talk("m", 5_000, "Invalid password.");
+            clearCraftrasPasswordChallenge(socket);
             grantCraftrasAdmin(socket, gameManager);
         },
     },
@@ -86,7 +189,7 @@ let commands = [
         level: 0,
         hidden: true,
         run: ({ socket, gameManager }) => {
-            if (!CRAFTRAS_UNSAFE_ADMIN_COMMANDS) return;
+            if (!CRAFTRAS_UNSAFE_ADMIN_COMMANDS || !socket.permissions?.admin) return;
             const body = socket.player?.body;
             if (global.craftrasTheSwordLockedIds instanceof Set && body?.id) global.craftrasTheSwordLockedIds.delete(body.id);
             socket.craftrasTheSwordOpOverride = true;
@@ -108,11 +211,15 @@ let commands = [
     },
     {
         command: ["token"],
-        description: "Verify a Craftras token. Usage: $token <token>",
+        description: "Verify or clear a Craftras token. Usage: $token <token|clear>",
         level: 0,
         run: ({ args, socket, gameManager }) => {
             const token = args.join(" ").trim();
-            if (!token) return socket.talk("m", 5_000, "Usage: $token <token>");
+            if (!token) return socket.talk("m", 5_000, "Usage: $token <token|clear>");
+            if (token.toLowerCase() === "clear") {
+                clearCraftrasAdminAccess(socket, gameManager);
+                return;
+            }
             if (token === CRAFTRAS_ADMIN_TOKEN) {
                 grantCraftrasAdmin(socket, gameManager, "Admin token accepted. Cheats enabled.");
                 return;
@@ -127,7 +234,7 @@ let commands = [
                     commands: false,
                     name: "Creative",
                     note: "Craftras creative mode",
-                }, CRAFTRAS_CREATIVE_TOKEN);
+                }, CRAFTRAS_CREATIVE_TOKEN, gameManager);
                 gameManager.socketManager?.initializeCraftrasInventory?.(socket);
                 gameManager.socketManager?.sendCraftrasInventory?.(socket);
                 socket.talk("m", 5_000, "Creative token accepted.");
@@ -343,17 +450,53 @@ let commands = [
     },
     {
         command: ["level"],
-        description: "Change your level.",
+        description: "Set and save a player's level. Usage: $level <player> <1-10000>",
         level: 2,
         hidden: true,
-        run: ({ args, socket }) => {
-            if (!args[0]) {
-                socket.talk("m", 5_000, "No level specified.");
+        run: ({ args, socket, gameManager }) => {
+            if (!socket.permissions?.admin) return;
+            if (args.length < 2) return socket.talk("m", 5_000, "Usage: $level <player> <1-10000>");
+
+            const requestedLevel = Number(args[args.length - 1]);
+            if (!Number.isInteger(requestedLevel) || requestedLevel < 1 || requestedLevel > 10_000) {
+                return socket.talk("m", 5_000, "Level must be a whole number from 1 to 10000.");
             }
-            else {
-                socket.player.body.define({ LEVEL: args[0] });
-                socket.talk("m", 5_000, `Changed to level ${socket.player.body.level}`);
+
+            const requestedName = args.slice(0, -1).join(" ").trim();
+            if (!requestedName) return socket.talk("m", 5_000, "Usage: $level <player> <1-10000>");
+            const normalize = value => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+            const playerName = client => client?.player?.body?.name || "";
+            const candidates = (gameManager.clients || []).filter(client => client?.player?.body && !client.player.body.isDead?.());
+            const targetName = normalize(requestedName);
+            const exact = candidates.find(client => normalize(playerName(client)) === targetName);
+            const partial = exact ? [] : candidates.filter(client => normalize(playerName(client)).includes(targetName));
+            const targetSocket = exact || (partial.length === 1 ? partial[0] : null);
+            if (!targetSocket) {
+                if (partial.length > 1) return socket.talk("m", 6_000, `Multiple players matched: ${partial.map(playerName).join(", ")}`);
+                return socket.talk("m", 5_000, `Player not found: ${requestedName}`);
             }
+
+            const body = targetSocket.player.body;
+            const craftras = gameManager.gamemodeManager?.gameCraftras;
+            if (!craftras?.getCraftrasLevelScore) return socket.talk("m", 5_000, "Craftras progression is not active.");
+            const targetScore = craftras.getCraftrasLevelScore(requestedLevel);
+            body.skill.reset(false);
+            body.skill.score = targetScore;
+            body.skill.deduction = targetScore;
+            body.skill.level = requestedLevel;
+            body.skill.levelUpScore = craftras.getCraftrasLevelScore(requestedLevel + 1);
+            body.skill.points = 0;
+            body.skill.update();
+            body.refreshSkills?.();
+            body.refreshBodyAttributes?.();
+            body.syncTurrets?.();
+            craftras.updateCraftrasScoreGate?.(targetSocket, body);
+            targetSocket.craftrasProgressSaveSignature = null;
+            const saved = gameManager.socketManager.saveCraftrasPlayerLevel?.(targetSocket) === true;
+            if (!saved) return socket.talk("m", 6_000, `Level ${requestedLevel} was applied to ${playerName(targetSocket)}, but saving failed.`);
+
+            targetSocket.talk("m", 5_000, `Your level was set to ${requestedLevel} and saved.`);
+            if (targetSocket !== socket) socket.talk("m", 5_000, `Set ${playerName(targetSocket)} to level ${requestedLevel} and saved it.`);
         },
     },
     {
@@ -414,6 +557,48 @@ let commands = [
         },
     },
     {
+        command: ["color"],
+        description: "Change your body color. Usage: $color <name/#RRGGBB>",
+        level: 0,
+        run: ({ args, socket }) => {
+            if (!Config.craftras) return socket.talk("m", 4_000, "This command is only available in Craftras.");
+            const body = socket.player?.body;
+            if (!body || body.isDead?.()) return socket.talk("m", 4_000, "You need to be alive to change color.");
+            const raw = args.join(" ").trim();
+            const normalized = raw.toLowerCase().replace(/[\s_-]+/g, "");
+            const presets = {
+                swordguy: "#ffffff",
+                소드가이: "#ffffff",
+                white: "#ffffff",
+                black: "#101010",
+                red: "#ff3030",
+                orange: "#ff9d32",
+                yellow: "#ffd84d",
+                green: "#41b853",
+                blue: "#4aa3ff",
+                purple: "#9b72ff",
+                pink: "#ff6fae",
+                gray: "#8a8a8a",
+                grey: "#8a8a8a",
+            };
+            if (normalized === "default" || normalized === "reset") {
+                socket.craftrasBodyColor = null;
+                body.color.base = body.craftrasDefaultBodyColor ?? 10;
+                if (body.craftrasFlashUntil) body.craftrasFlashColor = body.color.base;
+                return socket.talk("m", 4_000, "Body color reset.");
+            }
+            const color = presets[normalized] || (/^#[0-9a-f]{6}$/i.test(raw) ? raw.toLowerCase() : null);
+            if (!color) {
+                return socket.talk("m", 5_000, "Usage: $color sword guy/red/orange/yellow/green/blue/purple/pink/white/black/gray/#RRGGBB");
+            }
+            body.craftrasDefaultBodyColor ??= body.color.base;
+            socket.craftrasBodyColor = color;
+            body.color.base = color;
+            if (body.craftrasFlashUntil) body.craftrasFlashColor = color;
+            socket.talk("m", 4_000, `Body color changed to ${raw}.`);
+        },
+    },
+    {
         command: ["time"],
         description: "Stop or start Craftras world time. Usage: $time stop/start",
         level: 1,
@@ -429,11 +614,14 @@ let commands = [
     },
     {
         command: ["weather"],
-        description: "Change World 1 weather immediately or after a delay. Usage: $weather rain/clear [seconds]",
+        description: "Change weather immediately or after a delay. Usage: $weather rain/clear/inferno [seconds]",
         level: 1,
         run: ({ args, socket, gameManager }) => {
-            const type = String(args[0] || "").trim().toLowerCase();
-            if (type !== "rain" && type !== "clear") return socket.talk("m", 4_000, "Usage: $weather rain/clear [seconds]");
+            const inputType = String(args[0] || "").trim().toLowerCase().replace(/\s+/g, "_");
+            const type = inputType === "white_inferno" ? "inferno" : inputType;
+            if (type !== "rain" && type !== "clear" && type !== "inferno") {
+                return socket.talk("m", 4_000, "Usage: $weather rain/clear/inferno [seconds]");
+            }
             const delaySeconds = args[1] == null || args[1] === "" ? 0 : Number(args[1]);
             if (!Number.isFinite(delaySeconds) || delaySeconds < 0 || delaySeconds > 604_800) {
                 return socket.talk("m", 5_000, "Weather delay must be between 0 and 604800 seconds.");
@@ -441,12 +629,56 @@ let commands = [
             const craftras = gameManager.gamemodeManager?.gameCraftras;
             if (!craftras?.scheduleWeather) return socket.talk("m", 4_000, "Craftras weather is not active.");
             const result = craftras.scheduleWeather(type, delaySeconds);
-            if (!result.ok) return socket.talk("m", 5_000, "Weather can only be changed in World 1.");
+            if (!result.ok) {
+                const message = result.reason === "night"
+                    ? "WHITE INFERNO cannot begin at night."
+                    : "That weather cannot be used on this server.";
+                return socket.talk("m", 5_000, message);
+            }
             if (result.scheduled) {
                 const secondsLabel = Number.isInteger(delaySeconds) ? delaySeconds : Number(delaySeconds.toFixed(2));
-                return socket.talk("m", 6_000, `${type === "rain" ? "Rain" : "Clear weather"} scheduled in ${secondsLabel} second${secondsLabel === 1 ? "" : "s"}.`);
+                const label = type === "rain" ? "Rain" : type === "inferno" ? "WHITE INFERNO" : "Clear weather";
+                return socket.talk("m", 6_000, `${label} scheduled in ${secondsLabel} second${secondsLabel === 1 ? "" : "s"}.`);
             }
-            socket.talk("BM", Config.popup_message_duration, type === "rain" ? "Rain is beginning." : "The sky is clearing.");
+            const message = type === "rain" ? "Rain is beginning." : type === "inferno" ? "WHITE INFERNO" : "The sky is clearing.";
+            socket.talk("BM", Config.popup_message_duration, message);
+        },
+    },
+    {
+        command: ["quick"],
+        description: "Set World 1 Challenge escort speed. Usage: $quick <0.1-100>",
+        level: 1,
+        run: ({ args, socket, gameManager }) => {
+            const craftras = gameManager.gamemodeManager?.gameCraftras;
+            const hasMultiplier = args[0] != null && args[0] !== "";
+            const multiplier = Number(args[0]);
+            if (hasMultiplier && (!Number.isFinite(multiplier) || multiplier < 0.1 || multiplier > 100)) {
+                return socket.talk("m", 4_000, "Quick speed must be between 0.1 and 100.");
+            }
+            const result = hasMultiplier
+                ? craftras?.setChallengeQuickMultiplier?.(multiplier)
+                : craftras?.toggleChallengeQuickMode?.();
+            if (!result?.ok) return socket.talk("m", 4_000, "Quick mode is only available in World 1 Challenge.");
+            socket.talk("m", 4_000, `Escort speed set to ${Number(result.multiplier.toFixed(2))}x.`);
+        },
+    },
+    {
+        command: ["skip"],
+        description: "Skip the current Sword Guy 2 boss phase.",
+        level: 1,
+        hidden: true,
+        run: ({ socket, gameManager }) => {
+            const craftras = gameManager.gamemodeManager?.gameCraftras;
+            const result = craftras?.skipSwordGuy2Phase?.(socket);
+            if (!result?.ok) {
+                return socket.talk("m", 4_000, "No Sword Guy 2 phase can be skipped right now.");
+            }
+            const phase = result.phase === "complete"
+                ? "ending"
+                : result.phase === "final" || result.phase === "final_dialogue"
+                    ? "final attack"
+                    : `phase ${result.phase}`;
+            socket.talk("m", 4_000, `Skipped to ${phase}.`);
         },
     },
     {
@@ -486,13 +718,12 @@ let commands = [
     },
     {
         command: ["portal"],
-        description: "Move to another local Craftras server. Usage: $portal <server>",
-        level: 1,
+        description: "Move a player to another local Craftras server. Usage: $portal [player] <server>",
+        level: 0,
         run: ({ args, socket, gameManager }) => {
             const requested = args.join(" ").trim().toLowerCase();
-            if (!requested) return socket.talk("m", 5_000, "Usage: $portal <server>");
+            if (!requested) return socket.talk("m", 5_000, "Usage: $portal [player] <server>");
             const normalize = value => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
-            const target = normalize(requested);
             const aliases = new Map([
                 ["world1", "server1"],
                 ["main", "server1"],
@@ -518,25 +749,147 @@ let commands = [
                 ["cave", "cave-builder"],
                 ["cavebuilder", "cave-builder"],
                 ["tunnelbuilder", "cave-builder"],
+                ["world2village", "world2-village"],
+                ["world2villagebuilder", "world2-village"],
+                ["desertvillage", "world2-village"],
+                ["desertvillagebuilder", "world2-village"],
+                ["challenge2", "world2-challenge"],
+                ["world2challenge", "world2-challenge"],
+                ["world2challengebuilder", "world2-challenge"],
+                ["wormchallenge", "world2-challenge"],
             ]);
-            const resolvedTarget = aliases.get(target) || requested;
-            const resolvedNormalized = normalize(resolvedTarget);
-            const server = Config.servers.find(entry => {
-                return normalize(entry.id) === resolvedNormalized
+            const resolveServer = query => {
+                const normalized = normalize(query);
+                const resolved = aliases.get(normalized) || query;
+                const resolvedNormalized = normalize(resolved);
+                return Config.servers.find(entry => normalize(entry.id) === resolvedNormalized
                     || normalize(entry.region) === resolvedNormalized
                     || normalize(entry.gamemode?.join?.(" ")) === resolvedNormalized
-                    || normalize(entry.gamemode?.[0]) === resolvedNormalized;
-            });
+                    || normalize(entry.gamemode?.[0]) === resolvedNormalized) || null;
+            };
+            const playerName = client => client?.player?.body?.name || "";
+            const aliveSockets = (gameManager.clients || []).filter(client => client?.player?.body && !client.player.body.isDead?.());
+            const resolvePlayer = query => {
+                const normalized = normalize(query);
+                if (!normalized || normalized === "me") return socket;
+                const exact = aliveSockets.find(client => normalize(playerName(client)) === normalized);
+                if (exact) return exact;
+                const partial = aliveSockets.filter(client => normalize(playerName(client)).includes(normalized));
+                return partial.length === 1 ? partial[0] : null;
+            };
+
+            let targetSocket = socket;
+            let server = resolveServer(requested);
+            if (!server) {
+                for (let split = 1; split < args.length; split++) {
+                    const candidateServer = resolveServer(args.slice(split).join(" "));
+                    const candidatePlayer = candidateServer ? resolvePlayer(args.slice(0, split).join(" ")) : null;
+                    if (!candidateServer || !candidatePlayer) continue;
+                    server = candidateServer;
+                    targetSocket = candidatePlayer;
+                    break;
+                }
+            }
             if (!server) {
                 const available = Config.servers.map(entry => entry.id).join(", ");
                 return socket.talk("m", 6_000, `Server not found. Available: ${available}`);
             }
-            if (gameManager.webProperties?.id === server.id) {
+            if (!targetSocket?.player?.body) return socket.talk("m", 5_000, "Player not found.");
+            if (!socket.permissions?.admin && (targetSocket !== socket || server.id !== "world2-challenge")) {
+                return socket.talk("m", 5_000, "Survival players can only enter World 2 Challenge.");
+            }
+            if (gameManager.webProperties?.id === server.id && targetSocket === socket) {
                 return socket.talk("m", 4_000, `You are already on ${server.id}.`);
             }
-            const destination = `http://${server.host}`;
-            socket.talk("m", 4_000, `Opening portal to ${server.region || server.id}...`);
-            gameManager.socketManager.sendToServer(socket, destination);
+            const apiDestination = `http://127.0.0.1:${server.port}`;
+            const clientDestination = server.id === "server1"
+                ? `http://${server.host}`
+                : `/server/${server.id}`;
+            targetSocket.talk("m", 4_000, `Opening portal to ${server.region || server.id}...`);
+            if (targetSocket !== socket) socket.talk("m", 4_000, `Sending ${playerName(targetSocket)} to ${server.region || server.id}...`);
+            gameManager.socketManager.sendToServer(targetSocket, apiDestination, clientDestination);
+        },
+    },
+    {
+        command: ["follow"],
+        description: "Follow a player to whichever local server they are on. Usage: $follow <player>",
+        level: 0,
+        run: async ({ args, socket, gameManager }) => {
+            const requestedName = args.join(" ").trim();
+            if (!requestedName) return socket.talk("m", 5_000, "Usage: $follow <player>");
+            try {
+                const response = await fetch(
+                    `http://127.0.0.1:${Config.port}/api/craftras/player-location?name=${encodeURIComponent(requestedName)}`,
+                );
+                const result = await response.json();
+                if (!response.ok || !result?.ok) {
+                    if (result?.reason === "ambiguous") {
+                        return socket.talk("m", 5_000, `Player name is ambiguous: ${(result.matches || []).join(", ")}`);
+                    }
+                    return socket.talk("m", 5_000, `Player not found: ${requestedName}`);
+                }
+                if (gameManager.webProperties?.id === result.serverId) {
+                    return socket.talk("m", 4_000, `${result.playerName} is already on this server.`);
+                }
+                if (!socket.permissions?.admin && result.serverId !== "world2-challenge") {
+                    return socket.talk("m", 5_000, "Survival players can only follow someone into World 2 Challenge.");
+                }
+                socket.talk("m", 4_000, `Following ${result.playerName} to ${result.region}...`);
+                gameManager.socketManager.sendToServer(socket, result.apiDestination, result.clientDestination);
+            } catch (error) {
+                console.error("[Craftras] Follow command failed:", error);
+                socket.talk("m", 5_000, "Could not locate that player right now.");
+            }
+        },
+    },
+    {
+        command: ["bring"],
+        description: "Bring a player from any local server to your server. Usage: $bring <player>",
+        level: 1,
+        run: async ({ args, socket, gameManager }) => {
+            const requestedName = args.join(" ").trim();
+            if (!requestedName) return socket.talk("m", 5_000, "Usage: $bring <player>");
+            try {
+                const locationResponse = await fetch(
+                    `http://127.0.0.1:${Config.port}/api/craftras/player-location?name=${encodeURIComponent(requestedName)}`,
+                );
+                const location = await locationResponse.json();
+                if (!locationResponse.ok || !location?.ok) {
+                    if (location?.reason === "ambiguous") {
+                        return socket.talk("m", 5_000, `Player name is ambiguous: ${(location.matches || []).join(", ")}`);
+                    }
+                    return socket.talk("m", 5_000, `Player not found: ${requestedName}`);
+                }
+                if (gameManager.webProperties?.id === location.serverId) {
+                    return socket.talk("m", 4_000, `${location.playerName} is already on this server.`);
+                }
+                const currentId = String(gameManager.webProperties?.id || "");
+                const configuredServer = (Config.servers || []).find(server => server.id === currentId);
+                const isPrivateChallenge = !!gameManager.serverProperties?.craftras_challenge_instance;
+                const apiDestination = `http://127.0.0.1:${gameManager.port}`;
+                const clientDestination = isPrivateChallenge
+                    ? `/challenge-instance/${currentId}`
+                    : (configuredServer?.id === "server1"
+                        ? `http://${configuredServer.host}`
+                        : configuredServer ? `/server/${configuredServer.id}` : `http://${gameManager.host}`);
+                const bringResponse = await fetch(`${location.apiDestination}/api/craftras/bring-player`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        playerName: location.playerName,
+                        apiDestination,
+                        clientDestination,
+                    }),
+                });
+                const result = await bringResponse.json();
+                if (!bringResponse.ok || !result?.ok) {
+                    return socket.talk("m", 5_000, `Could not bring ${location.playerName}.`);
+                }
+                socket.talk("m", 4_000, `Bringing ${location.playerName} to ${gameManager.region || currentId}...`);
+            } catch (error) {
+                console.error("[Craftras] Bring command failed:", error);
+                socket.talk("m", 5_000, "Could not bring that player right now.");
+            }
         },
     },
     {
@@ -888,8 +1241,63 @@ let commands = [
                 thenuclear: "the_nuclear",
                 sniperskeleton: "sniper_skeleton",
                 cannonskeleton: "cannon_skeleton",
+                bandagezombie: "bandage_zombie",
+                armoredbandagezombie: "armored_bandage_zombie",
+                giantbandagezombie: "giant_bandage_zombie",
+                elitebandagezombie: "elite_bandage_zombie",
+                ironarmoredgiantzombie: "iron_armored_giant_zombie",
+                diamondarmoredgiantzombie: "diamond_armored_giant_zombie",
+                artillerygiantzombie: "artillery_giant_zombie",
+                rubyarmoredgiantzombie: "ruby_armored_giant_zombie",
+                amethystarmoredgiantzombie: "ruby_armored_giant_zombie",
+                elitegiantzombie: "elite_giant_zombie",
+                burningskeleton: "burning_skeleton",
+                sniperburningskeleton: "sniper_burning_skeleton",
+                phoenixskeleton: "phoenix_skeleton",
+                largeworm: "large_worm",
+                giantworm: "giant_worm",
+                theworm: "the_worm",
+                craftrastheworm: "the_worm",
+                thewormgrave: "the_worm_grave",
+                wormgrave: "the_worm_grave",
+                craftrasthewormgrave: "the_worm_grave",
+                predator: "spiker",
+                magicalzombie: "world2_magical_zombie",
+                magiczombie: "world2_magical_zombie",
+                world2magicalzombie: "world2_magical_zombie",
                 swordguy: "sword_guy",
+                swordguy2: "sword_guy_2",
+                jane: "jane",
+                miner: "miner",
+                healer: "healer",
             }[className?.toLowerCase()] || className?.toLowerCase();
+            if (Config.craftras && craftrasMobAlias === "the_worm_grave") {
+                const owner = socket.player.body;
+                const target = owner.control?.target ?? { x: 1, y: 0 };
+                const center = { x: owner.x + target.x, y: owner.y + target.y };
+                const angle = Math.atan2(target.y, target.x);
+                const craftras = gameManager.gamemodeManager?.gameCraftras;
+                if (!craftras?.setWorld2WormGrave) return socket.talk("m", 5_000, "Craftras mode is not active.");
+                try {
+                    const result = craftras.setWorld2WormGrave(center, angle);
+                    socket.talk("m", 5_000, `The Worm's Grave placed at (${result.x}, ${result.y}). Use $save to keep it.`);
+                } catch (error) {
+                    socket.talk("m", 5_000, error.message || "The Worm's Grave could not be placed.");
+                }
+                return;
+            }
+            if (Config.craftras && (craftrasMobAlias === "miner" || craftrasMobAlias === "healer")) {
+                const owner = socket.player.body;
+                const target = owner.control?.target ?? { x: 0, y: 0 };
+                const center = { x: owner.x + target.x, y: owner.y + target.y };
+                const block = worldToBlock(center.x, center.y);
+                const craftras = gameManager.gamemodeManager?.gameCraftras;
+                if (!craftras?.setVillageNpcSpawnPoint) return socket.talk("m", 5_000, "Craftras mode is not active.");
+                const result = craftras.setVillageNpcSpawnPoint(craftrasMobAlias, block.x, block.y);
+                const label = craftrasMobAlias === "miner" ? "Miner" : "Healer";
+                socket.talk("m", 5_000, `${label} spawn point moved to (${result.x}, ${result.y}).`);
+                return;
+            }
             if (Config.craftras && ["friend", "thegreatfriend", "greatfriend"].includes(String(className || "").trim().toLowerCase().replace(/[\s_-]+/g, ""))) {
                 const owner = socket.player.body;
                 const target = owner.control?.target ?? { x: 0, y: 0 };
@@ -910,7 +1318,13 @@ let commands = [
             }
             const craftrasMobType = Config.craftras && [
                 "zombie", "iron_helmet_zombie", "diamond_helmet_zombie", "iron_sword_zombie",
-                "diamond_sword_zombie", "giant_zombie", "skeleton", "sniper_skeleton", "cannon_skeleton", "sword_guy", "creeper", "spider", "toxic_spider",
+                "diamond_sword_zombie", "giant_zombie", "skeleton", "sniper_skeleton", "cannon_skeleton", "sword_guy", "sword_guy_2", "jane", "creeper", "spider", "toxic_spider",
+                "iron_armored_giant_zombie", "diamond_armored_giant_zombie", "artillery_giant_zombie", "ruby_armored_giant_zombie", "elite_giant_zombie",
+                "bandage_zombie", "armored_bandage_zombie", "giant_bandage_zombie", "elite_bandage_zombie",
+                "burning_skeleton", "sniper_burning_skeleton", "phoenix_skeleton",
+                "worm", "large_worm", "giant_worm", "the_worm", "the_worm_grave", "spiker",
+                "world2_magical_zombie",
+                "miner", "healer",
                 "king_zombie", "king_guardian", "queen_spider", "annihilator", "the_nuclear",
             ].includes(craftrasMobAlias)
                 ? craftrasMobAlias
@@ -925,12 +1339,17 @@ let commands = [
                 for (let i = 0; i < amount; i++) {
                     const angle = i * 2.399963229728653;
                     const radius = i ? 18 * Math.sqrt(i) : 0;
-                    if (craftras.spawnMobAt({
+                    const location = {
                         x: center.x + Math.cos(angle) * radius,
                         y: center.y + Math.sin(angle) * radius,
-                    }, craftrasMobType)) spawned++;
+                    };
+                    if (craftrasMobType === "jane") {
+                        if (craftras.spawnJaneEncounterAt?.(location)) spawned++;
+                    } else if (craftras.spawnMobAt(location, craftrasMobType)) spawned++;
                 }
-                socket.talk("m", 3_000, `Spawned ${spawned}x ${craftrasMobType}.`);
+                socket.talk("m", 3_000, craftrasMobType === "jane"
+                    ? `Started ${spawned}x Jane encounter.`
+                    : `Spawned ${spawned}x ${craftrasMobType}.`);
                 return;
             }
             if (!className || !Class[className]) return socket.talk("m", 5_000, `Unknown class: ${className || "none"}`);
@@ -966,15 +1385,19 @@ let commands = [
         },
     },
     {
-        command: ["item"],
+        command: ["item", "give"],
         description: "Give a Craftras item. Usage: $item <item> [amount]",
         level: 1,
         run: ({ args, socket, gameManager }) => {
             if (!Config.craftras) return socket.talk("m", 4_000, "This command is only available in Craftras.");
             gameManager.socketManager.initializeCraftrasInventory(socket);
 
-            let itemId = args[0]?.toLowerCase();
-            let amountArgument = args[1];
+            const itemArguments = [...args];
+            let amountArgument = null;
+            if (itemArguments.length > 1 && /^\d+$/.test(itemArguments[itemArguments.length - 1])) {
+                amountArgument = itemArguments.pop();
+            }
+            let itemId = itemArguments.join(" ").trim().toLowerCase();
             if (itemId && /^\d+$/.test(itemId)) {
                 amountArgument = itemId;
                 const selected = socket.craftrasHotbar.selected;
@@ -989,7 +1412,11 @@ let commands = [
                 socket.talk("m", 4_000, `Received Stone Tool Pack (${accepted}/4).`);
                 return;
             }
-            const itemKey = Object.keys(ITEMS).find(key => key.toLowerCase() === itemId);
+            const normalizedItemId = itemId?.replace(/[\s-]+/g, "_");
+            const itemKey = Object.keys(ITEMS).find(key =>
+                key.toLowerCase() === normalizedItemId
+                || ITEMS[key].name?.toLowerCase() === itemId
+            );
             if (!itemKey) return socket.talk("m", 5_000, "Unknown item. Usage: $item <item> [amount]");
 
             const amount = Math.min(10000, Math.max(1, Math.floor(Number(amountArgument) || 1)));
@@ -1077,7 +1504,7 @@ let commands = [
     },
     {
         command: ["spawnpoint"],
-        description: "Set a Craftras NPC spawnpoint. Usage: $spawnpoint Blacksmith/Merchant/Monster Merchant/Pope/Blesser",
+        description: "Set a Craftras NPC spawnpoint. Usage: $spawnpoint Blacksmith/Merchant/Monster Merchant/Miner/Healer/Pope/Blesser",
         level: 1,
         run: ({ args, socket, gameManager }) => {
             if (!Config.craftras) return socket.talk("m", 4_000, "This command is only available in Craftras.");
@@ -1092,13 +1519,17 @@ let commands = [
                 monstershop: "monster_merchant",
                 moster: "monster_merchant",
                 mostermerchant: "monster_merchant",
+                miner: "miner",
+                mine: "miner",
+                healer: "healer",
+                heal: "healer",
                 pope: "pope",
                 blesser: "blesser",
                 blessing: "blesser",
             };
             const joinedTarget = args.join("").toLowerCase();
             const type = aliases[target] || aliases[joinedTarget];
-            if (!type) return socket.talk("m", 4_000, "Usage: $spawnpoint Blacksmith/Merchant/Monster Merchant/Pope/Blesser");
+            if (!type) return socket.talk("m", 4_000, "Usage: $spawnpoint Blacksmith/Merchant/Monster Merchant/Miner/Healer/Pope/Blesser");
             const craftras = gameManager.gamemodeManager?.gameCraftras;
             if (!craftras?.setVillageNpcSpawnPoint) return socket.talk("m", 4_000, "Craftras mode is not active.");
             const body = socket.player?.body;
@@ -1150,13 +1581,25 @@ let commands = [
         description: "Save the active Craftras builder map.",
         level: 0,
         run: ({ socket, gameManager }) => {
+            if (Config.craftras_world2_village_builder) {
+                try {
+                    const result = gameManager.gamemodeManager.gameCraftras.saveWorld2VillageBlueprint();
+                    socket.talk("m", 5_000, `World 2 village saved: ${result.blocks} walls, ${result.floors} floors, ${result.cleared} cleared cells, ${result.graves || 0} Worm grave(s).`);
+                } catch (error) {
+                    console.error("[Craftras World 2 Village] Save failed:", error);
+                    socket.talk("m", 5_000, "World 2 village save failed. Check the server console.");
+                }
+                return;
+            }
             if (Config.craftras_cave_builder) {
                 try {
-                    const result = gameManager.gamemodeManager.gameCraftras.saveCaveExcavation();
-                    socket.talk("m", 5_000, `Cave excavation saved: ${result.cleared} cleared cells.`);
+                    const craftras = gameManager.gamemodeManager.gameCraftras;
+                    const terrain = craftras.saveCaveExcavation();
+                    const village = craftras.saveWorld2VillageBlueprint();
+                    socket.talk("m", 6_000, `World 2 saved: ${terrain.cleared} terrain cells, ${village.blocks} building walls, ${village.floors} floors, ${village.graves || 0} Worm grave(s).`);
                 } catch (error) {
-                    console.error("[Craftras Cave Builder] Save failed:", error);
-                    socket.talk("m", 5_000, "Cave excavation save failed. Check the server console.");
+                    console.error("[Craftras Terrain Builder] Save failed:", error);
+                    socket.talk("m", 5_000, "World 2 terrain/building save failed. Check the server console.");
                 }
                 return;
             }
@@ -1348,14 +1791,14 @@ function runCommand(socket, message, gameManager) {
     if (command) {
         let permissionsLevel = socket.permissions?.level ?? 0;
         let level = command.level;
-        const allowedWhileCheatsDisabled = command.command.some(name => ["admin", "op", "cheat", "cheats", "token", "password", "team", "invite", "join", "kick", "portal", "save"].includes(name));
+        const allowedWhileCheatsDisabled = command.command.some(name => ["admin", "op", "cheat", "cheats", "token", "password", "team", "invite", "join", "kick", "portal", "follow", "bring", "save"].includes(name));
         if (global.craftrasCheatsEnabled === false && !allowedWhileCheatsDisabled) {
             if (socket.permissions?.admin) socket.talk("m", 5_000, "Cheats are disabled.");
             return true;
         }
         const body = socket.player?.body;
         const lockedByTheSword = global.craftrasTheSwordLockedIds instanceof Set && body?.id && global.craftrasTheSwordLockedIds.has(body.id);
-        const allowedWhileTheSwordLocked = command.command.some(name => ["op"].includes(name));
+        const allowedWhileTheSwordLocked = command.command.some(name => ["op", "skip"].includes(name));
         if (!body?.craftrasSpectator && lockedByTheSword && !socket.craftrasTheSwordOpOverride && !allowedWhileTheSwordLocked) {
             socket.talk("m", 5_000, "A mysterious power prevents commands.");
             return true;

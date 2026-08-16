@@ -1,0 +1,29 @@
+{
+  "format": "craftras-hitbox-runtime",
+  "version": 1,
+  "sourceImage": {
+    "name": "레이저빔.png",
+    "width": 1536,
+    "height": 1024,
+    "sha256": "d51eb5ecdcbcd265c8d782a87e26e728ad33fc3400e443a36f80b3779cabddd4"
+  },
+  "render": {
+    "anchorX": 0,
+    "anchorY": 0.5,
+    "cropLeft": 121,
+    "heightMultiplier": 1.72
+  },
+  "polygons": [
+    {
+      "id": "hitbox-2",
+      "name": "Hitbox 1",
+      "points": [
+        [134.279, 454.682],
+        [1370.808, 454.682],
+        [1455.819, 475.291],
+        [1366.943, 497.187],
+        [132.991, 499.764]
+      ]
+    }
+  ]
+}

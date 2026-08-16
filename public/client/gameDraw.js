@@ -1,6 +1,6 @@
-import { config } from "./config.js?v=20260719-challenge-instance1";
-import { util } from "./util.js?v=20260719-challenge-instance1";
-import { gui } from "./socketinit.js?v=20260719-challenge-instance1";
+import { config } from "./config.js?v=20260815-play-fix1";
+import { util } from "./util.js?v=20260815-play-fix1";
+import { gui } from "./socketinit.js?v=20260815-play-fix1";
 
 var gameDraw = {
     color: null,

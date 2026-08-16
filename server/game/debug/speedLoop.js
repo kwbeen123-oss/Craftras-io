@@ -3,6 +3,7 @@ class speedcheckloop {
     constructor() {
         this.fails = 0;
         this.isRestarting = false;
+        this.lastPerformanceLogAt = 0;
     }
     update() {
         let activationtime = logs.activation.sum(),
@@ -19,6 +20,19 @@ class speedcheckloop {
         let loops = logs.loops.getTallyCount();
 
         global.fps = (1000/sum).toFixed(2);
+        const now = Date.now();
+        if (global.gameManager.clients.length >= 4 && now - this.lastPerformanceLogAt >= 5_000) {
+            this.lastPerformanceLogAt = now;
+            let activeEntities = 0;
+            for (const entity of entities.values()) if (entity?.activation?.active || entity?.isPlayer) activeEntities++;
+            util.log(
+                `[Core Perf] server=${global.gameManager.name} clients=${global.gameManager.clients.length} `
+                + `entities=${entities.size} active=${activeEntities} loops=${loops} `
+                + `entityTick=${masterrecord.average.toFixed(2)}ms(avg) `
+                + `networkView=${playertime.average.toFixed(2)}ms(avg) `
+                + `networkTotal=${playertime.sum.toFixed(2)}ms/s displayed=${sum.toFixed(2)}ms`,
+            );
+        }
         for (let e of entities.values()) {
             if (e.isPlayer && e.socket) {
                 e.socket.talk("svInfo", global.gameManager.name, (sum).toFixed(1));

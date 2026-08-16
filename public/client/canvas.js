@@ -1,7 +1,7 @@
-import { global } from "./global.js?v=20260719-challenge-instance1";
-import { util } from "./util.js?v=20260719-challenge-instance1";
-import { config } from "./config.js?v=20260719-challenge-instance1";
-import * as socketStuff from "./socketinit.js?v=20260719-challenge-instance1";
+import { global } from "./global.js?v=20260815-play-fix1";
+import { util } from "./util.js?v=20260815-play-fix1";
+import { config, resetScreenShake } from "./config.js?v=20260815-play-fix1";
+import * as socketStuff from "./socketinit.js?v=20260815-play-fix1";
 import { AdvancedRecorder } from "./recorder.js?v=20260719-challenge-instance1";
 let { gui } = socketStuff;
 
@@ -9,7 +9,7 @@ const CRAFTRAS_PLACEABLE_ITEMS = new Set([
     "grass_block", "dirt", "dirt_path", "stone", "coal", "iron_ore", "gold_ore", "wood",
     "plank", "crafting_table", "furnace", "chest", "bedrock", "coal_block",
     "iron_block", "gold_block", "diamond_block", "torch", "steel_torch",
-    "challenge_start_block", "challenge_spawn_block", "transparent_block", "route_marker_block",
+    "challenge_start_block", "world2_challenge_block", "challenge_spawn_block", "transparent_block", "route_marker_block",
 ]);
 class Canvas {
     constructor() {
@@ -100,6 +100,21 @@ class Canvas {
     }
 
     wheel(event) {
+        if (global.craftrasRecipeBookOpen && global.craftrasInventory?.open && !global.died) {
+            const layout = this.craftrasInventoryLayout();
+            const mouseX = global.mouse.x;
+            const mouseY = global.mouse.y;
+            if (mouseX >= layout.recipeX && mouseX <= layout.recipeX + layout.recipeWidth
+                && mouseY >= layout.panelY && mouseY <= layout.panelY + layout.panelHeight) {
+                const direction = event.deltaY > 0 ? 1 : -1;
+                global.craftrasRecipeScroll = Math.max(0, Math.min(
+                    Math.max(0, Number(global.craftrasRecipeMaxScroll) || 0),
+                    Math.floor(Number(global.craftrasRecipeScroll) || 0) + direction,
+                ));
+                event.preventDefault();
+                return;
+            }
+        }
         if (global.craftrasCreative?.active && global.craftrasInventory?.open && !global.died) {
             const layout = this.craftrasInventoryLayout();
             const mouseX = global.mouse.x;
@@ -150,6 +165,8 @@ class Canvas {
     }
 
     respawn() {
+        if (global.craftrasWorld?.challengeMode) return;
+        resetScreenShake();
         if (global.craftrasSpectator) {
             const now = Date.now();
             if (now - (this.craftrasSpectatorRespawnRequestedAt || 0) < 500) return;
@@ -162,6 +179,16 @@ class Canvas {
             this.socket.talk('s', global.playerName, 0, 1 * config.game.autoLevelUp, false, 1 * config.game.incognitoMode);
             global.died = false;
         }
+    }
+
+    isCraftrasSpectatorRespawnPoint(clientX, clientY) {
+        const bounds = global.craftrasSpectatorRespawnBounds;
+        if (!bounds) return false;
+        const padding = 12;
+        return clientX >= bounds.left - padding
+            && clientX <= bounds.right + padding
+            && clientY >= bounds.top - padding
+            && clientY <= bounds.bottom + padding;
     }
 
     keyDown(event) {
@@ -177,6 +204,12 @@ class Canvas {
                 global.specialPressed = true;
                 global.specialKeysPressed = [];
             }
+            return;
+        }
+
+        if (!event.repeat && global.craftrasWorld?.challengeMode && event.keyCode === global.KEY_MAX_STAT) {
+            this.socket.talk("CQ");
+            event.preventDefault();
             return;
         }
 
@@ -233,6 +266,20 @@ class Canvas {
             return;
         }
 
+        if (global.craftrasInventory?.open && global.craftrasRecipeBookOpen && global.craftrasRecipeSearchActive) {
+            if (event.keyCode === global.KEY_ESC || event.keyCode === 13) {
+                global.craftrasRecipeSearchActive = false;
+            } else if (event.keyCode === 8) {
+                global.craftrasRecipeSearch = String(global.craftrasRecipeSearch || "").slice(0, -1);
+                global.craftrasRecipeScroll = 0;
+            } else if (event.key?.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                global.craftrasRecipeSearch = `${global.craftrasRecipeSearch || ""}${event.key}`.slice(0, 40);
+                global.craftrasRecipeScroll = 0;
+            }
+            event.preventDefault();
+            return;
+        }
+
         if (global.craftrasInventory?.active && !event.repeat && event.keyCode === 69) {
             if (this.craftrasDropTimer) clearInterval(this.craftrasDropTimer);
             this.craftrasDropTimer = null;
@@ -262,6 +309,40 @@ class Canvas {
                 event.preventDefault();
                 return;
             }
+        }
+
+        if (!event.repeat && event.keyCode === 16 && global.craftrasHotbar?.active && !global.died && !global.craftrasSpectator) {
+            const now = Date.now();
+            if (now - (this.craftrasLastShiftPress || 0) <= 500) {
+                this.craftrasLastShiftPress = 0;
+                this.socket.talk("RD");
+            } else this.craftrasLastShiftPress = now;
+        }
+
+        if (!event.repeat && global.craftrasBossForm?.active) {
+            if (event.keyCode === 77) {
+                this.socket.talk("BFC");
+                event.preventDefault();
+                return;
+            }
+            const skillIndex = [global.KEY_SCREENSHOT, global.KEY_OVER_RIDE, global.KEY_CLASS_TREE, 89, 85, 73, 79, 80].indexOf(event.keyCode);
+            if (skillIndex !== -1) {
+                this.socket.talk("BFA", skillIndex);
+                event.preventDefault();
+                return;
+            }
+        }
+
+        const customWeaponActionKey = String(event.key || "").toLowerCase();
+        if (
+            !event.repeat
+            && global.craftrasHotbar?.active
+            && !global.craftrasInventory?.open
+            && global.craftrasCustomWeaponKeys?.includes(customWeaponActionKey)
+        ) {
+            this.socket.talk("CWA", customWeaponActionKey);
+            event.preventDefault();
+            return;
         }
 
         if (global.craftrasHotbar?.active && event.keyCode === global.KEY_SCREENSHOT) {
@@ -297,6 +378,19 @@ class Canvas {
             return;
         }
 
+        if (
+            !event.repeat
+            && event.keyCode === global.KEY_CLASS_TREE
+            && (global.craftrasHotbar?.active || global.craftrasWorld?.active)
+            && global.gameStart
+            && !global.died
+            && !global.craftrasSpectator
+        ) {
+            this.socket.talk("GF");
+            event.preventDefault();
+            return;
+        }
+
         // Handle search input when tree is open and search bar is active
         if (global.showTree && global.searchBarActive) {
             if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
@@ -324,8 +418,14 @@ class Canvas {
 
         switch (event.keyCode) {
             case global.KEY_SHIFT:
-                if (global.showTree) this.treeScrollSpeedMultiplier = 5;
-                else this.socket.cmd.set(6, true);
+                if (global.showTree) {
+                    this.treeScrollSpeedMultiplier = 5;
+                } else if (global.craftrasInventory?.offhand?.id === "magic_book") {
+                    this.socket.talk("MK", 1);
+                    event.preventDefault();
+                } else {
+                    this.socket.cmd.set(6, true);
+                }
                 break;
 
             case global.KEY_ENTER:
@@ -372,13 +472,10 @@ class Canvas {
             case global.KEY_MOUSE_2:
                 this.socket.cmd.set(6, true);
                 break;
-            case global.KEY_LEVEL_UP:
-                this.socket.talk('L');
-                break;
             case global.KEY_BECOME:
                 if (global.craftrasHotbar?.active) {
                     const selected = global.craftrasHotbar.slots[global.craftrasHotbar.selected];
-                    if (selected?.id?.endsWith("_shield")) {
+                    if (selected?.id?.endsWith("_shield") || ["parry_tool", "parry_tool_op", "magic_book"].includes(selected?.id)) {
                         this.socket.talk("OE", global.craftrasHotbar.selected);
                         global.craftrasHotbar.offhandSelected = true;
                         event.preventDefault();
@@ -409,7 +506,17 @@ class Canvas {
                     this.socket.talk("t", 1, true);
                     break;
                 case global.KEY_OVER_RIDE:
-                    this.socket.talk("t", 2, true);
+                    if (
+                        global.craftrasInventory?.offhand?.id === "magic_book"
+                        && global.gameStart
+                        && !global.died
+                        && !global.craftrasSpectator
+                    ) {
+                        this.socket.talk("MR");
+                        event.preventDefault();
+                    } else {
+                        this.socket.talk("t", 2, true);
+                    }
                     break;
                 case global.KEY_AUTO_ALT:
                     this.socket.talk("t", 3, true);
@@ -495,8 +602,13 @@ class Canvas {
                 global.specialKeysPressed = [];
                 break;
             case global.KEY_SHIFT:
-                if (global.showTree) this.treeScrollSpeedMultiplier = 1;
-                else this.socket.cmd.set(6, false);
+                if (global.showTree) {
+                    this.treeScrollSpeedMultiplier = 1;
+                } else if (global.craftrasInventory?.offhand?.id === "magic_book") {
+                    this.socket.talk("MK", 0);
+                } else {
+                    this.socket.cmd.set(6, false);
+                }
                 break;
             case global.KEY_UP_ARROW:
                 global.classTreeDrag.momentum.y = 0;
@@ -551,6 +663,28 @@ class Canvas {
             secondaryFire = 6;
         if (this.inverseMouse) [primaryFire, secondaryFire] = [secondaryFire, primaryFire];
         global.clickables.clicked = true;
+        if (mouse.button === 0 && global.craftrasDialogueSkipToken) {
+            const skipPoint = {
+                x: mouse.clientX * global.ratio,
+                y: mouse.clientY * global.ratio,
+            };
+            if (global.clickables.dialogueSkip.check(skipPoint) !== -1) {
+                const skipToken = global.craftrasDialogueSkipToken;
+                this.socket.talk("DS", skipToken);
+                const now = Date.now();
+                global.craftrasFastDialogueTokens.set(skipToken, now);
+                for (const message of global.messages) {
+                    if (message?.skipToken !== skipToken) continue;
+                    const elapsed = Math.max(0, now - message.time);
+                    const remaining = Math.max(0, message.duration - elapsed);
+                    message.duration = elapsed + Math.max(20, remaining / 10);
+                }
+                global.craftrasDialogueSkipToken = null;
+                global.clickables.dialogueSkip.hide();
+                mouse.preventDefault();
+                return;
+            }
+        }
         if (mouse.button === 0 && global.craftrasTeamInvite?.active) {
             const invitePoint = {
                 x: mouse.clientX * global.ratio,
@@ -575,7 +709,7 @@ class Canvas {
                 if (challengeAction !== -1) {
                     this.socket.talk("CSA", challengeAction === 0 ? 1 : 0);
                     if (challengeAction === 1) {
-                        global.craftrasChallengeEntry = { open: false, teamName: "", memberCount: 1, isHost: true };
+                        global.craftrasChallengeEntry = { open: false, teamName: "", memberCount: 1, isHost: true, kind: "world1" };
                         global.clickables.challengeEntry.hide();
                     }
                 }
@@ -597,7 +731,9 @@ class Canvas {
                 x: mouse.clientX * global.ratio,
                 y: mouse.clientY * global.ratio,
             };
-            if (global.clickables.deathRespawn.check(point) !== -1 && !global.disconnected) this.respawn();
+            const respawnHit = this.isCraftrasSpectatorRespawnPoint(mouse.clientX, mouse.clientY)
+                || global.clickables.deathRespawn.check(point) !== -1;
+            if (!global.craftrasWorld?.challengeMode && respawnHit && !global.disconnected) this.respawn();
             this.socket.cmd.set(primaryFire, false);
             this.socket.cmd.set(5, false);
             this.socket.cmd.set(secondaryFire, false);
@@ -608,7 +744,7 @@ class Canvas {
             const point = this.craftrasInventoryPoint(mouse.clientX, mouse.clientY);
             const slot = this.craftrasInventorySlotAt(point.x, point.y);
             const item = slot >= 0 ? global.craftrasInventory.slots[slot] : null;
-            if (item?.id?.endsWith("_shield")) this.socket.talk("OE", slot);
+            if (item?.id?.endsWith("_shield") || ["parry_tool", "parry_tool_op", "magic_book"].includes(item?.id)) this.socket.talk("OE", slot);
             mouse.preventDefault();
             return;
         }
@@ -616,6 +752,17 @@ class Canvas {
             const point = this.craftrasInventoryPoint(mouse.clientX, mouse.clientY);
             if (this.craftrasRecipeBookButtonAt(point.x, point.y)) {
                 global.craftrasRecipeBookOpen = !global.craftrasRecipeBookOpen;
+                if (!global.craftrasRecipeBookOpen) global.craftrasRecipeSearchActive = false;
+                mouse.preventDefault();
+                return;
+            }
+            if (this.craftrasRecipeSearchAt(point.x, point.y)) {
+                global.craftrasRecipeSearchActive = true;
+                mouse.preventDefault();
+                return;
+            }
+            if (this.craftrasRecipeBookPanelAt(point.x, point.y)) {
+                global.craftrasRecipeSearchActive = false;
                 mouse.preventDefault();
                 return;
             }
@@ -809,7 +956,8 @@ class Canvas {
                 } else {
                     global.searchBarActive = false;
                 }
-                if (respawnCheck !== -1 && !global.disconnected && (global.craftrasSpectator || global.died)) {
+                const spectatorRespawnHit = global.craftrasSpectator && this.isCraftrasSpectatorRespawnPoint(mouse.clientX, mouse.clientY);
+                if ((respawnCheck !== -1 || spectatorRespawnHit) && !global.disconnected && !global.craftrasWorld?.challengeMode && (global.craftrasSpectator || global.died)) {
                     this.respawn();
                 } else
                 if (reconnectCheck !== -1) {
@@ -992,7 +1140,7 @@ class Canvas {
                 this.socket.talk("HS", target.index);
             } else if (drag.source.kind === "hotbar" && target?.kind === "offhand") {
                 const item = global.craftrasHotbar.slots[drag.source.index];
-                if (item?.id?.endsWith("_shield")) {
+                if (item?.id?.endsWith("_shield") || ["parry_tool", "parry_tool_op", "magic_book"].includes(item?.id)) {
                     this.socket.talk("OE", drag.source.index);
                     global.craftrasHotbar.offhandSelected = true;
                 }
@@ -1079,6 +1227,20 @@ class Canvas {
         const layout = this.craftrasInventoryLayout();
         return x >= layout.recipeButtonX && x <= layout.recipeButtonX + layout.recipeButtonWidth
             && y >= layout.recipeButtonY && y <= layout.recipeButtonY + layout.recipeButtonHeight;
+    }
+
+    craftrasRecipeBookPanelAt(x, y) {
+        if (!global.craftrasInventory?.open || !global.craftrasRecipeBookOpen) return false;
+        const layout = this.craftrasInventoryLayout();
+        return x >= layout.recipeX && x <= layout.recipeX + layout.recipeWidth
+            && y >= layout.panelY && y <= layout.panelY + layout.panelHeight;
+    }
+
+    craftrasRecipeSearchAt(x, y) {
+        if (!global.craftrasInventory?.open || !global.craftrasRecipeBookOpen) return false;
+        const layout = this.craftrasInventoryLayout();
+        return x >= layout.recipeX + 10 && x <= layout.recipeX + layout.recipeWidth - 10
+            && y >= layout.panelY + 34 && y <= layout.panelY + 62;
     }
 
     craftrasCreativeSlotAt(x, y) {
@@ -1431,6 +1593,24 @@ class Canvas {
                     x: touch.clientX * global.ratio,
                     y: touch.clientY * global.ratio,
                 };
+                if (
+                    global.craftrasDialogueSkipToken
+                    && global.clickables.dialogueSkip.check(mpos) !== -1
+                ) {
+                    const skipToken = global.craftrasDialogueSkipToken;
+                    this.socket.talk("DS", skipToken);
+                    const now = Date.now();
+                    global.craftrasFastDialogueTokens.set(skipToken, now);
+                    for (const message of global.messages) {
+                        if (message?.skipToken !== skipToken) continue;
+                        const elapsed = Math.max(0, now - message.time);
+                        const remaining = Math.max(0, message.duration - elapsed);
+                        message.duration = elapsed + Math.max(20, remaining / 10);
+                    }
+                    global.craftrasDialogueSkipToken = null;
+                    global.clickables.dialogueSkip.hide();
+                    return;
+                }
                 if (global.craftrasTeamInvite?.active) {
                     const inviteAction = global.clickables.teamInvite.check(mpos);
                     if (inviteAction !== -1) {
@@ -1445,7 +1625,7 @@ class Canvas {
                     if (challengeAction !== -1) {
                         this.socket.talk("CSA", challengeAction === 0 ? 1 : 0);
                         if (challengeAction === 1) {
-                            global.craftrasChallengeEntry = { open: false, teamName: "", memberCount: 1, isHost: true };
+                            global.craftrasChallengeEntry = { open: false, teamName: "", memberCount: 1, isHost: true, kind: "world1" };
                             global.clickables.challengeEntry.hide();
                         }
                     }

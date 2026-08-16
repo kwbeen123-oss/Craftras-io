@@ -1,12 +1,16 @@
-import { util } from "./util.js?v=20260719-challenge-instance1";
-import { global } from "./global.js?v=20260719-challenge-instance1";
-import { config } from "./config.js?v=20260719-challenge-instance1";
-import { Canvas } from "./canvas.js?v=20260719-challenge-instance1";
+import { util } from "./util.js?v=20260815-play-fix1";
+import { global } from "./global.js?v=20260815-play-fix1";
+import { config, resetScreenShake } from "./config.js?v=20260815-play-fix1";
+import { Canvas } from "./canvas.js?v=20260815-play-fix1";
 import { color as colors } from "./color.js?v=20260719-challenge-instance1";
-import { gameDraw } from "./gameDraw.js?v=20260719-challenge-instance1";
-import * as socketStuff from "./socketinit.js?v=20260719-challenge-instance1";
-import "./serverSelectorHandler.js?v=20260718-challenge-weather2";
-import * as CraftrasWorld from "../craftras-worldGenerator.js?v=20260717-challenge-start1";
+import { gameDraw } from "./gameDraw.js?v=20260815-play-fix1";
+import * as socketStuff from "./socketinit.js?v=20260815-play-fix1";
+import "./serverSelectorHandler.js?v=20260815-play-fix1";
+import * as CraftrasWorld from "../craftras-worldGenerator.js?v=20260810-world2-giant-cave1";
+import { preloadCraftrasAssets } from "./assetPreloader.js?v=20260814-asset-preload1";
+
+const craftrasJaneScreenSliceCanvas = document.createElement("canvas");
+const craftrasJaneScreenSliceContext = craftrasJaneScreenSliceCanvas.getContext("2d");
 
 const craftrasBlockBreakImages = [null, 1, 2, 3].map(stage => {
     if (stage == null) return null;
@@ -19,6 +23,11 @@ const craftrasDebuffImages = Object.fromEntries([
     ["poison", "craftras-debuff-poison.png"],
     ["health_buff", "craftras-health-buff.png"],
     ["strength_buff", "craftras-strength-buff.png"],
+    ["health_buff_2", "craftras-health-buff.png"],
+    ["strength_buff_2", "craftras-strength-buff.png"],
+    ["haste_buff_2", "craftras-haste-buff.png"],
+    ["world1_blessing", "craftras-world1-badge.png"],
+    ["world2_curse", "craftras-world1-badge.png"],
 ].map(([id, file]) => {
     const image = new Image();
     image.src = `./img/${file}?v=20260712-swordguy1`;
@@ -32,6 +41,12 @@ const craftrasFireFrames = Array.from({ length: 5 }, (_, index) => {
 const CRAFTRAS_TORCH_FIRE_GIF_SRC = "./img/craftras-torch-fire.gif?v=20260704-cave11";
 const craftrasTorchFireGifImage = new Image();
 craftrasTorchFireGifImage.src = CRAFTRAS_TORCH_FIRE_GIF_SRC;
+const craftrasLaserBeamImage = new Image();
+craftrasLaserBeamImage.src = "./img/craftras-laser-beam.png?v=20260802-laser-test1";
+const craftrasGiantLaserBeamImage = new Image();
+craftrasGiantLaserBeamImage.src = "./img/craftras-giant-laser.png?v=20260807-giant-laser1";
+const craftrasBlueLaserBeamImage = new Image();
+craftrasBlueLaserBeamImage.src = "./img/craftras-blue-laser-beam.png?v=20260813-world2-challenge1";
 const craftrasTorchGifOverlays = new Map();
 const CRAFTRAS_CAVE_MAX_DARKNESS = 0.9;
 const CRAFTRAS_NIGHT_MAX_DARKNESS = 0.7;
@@ -71,6 +86,9 @@ const CRAFTRAS_CLOUD_SPAWN_FADE_RATIO = 0.26;
 const CRAFTRAS_CLOUD_SCREEN_MARGIN = 96;
 const CRAFTRAS_WEATHER_FADE_LERP = 0.018;
 const CRAFTRAS_WEATHER_SURFACE_FADE_LERP = 0.035;
+const CRAFTRAS_WHITE_INFERNO_FADE_LERP = 0.055;
+const CRAFTRAS_WHITE_INFERNO_SCREEN_ALPHA = 0.9;
+const CRAFTRAS_WHITE_INFERNO_BLOCK_ALPHA = 0.96;
 const CRAFTRAS_STORM_TRANSITION_MS = 60_000;
 const CRAFTRAS_WEATHER_DARKNESS_ALPHA = 0.36;
 const CRAFTRAS_KINGDOM_STORM_DARKNESS_MULTIPLIER = 1.5;
@@ -115,23 +133,50 @@ const craftrasOreOverlayImages = Object.fromEntries([
     image.src = `./img/${file}?v=20260711-ore-remake1`;
     return [code, image];
 }));
+const craftrasWorld2OreOverlayImages = Object.fromEntries([
+    [6, "craftras-sapphire-ore-overlay.png"],
+    [8, "craftras-ruby-ore-overlay.png"],
+].map(([code, file]) => {
+    const image = new Image();
+    image.src = `./img/${file}?v=20260727-world2-mobs1`;
+    return [code, image];
+}));
 const craftrasHelmetImages = Object.fromEntries([
     ["iron_helmet", "craftras-iron-helmet.png"],
     ["diamond_helmet", "craftras-diamond-helmet.png"],
+    ["great_iron_helmet", "craftras-iron-helmet.png"],
+    ["amethyst_helmet", "craftras-diamond-helmet.png"],
+    ["great_diamond_helmet", "craftras-great-diamond-helmet.png"],
+    ["sapphire_helmet", "craftras-sapphire-helmet.png"],
+    ["ruby_helmet", "craftras-ruby-helmet.png"],
+    ["sturdy_helmet", "craftras-sturdy-helmet.png"],
     ["zombie_crown", "craftras-zombie-crown.png"],
     ["cleric_hat", "craftras-cleric-hat.png"],
     ["pope_hat", "craftras-pope-hat.png"],
     ["blesser_hat", "craftras-blesser-hat.png"],
     ["merchant_hat", "craftras-merchant-hat.png"],
     ["monster_merchant_hat", "craftras-monster-merchant-hat.png"],
+    ["miner_hat", "craftras-miner-hat.png"],
+    ["healer_hat", "craftras-healer-hat.png"],
+    ["bominik_hat", "craftras-bominik-hat.png?v=2"],
+    ["jane_hat", "craftras-jane-hat.png"],
 ].map(([id, file]) => {
     const image = new Image();
-    image.src = `./img/${file}?v=20260708-merchant-hats1`;
+    image.src = `./img/${file}?v=20260731-jane-assets2`;
     return [id, image];
 }));
+const craftrasBandageImage = new Image();
+craftrasBandageImage.src = "./img/craftras-bandage.png?v=20260727-world2-equipment2";
 const drawCraftrasHelmetImage = (context, image, helmetId, x, y, size) => {
     if (!image || !((image.complete && image.naturalWidth) || image.width)) return false;
-    context.drawImage(image, x, y, size, size);
+    const previousFilter = context.filter;
+    if (helmetId === "amethyst_helmet") context.filter = "hue-rotate(80deg) saturate(1.55)";
+    if (helmetId === "sturdy_helmet") {
+        const width = size * 1.5;
+        context.drawImage(image, x - (width - size) / 2, y, width, size);
+    } else {
+        context.drawImage(image, x, y, size, size);
+    }
     if (helmetId === "gold_helmet") {
         context.globalCompositeOperation = "source-atop";
         context.globalAlpha *= 0.72;
@@ -140,6 +185,7 @@ const drawCraftrasHelmetImage = (context, image, helmetId, x, y, size) => {
         context.globalCompositeOperation = "source-over";
         context.globalAlpha /= 0.72;
     }
+    context.filter = previousFilter;
     return true;
 };
 craftrasHelmetImages.gold_helmet = craftrasHelmetImages.iron_helmet;
@@ -149,10 +195,30 @@ const craftrasRocketLauncherImage = new Image();
 craftrasRocketLauncherImage.src = "./img/craftras-rocket-launcher.png?v=20260618-1";
 const craftrasGuardianSlashImage = new Image();
 craftrasGuardianSlashImage.src = "./img/craftras-guardian-slash.png?v=20260709-king-zombie1";
+const craftrasJaneSawImage = new Image();
+craftrasJaneSawImage.src = "./img/craftras-jane-saw.png?v=20260802-jane-skill1";
+const craftrasJaneThrowingSwordImage = new Image();
+craftrasJaneThrowingSwordImage.src = "./img/craftras-jane-throwing-sword.png?v=20260802-jane-skill2";
+const craftrasPhoenixEffectImage = new Image();
+craftrasPhoenixEffectImage.src = "./img/craftras-phoenix-effect.png?v=20260727-world2-mobs1";
+const craftrasParryEffectImage = new Image();
+craftrasParryEffectImage.src = "./img/craftras-parry-effect.png?v=20260728-parry1";
 const craftrasChallengeMagicCircleImage = new Image();
 craftrasChallengeMagicCircleImage.src = "./img/craftras-challenge-magic-circle.png?v=20260719-magic-circle1";
+const craftrasBasicMagicCircleImage = new Image();
+craftrasBasicMagicCircleImage.src = "./img/craftras-basic-magic-circle.png?v=20260728-sword-guy2-1";
+const craftrasBominikMagicCircleImages = Object.fromEntries([1, 2, 3].map(index => {
+    const image = new Image();
+    image.src = `./img/craftras-bominik-circle-${index}.png?v=20260729-sword-guy2-phase2-1`;
+    return [`craftrasBominikMagicCircle${index}`, image];
+}));
+const craftrasJaneMagicCircleImages = Object.fromEntries([1, 2, 3].map(index => {
+    const image = new Image();
+    image.src = `./img/craftras-jane-circle-${index}.png?v=20260802-jane-skill5-1`;
+    return [`craftrasJaneMagicCircle${index}`, image];
+}));
 const craftrasTheGreatFriendImage = new Image();
-craftrasTheGreatFriendImage.src = "./img/craftras-the-great-friend.png?v=20260713-friend-image2";
+craftrasTheGreatFriendImage.src = "./img/craftras-the-great-friend.png?v=20260731-jane-assets2";
 const craftrasCowPatternImage = new Image();
 craftrasCowPatternImage.src = "./img/craftras-cow-pattern.png?v=20260621-1";
 const craftrasChickenCombImage = new Image();
@@ -174,8 +240,17 @@ const craftrasClericImages = Object.fromEntries([
     return [id, image];
 }));
 const craftrasLootImages = Object.fromEntries([
+    ["bandage", "craftras-bandage.png"],
     ["rotten_flesh", "craftras-rotten-flesh.png"],
     ["bone", "craftras-bone.png"],
+    ["hardened_bone", "craftras-bone.png"],
+    ["burnt_bone", "craftras-burnt-bone.png"],
+    ["fire_orb", "craftras-fire-orb.png"],
+    ["fire_soul", "craftras-fire-soul.png"],
+    ["worm_shell", "craftras-worm-shell.png"],
+    ["horn", "craftras-horn.png"],
+    ["ancient_key", "craftras-ancient-key.png"],
+    ["magic_crystal", "craftras-magic-crystal.png"],
     ["gunpowder", "craftras-gunpowder.png"],
     ["crown_fragment", "craftras-crown-fragment.png"],
     ["royal_key", "craftras-royal-key.png"],
@@ -189,6 +264,9 @@ const craftrasLootImages = Object.fromEntries([
     ["knight_shield_recipe", "craftras-knight-shield-recipe.png"],
     ["cleric_staff_recipe", "craftras-cleric-staff-recipe.png"],
     ["bone_bomb_recipe", "craftras-bone-bomb-recipe.png"],
+    ["horn_sword_recipe", "craftras-horn-sword-recipe.png"],
+    ["sturdy_helmet_recipe", "craftras-sturdy-helmet-recipe.png"],
+    ["zombie_wizard_staff_recipe", "craftras-zombie-wizard-staff-recipe.png"],
     ["bone_bomb", "craftras-bone-bomb.png"],
     ["the_great_friend", "craftras-the-great-friend.png"],
     ["cleric_staff_head", "craftras-cleric-staff-head.png"],
@@ -199,6 +277,9 @@ const craftrasLootImages = Object.fromEntries([
     ["gold_shield", "craftras-gold-shield.png"],
     ["diamond_shield", "craftras-diamond-shield.png"],
     ["knight_shield", "craftras-knight-shield.png"],
+    ["parry_tool", "craftras-parry-tool.png"],
+    ["parry_tool_op", "craftras-parry-tool.png"],
+    ["magic_book", "craftras-magic-book.png"],
     ["raw_beef", "craftras-raw-beef.png"],
     ["cooked_beef", "craftras-cooked-beef.png"],
     ["raw_pork", "craftras-raw-pork.png"],
@@ -214,18 +295,23 @@ const craftrasLootImages = Object.fromEntries([
     ["blesser_staff", "craftras-blesser-staff.png"],
     ["merchant_hat", "craftras-merchant-hat.png"],
     ["monster_merchant_hat", "craftras-monster-merchant-hat.png"],
+    ["jane_hat", "craftras-jane-hat.png"],
+    ["jane_sword", "craftras-jane-sword.png"],
 ].map(([id, file]) => {
     const image = new Image();
-    image.src = `./img/${file}?v=20260713-friend-image2`;
+    image.src = `./img/${file}?v=20260731-jane-assets2`;
     return [id, image];
 }));
 const craftrasResourceItemImages = Object.fromEntries([
     ["coal", "craftras-coal-item.png"],
     ["iron_ore", "craftras-iron-ore-item.png"],
     ["iron_ingot", "craftras-iron-ore-item.png"],
+    ["steel_rod", "craftras-iron-ore-item.png"],
     ["gold_ore", "craftras-gold-ore-item.png"],
     ["gold_ingot", "craftras-gold-ore-item.png"],
     ["diamond", "craftras-diamond-item.png"],
+    ["sapphire", "craftras-sapphire-item.png"],
+    ["ruby", "craftras-ruby-item.png"],
 ].map(([id, file]) => {
     const image = new Image();
     image.src = `./img/${file}?v=20260711-ore-item1`;
@@ -253,13 +339,13 @@ const craftrasItemImages = {
     ...craftrasLootImages,
 };
 const craftrasFlatItemIds = new Set([
-    "coal", "iron_ore", "iron_ingot", "gold_ore", "gold_ingot", "diamond",
-    "torch", "steel_torch", "m134", "rocket_launcher", "rotten_flesh", "bone", "gunpowder", "bomb_recipe",
-    "bone_bomb_recipe", "bone_bomb", "the_great_friend",
+    "coal", "iron_ore", "iron_ingot", "steel_rod", "gold_ore", "gold_ingot", "diamond", "sapphire", "ruby",
+    "torch", "steel_torch", "m134", "rocket_launcher", "bandage", "rotten_flesh", "bone", "hardened_bone", "burnt_bone", "fire_orb", "fire_soul", "worm_shell", "horn", "ancient_key", "magic_crystal", "gunpowder", "bomb_recipe",
+    "bone_bomb_recipe", "bone_bomb", "horn_sword_recipe", "sturdy_helmet_recipe", "zombie_wizard_staff_recipe", "the_great_friend", "jane_sword", "jane_hat",
     "crown_fragment", "royal_key", "spider_eye", "toxic_spider_eye",
     "spider_leg", "string", "spider_venom", "venom_sword_recipe",
     "zombie_crown_recipe", "knight_shield_recipe",
-    "knight_shield_fragment", "iron_shield", "gold_shield", "diamond_shield", "knight_shield",
+    "knight_shield_fragment", "iron_shield", "gold_shield", "diamond_shield", "knight_shield", "parry_tool", "parry_tool_op", "magic_book",
     "raw_beef", "cooked_beef", "raw_pork", "cooked_pork", "raw_chicken", "cooked_chicken",
     "blacksmith_hammer", "world1_badge", "cleric_hat", "pope_hat", "pope_staff", "blesser_hat", "blesser_staff",
     "merchant_hat", "monster_merchant_hat",
@@ -272,6 +358,11 @@ const craftrasOreItemBlockCodes = {
     gold_ore: 7,
 };
 global.craftrasRecipeBookOpen ??= false;
+global.craftrasRecipeBookRecipes ??= [];
+global.craftrasRecipeSearch ??= "";
+global.craftrasRecipeSearchActive ??= false;
+global.craftrasRecipeScroll ??= 0;
+global.craftrasRecipeUnlockQueue ??= [];
 const craftrasMobHeadStyles = {
     zombie_head: { body: "#48a84f", border: "#28652d" },
     skeleton_head: { body: "#eeeeee", border: "#8a8e94", gun: true },
@@ -282,9 +373,19 @@ const craftrasMobHeadStyles = {
 const craftrasHeldItemClasses = {
     craftrasHeldItemTorch: "torch",
     craftrasHeldItemSteelTorch: "steel_torch",
+    craftrasHeldItemBandage: "bandage",
     craftrasHeldItemRottenFlesh: "rotten_flesh",
     craftrasHeldItemZombieHead: "zombie_head",
     craftrasHeldItemBone: "bone",
+    craftrasHeldItemHardenedBone: "hardened_bone",
+    craftrasHeldItemBurntBone: "burnt_bone",
+    craftrasHeldItemFireOrb: "fire_orb",
+    craftrasHeldItemFireSoul: "fire_soul",
+    craftrasHeldItemWormShell: "worm_shell",
+    craftrasHeldItemHorn: "horn",
+    craftrasHeldItemAncientKey: "ancient_key",
+    craftrasHeldItemMagicCrystal: "magic_crystal",
+    craftrasHeldItemSteelRod: "steel_rod",
     craftrasHeldItemSkeletonHead: "skeleton_head",
     craftrasHeldItemGunpowder: "gunpowder",
     craftrasHeldItemCreeperHead: "creeper_head",
@@ -302,11 +403,16 @@ const craftrasHeldItemClasses = {
     craftrasHeldItemKnightShieldRecipe: "knight_shield_recipe",
     craftrasHeldItemBoneBombRecipe: "bone_bomb_recipe",
     craftrasHeldItemBoneBomb: "bone_bomb",
+    craftrasHeldItemHornSwordRecipe: "horn_sword_recipe",
+    craftrasHeldItemSturdyHelmetRecipe: "sturdy_helmet_recipe",
+    craftrasHeldItemZombieWizardStaffRecipe: "zombie_wizard_staff_recipe",
     craftrasHeldItemKnightShieldFragment: "knight_shield_fragment",
     craftrasHeldItemIronShield: "iron_shield",
     craftrasHeldItemGoldShield: "gold_shield",
     craftrasHeldItemDiamondShield: "diamond_shield",
     craftrasHeldItemKnightShield: "knight_shield",
+    craftrasHeldItemParryTool: "parry_tool",
+    craftrasHeldItemParryToolOp: "parry_tool_op",
     craftrasHeldItemRawBeef: "raw_beef",
     craftrasHeldItemCookedBeef: "cooked_beef",
     craftrasHeldItemRawPork: "raw_pork",
@@ -330,6 +436,7 @@ const craftrasOffhandShieldClasses = {
     craftrasOffhandGoldShield: "gold_shield",
     craftrasOffhandDiamondShield: "diamond_shield",
     craftrasOffhandKnightShield: "knight_shield",
+    craftrasOffhandMagicBook: "magic_book",
 };
 const craftrasShieldHealth = {
     iron_shield: 100,
@@ -379,11 +486,16 @@ const craftrasToolImageFiles = {
     admin_pickaxe: "craftras-wooden-pickaxe.png",
     worldedit_axe: "craftras-wooden-axe.png",
     destroyer: "craftras-wooden-pickaxe.png",
+    laser_test: "craftras-wooden-shovel.png",
+    blue_laser_beam: "craftras-blue-laser-beam.png",
+    screen_cut_test: "craftras-iron-sword.png",
     wooden_pickaxe: "craftras-wooden-pickaxe.png",
     stone_pickaxe: "craftras-stone-pickaxe.png",
     iron_pickaxe: "craftras-iron-pickaxe.png",
     gold_pickaxe: "craftras-gold-pickaxe.png",
     diamond_pickaxe: "craftras-diamond-pickaxe.png",
+    ruby_pickaxe: "craftras-ruby-pickaxe.png",
+    sapphire_pickaxe: "craftras-sapphire-pickaxe.png",
     wooden_axe: "craftras-wooden-axe.png",
     stone_axe: "craftras-stone-axe.png",
     iron_axe: "craftras-iron-axe.png",
@@ -399,11 +511,16 @@ const craftrasToolImageFiles = {
     iron_sword: "craftras-iron-sword.png",
     gold_sword: "craftras-gold-sword.png",
     diamond_sword: "craftras-diamond-sword.png",
+    ruby_sword: "craftras-ruby-sword.png",
+    sapphire_sword: "craftras-sapphire-sword.png",
+    horn_sword: "craftras-horn-sword.png",
     venom_sword: "craftras-venom-sword.png",
     the_great: "craftras-the-great.png",
     the_great_friend: "craftras-the-great-friend.png",
+    jane_sword: "craftras-jane-sword.png",
     blacksmith_hammer: "craftras-blacksmith-hammer.png",
     cleric_staff: "craftras-cleric-staff.png",
+    zombie_wizard_staff: "craftras-zombie-wizard-staff.png",
     cleric_staff_op: "craftras-cleric-staff.png",
     pope_staff: "craftras-pope-staff.png",
     blesser_staff: "craftras-blesser-staff.png",
@@ -411,9 +528,36 @@ const craftrasToolImageFiles = {
 };
 const craftrasToolImages = Object.fromEntries(Object.entries(craftrasToolImageFiles).map(([id, file]) => {
     const image = new Image();
-    image.src = `./img/${file}?v=20260713-friend-image2`;
+    image.src = `./img/${file}?v=20260731-jane-assets2`;
     return [id, image];
 }));
+const craftrasCustomToolDefinitions = Object.create(null);
+const craftrasCustomToolClasses = Object.create(null);
+function registerCraftrasCustomTool(item) {
+    if (!item?.customWeapon || !item.id || !item.image || !item.weapon) return false;
+    craftrasCustomToolDefinitions[item.id] = item.weapon;
+    const layers = item.weapon.layers?.length ? item.weapon.layers : [{
+        id: "main",
+        image: item.image,
+        priority: 0,
+        opacity: 1,
+        anchor: item.weapon.anchor,
+    }];
+    item.weapon._layerImages = Object.create(null);
+    for (const layer of layers) {
+        const image = new Image();
+        image.src = layer.image || item.image;
+        item.weapon._layerImages[layer.id] = image;
+        if (!craftrasToolImages[item.id] || layer.id === "main") craftrasToolImages[item.id] = image;
+        const layerClassName = `craftrasHeld${String(item.id).split("_").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join("")}Layer${String(layer.id).split("_").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join("")}`;
+        craftrasCustomToolClasses[layerClassName] = { itemId: item.id, layerId: layer.id };
+    }
+    if (!item.weapon.layers?.length) {
+        const className = `craftrasHeld${String(item.id).split("_").map(part => part.charAt(0).toUpperCase() + part.slice(1)).join("")}`;
+        craftrasCustomToolClasses[className] = { itemId: item.id, layerId: "main" };
+    }
+    return true;
+}
 const craftrasPlacedBlockCrops = {
     11: { x: 32, y: 30, width: 436, height: 438 },
     12: { x: 27, y: 26, width: 446, height: 448 },
@@ -426,22 +570,31 @@ const craftrasToolColors = {
     iron: { fill: "#d9dde2", stroke: "#777e87" },
     gold: { fill: "#f0c83d", stroke: "#9f7918" },
     diamond: { fill: "#42cddd", stroke: "#187e91" },
+    ruby: { fill: "#ef3155", stroke: "#8f1733" },
+    sapphire: { fill: "#467cff", stroke: "#173d9d" },
     venom: { fill: "#55e047", stroke: "#173b16" },
 };
 
 function getCraftrasToolStyle(itemId) {
+    if (craftrasCustomToolDefinitions[itemId]) return { material: "iron", type: "sword", custom: true };
     if (itemId === "sword") return { material: "iron", type: "sword" };
     if (itemId === "admin_pickaxe") return { material: "wooden", type: "pickaxe", rainbow: true };
     if (itemId === "worldedit_axe") return { material: "wooden", type: "axe", rainbow: true };
     if (itemId === "destroyer") return { material: "destroyer", type: "pickaxe", black: true };
+    if (itemId === "laser_test") return { material: "wooden", type: "shovel", pink: true };
+    if (itemId === "blue_laser_beam") return { material: "diamond", type: "staff" };
+    if (itemId === "screen_cut_test") return { material: "iron", type: "sword" };
     if (itemId === "blacksmith_hammer") return { material: "iron", type: "hammer" };
     if (itemId === "cleric_staff") return { material: "gold", type: "staff" };
+    if (itemId === "zombie_wizard_staff") return { material: "venom", type: "staff" };
     if (itemId === "cleric_staff_op") return { material: "gold", type: "staff", rainbow: true };
     if (itemId === "pope_staff") return { material: "gold", type: "staff" };
     if (itemId === "blesser_staff") return { material: "diamond", type: "staff" };
     if (itemId === "venom_sword") return { material: "venom", type: "sword" };
+    if (itemId === "horn_sword") return { material: "wooden", type: "sword" };
     if (itemId === "the_great") return { material: "iron", type: "sword" };
     if (itemId === "the_great_friend") return { material: "iron", type: "sword" };
+    if (itemId === "jane_sword") return { material: "ruby", type: "sword" };
     const match = /^(wooden|stone|iron|gold|diamond)_(pickaxe|axe|shovel|sword)$/.exec(itemId || "");
     return match ? { material: match[1], type: match[2] } : null;
 }
@@ -457,6 +610,8 @@ function drawCraftrasToolIcon(context, itemId, x, y, size) {
             context.filter = `hue-rotate(${Math.floor(Date.now() / 8) % 360}deg) saturate(2.4) brightness(1.25)`;
         } else if (style.black) {
             context.filter = "brightness(0) saturate(1)";
+        } else if (style.pink) {
+            context.filter = "brightness(0) saturate(100%) invert(42%) sepia(95%) saturate(3500%) hue-rotate(306deg) brightness(108%) contrast(102%)";
         }
         if (itemId === "the_great") {
             const imageRatio = image.naturalHeight / Math.max(1, image.naturalWidth);
@@ -714,8 +869,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 maxPlayers: 20,
                 id: "cave-builder",
                 featured: false,
-                region: "Cave Builder",
-                gameMode: "Cave Builder",
+                region: "World Terrain Builder",
+                gameMode: "World Terrain Builder",
             },
             {
                 ip: `${location.hostname || "localhost"}:3006`,
@@ -725,6 +880,24 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 featured: false,
                 region: "World 1 Challenge",
                 gameMode: "World 1 Challenge",
+            },
+            {
+                ip: `${location.hostname || "localhost"}:3007`,
+                players: 0,
+                maxPlayers: 20,
+                id: "world2-village",
+                featured: false,
+                region: "World 2 Village Builder",
+                gameMode: "World 2 Village Builder",
+            },
+            {
+                ip: `${location.hostname || "localhost"}:3008`,
+                players: 0,
+                maxPlayers: 20,
+                id: "world2-challenge",
+                featured: false,
+                region: "World 2 Challenge",
+                gameMode: "World 2 Challenge",
             },
         ];
         const applyServerList = json => {
@@ -1329,6 +1502,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             const world = global.craftrasWorld;
             if (!world?.active) return 0;
             ensureCraftrasSteelTorchLightMap(world);
+            const now = performance.now();
+            const cached = world.torchLightCache;
+            if (cached && now - cached.updatedAt < 24) return cached.value;
             const blockSize = world.blockSize || 82;
             const chunkSize = world.chunkSize || 8;
             const radiusBlocks = CRAFTRAS_STEEL_TORCH_LIGHT_RADIUS_BLOCKS;
@@ -1351,7 +1527,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             }
             for (let chunkY = minChunkY; chunkY <= maxChunkY; chunkY++) {
                 for (let chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-                    const entries = world.chunkEntries.get(`${chunkX},${chunkY}`);
+                    const entries = world.torchChunkEntries?.get(`${chunkX},${chunkY}`);
                     if (!entries?.length) continue;
                     const chunkBlockX = chunkX * chunkSize;
                     const chunkBlockY = chunkY * chunkSize;
@@ -1369,7 +1545,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     }
                 }
             }
-            return clamp01(light);
+            const value = clamp01(light);
+            world.torchLightCache = { updatedAt: now, value };
+            return value;
         },
         getCraftrasDepthSample = block => {
             const size = CRAFTRAS_CAVE_DEPTH_SAMPLE_BLOCKS;
@@ -1378,6 +1556,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             return { x, y, key: `${x},${y}` };
         },
         isCraftrasUndergroundBlock = (block, seed) => {
+            if (CraftrasWorld.isUndergroundCell) return CraftrasWorld.isUndergroundCell(block.x, block.y, seed);
             if (CraftrasWorld.isBrokenKingdomSurfaceCell?.(block.x, block.y)) return false;
             return (CraftrasWorld.getOutsideScore(block.x, block.y, seed) || 0) <= 0.56;
         },
@@ -1394,13 +1573,13 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             let depth = maxDepth;
             for (const radius of CRAFTRAS_CAVE_DEPTH_RADII) {
                 let foundSurface = radius === 0
-                    ? (CraftrasWorld.getOutsideScore(sample.x, sample.y, seed) || 0) > 0.56
+                    ? !isCraftrasUndergroundBlock({ x: sample.x, y: sample.y }, seed)
                     : false;
                 for (let direction = 0; direction < CRAFTRAS_CAVE_DEPTH_DIRECTIONS && !foundSurface; direction++) {
                     const angle = direction * Math.PI * 2 / CRAFTRAS_CAVE_DEPTH_DIRECTIONS;
                     const x = Math.round(sample.x + Math.cos(angle) * radius);
                     const y = Math.round(sample.y + Math.sin(angle) * radius);
-                    foundSurface = (CraftrasWorld.getOutsideScore(x, y, seed) || 0) > 0.56;
+                    foundSurface = !isCraftrasUndergroundBlock({ x, y }, seed);
                 }
                 if (foundSurface) {
                     depth = radius;
@@ -1417,6 +1596,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         queueCraftrasCaveDepthPrewarm = world => {
             const api = CraftrasWorld;
             if (!world?.active || !world.chunks?.size || !api?.getOutsideScore) return;
+            if (!world.cavePrewarmChunksDirty) return;
+            world.cavePrewarmChunksDirty = false;
             const seed = world.seed || 1337;
             world.caveSurfaceDepthCache ??= new Map();
             if (world.caveSurfaceDepthSeed !== seed) {
@@ -1488,6 +1669,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         getCraftrasCaveDarknessTarget = () => {
             const world = global.craftrasWorld;
             const api = CraftrasWorld;
+            if (world?.world2ChallengeMode) return 0;
             if (!world?.active || !api?.worldToBlock || !api?.getOutsideScore) return 0;
             const seed = world.seed || 1337;
             const block = api.worldToBlock(global.player.renderx, global.player.rendery);
@@ -1539,6 +1721,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             const mockupColor = String(m.color || instance.color || "").toLowerCase();
             return mockupClassName === "craftrasTheGreatFriend"
                 || mockupClassName === "craftrasTheGreatWarningLine"
+                || mockupClassName === "craftrasTheWorm"
+                || mockupClassName === "craftrasWormSegment"
                 || /The Great'?s friend|The Great Warning/i.test(mockupName)
                 || ((mockupColor.startsWith("#f6f6ff") || mockupColor.startsWith("#f6d36a") || mockupColor.startsWith("#fff4b8")) && (m.size ?? instance.size ?? 0) >= 20);
         },
@@ -1894,16 +2078,27 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         global.refreshMonitorColoring(gameDraw);
     }
 
-    function startGame() {
+    async function startGame() {
         // Set flag
         if (global.gameLoading) return;
         global.gameLoading = true;
+        const startButton = document.getElementById("startButton");
+        if (startButton) startButton.disabled = true;
         if (global.mobile) {
             var d = document.body;
             d.requestFullscreen ? d.requestFullscreen()
                 : d.msRequestFullscreen ? d.msRequestFullscreen()
                     : d.mozRequestFullScreen ? d.mozRequestFullScreen()
                         : d.webkitRequestFullscreen && d.webkitRequestFullscreen();
+        }
+
+        try {
+            await preloadCraftrasAssets();
+        } catch (error) {
+            console.error("Game start stopped because images did not finish loading.", error);
+            global.gameLoading = false;
+            if (startButton) startButton.disabled = false;
+            return;
         }
 
         // Save forms and get options
@@ -2408,6 +2603,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         let drawPolyImgs = [],
         craftrasPopeMagicCircleSeenAt = new Map(),
         craftrasGuardianSlashAngles = new Map(),
+        craftrasJaneSkillTwoSwordAngles = new Map(),
         craftrasTheGreatFriendStates = new Map(),
         craftrasBulletTrails = new Map(),
         drawPoly3D = new Map(),
@@ -2897,8 +3093,19 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 || m.className === "craftrasPopeMagicCircle2"
                 || m.className === "craftrasPopeMagicCircle3";
             const isCraftrasChallengeMagicCircle = m.className === "craftrasChallengeMagicCircle";
+            const isCraftrasBasicMagicCircle = m.className === "craftrasBasicMagicCircle";
+            const isCraftrasBominikMagicCircle = /^craftrasBominikMagicCircle[123]$/.test(m.className || "");
+            const isCraftrasJaneMagicCircle = /^craftrasJaneMagicCircle[123]$/.test(m.className || "");
+            const isCraftrasPhoenixEffect = m.className === "craftrasPhoenixEffect";
+            const isCraftrasParryEffect = m.className === "craftrasParryEffect";
             const isCraftrasChallengeFadingMob = m.className === "craftrasMagicalZombie" || m.className === "craftrasCursedZombie";
-            const isCraftrasGuardianSlashProjectile = m.className === "craftrasGuardianSlashProjectile";
+            const isCraftrasJaneSawProjectile = m.className === "craftrasJaneSawProjectile";
+            const isCraftrasJaneSlashProjectile = m.className === "craftrasJaneSlashProjectile";
+            const isCraftrasJaneSkillTwoSwordProjectile = m.className === "craftrasJaneSkillTwoSwordProjectile";
+            const isCraftrasJaneSkillTwoBulletProjectile = m.className === "craftrasJaneSkillTwoBulletProjectile";
+            const isCraftrasGuardianSlashProjectile = m.className === "craftrasGuardianSlashProjectile"
+                || m.className === "craftrasSwordGuy2SlashProjectile"
+                || isCraftrasJaneSlashProjectile;
             const isCraftrasBoneBombProjectile = m.className === "craftrasBoneBombProjectile";
             const isCraftrasTheGreatFriend = craftrasMockupClassName === "craftrasTheGreatFriend"
                 || craftrasMockupClassName === "craftrasTheGreatCompanionFriend"
@@ -2908,6 +3115,14 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             const isCraftrasKingdomGhostBuilder = craftrasMockupClassName === "craftrasBuilder" && /Ghost Builder/i.test(String(instance.name || ""));
             const canRenderLowAlphaCraftrasImage = isCraftrasPopeMagicCircle
                 || isCraftrasChallengeMagicCircle
+                || isCraftrasBasicMagicCircle
+                || isCraftrasBominikMagicCircle
+                || isCraftrasJaneMagicCircle
+                || isCraftrasJaneSawProjectile
+                || isCraftrasJaneSkillTwoSwordProjectile
+                || isCraftrasJaneSkillTwoBulletProjectile
+                || isCraftrasPhoenixEffect
+                || isCraftrasParryEffect
                 || isCraftrasChallengeFadingMob
                 || isCraftrasGuardianSlashProjectile
                 || isCraftrasTheGreatFriend
@@ -2943,6 +3158,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             const turrets = instance.isImage ? source.turrets : [...source.turrets, ...m.props];
             if (m.props) turrets.sort((a, b) => a.layer - b.layer);
             const craftrasDisplayName = instance.name ? instance.name.substring(7) : "";
+            const isCraftrasJane = m.className === "craftrasJane" || craftrasDisplayName === "Jane";
             const craftrasBurning = craftrasDisplayName.startsWith("[FIRE] ");
             let craftrasHelmetId = m.className === "craftrasBuilder"
                 ? "gold_helmet"
@@ -2957,6 +3173,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             let craftrasRocketLauncherTurret = null;
             let craftrasHeldToolTurret = null;
             let craftrasHeldToolId = null;
+            const craftrasHeldCustomLayerTurrets = [];
             let craftrasHeldItemTurret = null;
             let craftrasHeldItemId = null;
             let craftrasOffhandShieldTurret = null;
@@ -2967,33 +3184,55 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             let craftrasPopeStaffTurret = null;
             let craftrasBlesserHatTurret = null;
             let craftrasBlesserStaffTurret = null;
+            let craftrasBandageTurret = null;
             const getCraftrasHelmetIdFromTurretClass = turretClass => {
                 if (turretClass === "craftrasHelmetFront") return "iron_helmet";
                 if (turretClass === "craftrasHelmetSide") return "diamond_helmet";
+                if (turretClass === "craftrasMobSapphireHelmet") return "sapphire_helmet";
+                if (turretClass === "craftrasMobRubyHelmet") return "ruby_helmet";
+                if (turretClass === "craftrasMobAmethystHelmet") return "amethyst_helmet";
+                if (turretClass === "craftrasMobGreatDiamondHelmet") return "great_diamond_helmet";
                 if (turretClass === "craftrasHelmetCrown") return "zombie_crown";
                 if (turretClass === "craftrasPlayerPopeHat") return "pope_hat";
                 if (turretClass === "craftrasPlayerClericHat") return "cleric_hat";
                 if (turretClass === "craftrasPlayerBlesserHat") return "blesser_hat";
                 if (turretClass === "craftrasPlayerMerchantHat" || turretClass === "craftrasMerchantHat") return "merchant_hat";
                 if (turretClass === "craftrasPlayerMonsterMerchantHat" || turretClass === "craftrasMonsterMerchantHat") return "monster_merchant_hat";
+                if (turretClass === "craftrasMinerHat") return "miner_hat";
+                if (turretClass === "craftrasHealerHat") return "healer_hat";
+                if (turretClass === "craftrasBominikHat") return "bominik_hat";
+                if (turretClass === "craftrasPlayerJaneHat") return "jane_hat";
+                if (turretClass === "craftrasPlayerRubyHelmet") return "ruby_helmet";
+                if (turretClass === "craftrasPlayerSapphireHelmet") return "sapphire_helmet";
+                if (turretClass === "craftrasPlayerSturdyHelmet") return "sturdy_helmet";
+                if (turretClass === "craftrasPlayerGreatIronHelmet") return "great_iron_helmet";
+                if (turretClass === "craftrasPlayerGreatDiamondHelmet") return "great_diamond_helmet";
                 if (turretClass === "craftrasMobIronHelmet" || turretClass === "craftrasMobIronHelmetSide") return "iron_helmet";
                 if (turretClass === "craftrasMobDiamondHelmet" || turretClass === "craftrasMobDiamondHelmetSide") return "diamond_helmet";
                 return null;
             };
             const getCraftrasHeldToolIdFromTurretClass = turretClass => {
+                if (craftrasCustomToolClasses[turretClass]) return craftrasCustomToolClasses[turretClass].itemId;
                 if (turretClass === "craftrasHeldSword") return "sword";
                 if (turretClass === "craftrasHeldAdminPickaxe") return "admin_pickaxe";
                 if (turretClass === "craftrasHeldWorldeditAxe") return "worldedit_axe";
                 if (turretClass === "craftrasHeldDestroyer") return "destroyer";
+                if (turretClass === "craftrasHeldLaserTest") return "laser_test";
+                if (turretClass === "craftrasHeldBlueLaserBeam") return "blue_laser_beam";
+                if (turretClass === "craftrasHeldScreenCutTest") return "screen_cut_test";
                 if (turretClass === "craftrasHeldBlacksmithHammer") return "blacksmith_hammer";
                 if (turretClass === "craftrasHeldClericStaff") return "cleric_staff";
+                if (turretClass === "craftrasHeldZombieWizardStaff") return "zombie_wizard_staff";
                 if (turretClass === "craftrasHeldClericStaffOp") return "cleric_staff_op";
                 if (turretClass === "craftrasHeldPopeStaff") return "pope_staff";
                 if (turretClass === "craftrasHeldBlesserStaff") return "blesser_staff";
                 if (turretClass === "craftrasHeldVenomSword") return "venom_sword";
                 if (turretClass === "craftrasHeldTheGreat") return "the_great";
                 if (turretClass === "craftrasHeldTheGreatFriend") return "the_great_friend";
-                const match = /^craftrasHeld(Wooden|Stone|Iron|Gold|Diamond)(Pickaxe|Axe|Shovel|Sword)$/.exec(turretClass || "");
+                if (turretClass === "craftrasHeldRubySword") return "ruby_sword";
+                if (turretClass === "craftrasHeldHornSword") return "horn_sword";
+                if (turretClass === "craftrasHeldJaneSword") return "jane_sword";
+                const match = /^craftrasHeld(Wooden|Stone|Iron|Gold|Diamond|Ruby|Sapphire)(Pickaxe|Axe|Shovel|Sword)$/.exec(turretClass || "");
                 return match ? `${match[1].toLowerCase()}_${match[2].toLowerCase()}` : null;
             };
             if (!instance.isImage) {
@@ -3010,6 +3249,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     if (turretClass === "craftrasPopeStaff" && turret.sizeFactor > 0.01) craftrasPopeStaffTurret = turret;
                     if (turretClass === "craftrasBlesserHat" && turret.sizeFactor > 0.01) craftrasBlesserHatTurret = turret;
                     if (turretClass === "craftrasBlesserStaff" && turret.sizeFactor > 0.01) craftrasBlesserStaffTurret = turret;
+                    if (turretClass === "craftrasMobBandageWrap" && turret.sizeFactor > 0.01) craftrasBandageTurret = turret;
                     if (turret.sizeFactor <= 0.01) continue;
                     if (craftrasHeldItemClasses[turretClass]) {
                         craftrasHeldItemTurret = turret;
@@ -3022,10 +3262,35 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     const heldToolId = getCraftrasHeldToolIdFromTurretClass(turretClass);
                     const isTheSword = craftrasDisplayName === "THE SWORD";
                     if (heldToolId && turretVisible && !(isTheSword && heldToolId === "diamond_sword")) {
-                        craftrasHeldToolTurret = turret;
+                        const customLayer = craftrasCustomToolClasses[turretClass];
+                        if (customLayer) craftrasHeldCustomLayerTurrets.push({
+                            turret,
+                            itemId: customLayer.itemId,
+                            layerId: customLayer.layerId,
+                        });
+                        if (!craftrasHeldToolTurret || customLayer?.layerId === "main") craftrasHeldToolTurret = turret;
                         craftrasHeldToolId = heldToolId;
                     }
                     craftrasHelmetId = getCraftrasHelmetIdFromTurretClass(turretClass) || craftrasHelmetId;
+                }
+            }
+            // Jane must always display her dedicated equipment. The normal turret
+            // lookup can be skipped by old/cached mockups, so provide a client-side
+            // fallback based on the Jane body class itself.
+            if (isCraftrasJane) {
+                craftrasHelmetId = "jane_hat";
+                craftrasHeldToolId = "jane_sword";
+                if (!craftrasHeldToolTurret) {
+                    craftrasHeldToolTurret = {
+                        direction: 0,
+                        angle: -35 * Math.PI / 180,
+                        offset: 0.82,
+                        facing: rot,
+                        forceAngle: null,
+                        mirrorMasterAngle: true,
+                        alpha: 1,
+                        sizeFactor: 1,
+                    };
                 }
             }
             const isCraftrasHelmetTurret = turret => {
@@ -3033,6 +3298,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 const turretIndex = +String(turret.index).split("-")[0];
                 const turretClass = global.mockups[turretIndex]?.className;
                 return !!getCraftrasHelmetIdFromTurretClass(turretClass);
+            };
+            const isCraftrasBandageTurret = turret => {
+                if (turret.isProp) return false;
+                const turretIndex = +String(turret.index).split("-")[0];
+                return global.mockups[turretIndex]?.className === "craftrasMobBandageWrap";
             };
             const isCraftrasM134Turret = turret => {
                 if (turret.isProp) return false;
@@ -3157,6 +3427,29 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 return;
             }
 
+            if (isCraftrasPhoenixEffect && craftrasPhoenixEffectImage.complete && craftrasPhoenixEffectImage.naturalWidth) {
+                const effectSize = drawSize * 3.8;
+                context.save();
+                context.globalAlpha = Math.max(0, Math.min(0.6, alphaFade));
+                context.translate(xx, yy);
+                context.imageSmoothingEnabled = true;
+                context.drawImage(craftrasPhoenixEffectImage, -effectSize / 2, -effectSize / 2, effectSize, effectSize);
+                context.restore();
+                return;
+            }
+
+            if (isCraftrasParryEffect && craftrasParryEffectImage.complete && craftrasParryEffectImage.naturalWidth) {
+                const effectSize = drawSize * 4.2;
+                context.save();
+                context.globalAlpha = Math.max(0, Math.min(1, alphaFade));
+                context.translate(xx, yy);
+                context.rotate(rot);
+                context.imageSmoothingEnabled = true;
+                context.drawImage(craftrasParryEffectImage, -effectSize / 2, -effectSize / 2, effectSize, effectSize);
+                context.restore();
+                return;
+            }
+
             if (isCraftrasChallengeMagicCircle && craftrasChallengeMagicCircleImage.complete && craftrasChallengeMagicCircleImage.naturalWidth) {
                 const circleSize = drawSize * 7.2;
                 context.save();
@@ -3169,8 +3462,120 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 return;
             }
 
-            if (m.className === "craftrasGuardianSlashProjectile" && craftrasGuardianSlashImage.complete && craftrasGuardianSlashImage.naturalWidth) {
+            if (isCraftrasBasicMagicCircle && craftrasBasicMagicCircleImage.complete && craftrasBasicMagicCircleImage.naturalWidth) {
+                const circleSize = drawSize * 7.2;
+                context.save();
+                context.globalAlpha *= Math.max(0, Math.min(1, instance.alpha ?? 1));
+                context.translate(xx, yy);
+                context.rotate(rot + performance.now() / 1000 * 1.2);
+                context.imageSmoothingEnabled = true;
+                context.drawImage(craftrasBasicMagicCircleImage, -circleSize / 2, -circleSize / 2, circleSize, circleSize);
+                context.restore();
+                return;
+            }
+
+            const bominikMagicCircleImage = craftrasBominikMagicCircleImages[m.className];
+            if (isCraftrasBominikMagicCircle && bominikMagicCircleImage?.complete && bominikMagicCircleImage.naturalWidth) {
+                const circleSize = drawSize * 7.2;
+                const direction = m.className === "craftrasBominikMagicCircle2" ? -1 : 1;
+                context.save();
+                context.globalAlpha *= Math.max(0, Math.min(1, instance.alpha ?? 1));
+                context.translate(xx, yy);
+                context.rotate(rot + direction * performance.now() / 1000 * 1.6);
+                context.imageSmoothingEnabled = true;
+                context.drawImage(bominikMagicCircleImage, -circleSize / 2, -circleSize / 2, circleSize, circleSize);
+                context.restore();
+                return;
+            }
+
+            const janeMagicCircleImage = craftrasJaneMagicCircleImages[m.className];
+            if (isCraftrasJaneMagicCircle && janeMagicCircleImage?.complete && janeMagicCircleImage.naturalWidth) {
+                const circleSize = drawSize * 7.4;
+                const index = Number(String(m.className).slice(-1)) || 1;
+                const direction = index === 2 ? -1 : 1;
+                context.save();
+                context.globalAlpha *= Math.max(0, Math.min(1, instance.alpha ?? 1));
+                context.translate(xx, yy);
+                context.rotate(rot + direction * performance.now() / 1000 * (1.35 + index * 0.18));
+                context.imageSmoothingEnabled = true;
+                context.drawImage(janeMagicCircleImage, -circleSize / 2, -circleSize / 2, circleSize, circleSize);
+                context.restore();
+                return;
+            }
+
+            if (isCraftrasJaneSawProjectile && craftrasJaneSawImage.complete && craftrasJaneSawImage.naturalWidth) {
+                const sawSize = Math.max(40, drawSize * 5.4);
+                context.save();
+                context.globalAlpha *= alphaFade;
+                context.translate(xx, yy);
+                context.rotate(performance.now() / 1000 * 8);
+                context.imageSmoothingEnabled = true;
+                context.drawImage(craftrasJaneSawImage, -sawSize / 2, -sawSize / 2, sawSize, sawSize);
+                context.globalCompositeOperation = "source-atop";
+                context.globalAlpha *= 0.82;
+                context.fillStyle = gameDraw.modifyColor(instance.color);
+                context.fillRect(-sawSize / 2, -sawSize / 2, sawSize, sawSize);
+                context.restore();
+                return;
+            }
+
+            if (isCraftrasJaneSkillTwoSwordProjectile && craftrasJaneThrowingSwordImage.complete && craftrasJaneThrowingSwordImage.naturalWidth) {
+                const swordWidth = Math.max(30, drawSize * 2.7);
+                const swordHeight = Math.max(52, drawSize * 4.6);
+                const currentX = instance.render?.x ?? instance.x ?? 0;
+                const currentY = instance.render?.y ?? instance.y ?? 0;
+                let swordState = craftrasJaneSkillTwoSwordAngles.get(instance.id);
+                if (!swordState) {
+                    swordState = { x: currentX, y: currentY, angle: rot };
+                    craftrasJaneSkillTwoSwordAngles.set(instance.id, swordState);
+                    if (craftrasJaneSkillTwoSwordAngles.size > 160) {
+                        const firstKey = craftrasJaneSkillTwoSwordAngles.keys().next().value;
+                        craftrasJaneSkillTwoSwordAngles.delete(firstKey);
+                    }
+                }
+                const movementX = currentX - swordState.x;
+                const movementY = currentY - swordState.y;
+                if (movementX * movementX + movementY * movementY > 0.0001) {
+                    swordState.angle = Math.atan2(movementY, movementX);
+                }
+                context.save();
+                context.globalAlpha *= alphaFade;
+                context.translate(xx, yy);
+                context.rotate(swordState.angle - Math.PI / 2);
+                context.imageSmoothingEnabled = true;
+                context.drawImage(craftrasJaneThrowingSwordImage, -swordWidth / 2, -swordHeight / 2, swordWidth, swordHeight);
+                context.globalCompositeOperation = "source-atop";
+                context.globalAlpha *= 0.68;
+                context.fillStyle = gameDraw.modifyColor(instance.color);
+                context.fillRect(-swordWidth / 2, -swordHeight / 2, swordWidth, swordHeight);
+                context.restore();
+                swordState.x = currentX;
+                swordState.y = currentY;
+                return;
+            }
+
+            if (isCraftrasJaneSkillTwoBulletProjectile) {
+                const bulletRadius = Math.max(10, drawSize * 1.15);
+                context.save();
+                context.globalAlpha *= alphaFade;
+                context.translate(xx, yy);
+                context.fillStyle = gameDraw.modifyColor(instance.color);
+                context.strokeStyle = gameDraw.getColorDark(context.fillStyle);
+                context.lineWidth = Math.max(2, bulletRadius * 0.12);
+                context.beginPath();
+                context.arc(0, 0, bulletRadius, 0, Math.PI * 2);
+                context.fill();
+                context.stroke();
+                context.restore();
+                return;
+            }
+
+            if (isCraftrasGuardianSlashProjectile && craftrasGuardianSlashImage.complete && craftrasGuardianSlashImage.naturalWidth) {
                 const slashImage = craftrasGuardianSlashImage;
+                const reflectedSlash = String(instance.name || "").includes("[REFLECTED]");
+                const reflectedSlashFilter = "brightness(0) saturate(100%) invert(61%) sepia(70%) saturate(3023%) hue-rotate(176deg) brightness(102%) contrast(101%)";
+                const janeSlashFilter = "brightness(0) saturate(100%) invert(58%) sepia(92%) saturate(3095%) hue-rotate(286deg) brightness(107%) contrast(104%)";
+                const slashFilter = isCraftrasJaneSlashProjectile ? janeSlashFilter : reflectedSlash ? reflectedSlashFilter : null;
                 const slashWidth = drawSize * 8.2;
                 const slashHeight = drawSize * 4.7;
                 const slashRotationOffset = Math.PI;
@@ -3190,7 +3595,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 const deltaY = currentY - slashState.y;
                 if (deltaX * deltaX + deltaY * deltaY > 0.0004) slashState.angle = Math.atan2(deltaY, deltaX);
                 const trail = slashState.trail || (slashState.trail = []);
-                for (let i = 0; i < trail.length; i++) {
+                const trailLimit = isCraftrasJaneSlashProjectile ? 0 : 14;
+                for (let i = 0; i < trailLimit && i < trail.length; i++) {
                     const ghost = trail[i];
                     const t = (i + 1) / (trail.length + 1);
                     const ghostAlpha = alphaFade * 0.42 * t * t;
@@ -3204,6 +3610,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     context.rotate(ghost.angle + slashRotationOffset);
                     context.globalAlpha *= ghostAlpha;
                     context.imageSmoothingEnabled = true;
+                    if (slashFilter) context.filter = slashFilter;
                     context.drawImage(
                         slashImage,
                         slashOffsetX * ghostScale,
@@ -3218,12 +3625,17 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 context.rotate(slashState.angle + slashRotationOffset);
                 context.globalAlpha *= alphaFade;
                 context.imageSmoothingEnabled = true;
+                if (slashFilter) context.filter = slashFilter;
                 context.drawImage(slashImage, slashOffsetX, -slashHeight / 2, slashWidth, slashHeight);
                 context.restore();
                 slashState.x = currentX;
                 slashState.y = currentY;
-                trail.push({ x: currentX, y: currentY, angle: slashState.angle });
-                while (trail.length > 14) trail.shift();
+                if (trailLimit > 0) {
+                    trail.push({ x: currentX, y: currentY, angle: slashState.angle });
+                    while (trail.length > trailLimit) trail.shift();
+                } else if (trail.length) {
+                    trail.length = 0;
+                }
                 return;
             }
 
@@ -3422,8 +3834,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             const drawCraftrasShield = (turret, shieldId) => {
                 const shieldImage = craftrasItemImages[shieldId];
                 if (!turret || !shieldImage?.complete || !shieldImage.naturalWidth) return;
-                const shieldSize = drawSize * 3.2;
-                const blocking = Math.cos((turret.direction || 0) + (turret.angle || 0)) > 0;
+                const magicBook = shieldId === "magic_book";
+                const shieldSize = drawSize * 3.2 / (magicBook ? 1.1 : 1);
+                const blocking = !magicBook && Math.cos((turret.direction || 0) + (turret.angle || 0)) > 0;
                 const shieldX = blocking
                     ? xx + Math.cos(rot) * drawSize * 1.05
                     : xx + Math.cos(rot) * drawSize * 0.3 - Math.sin(rot) * drawSize * 1.32;
@@ -3569,6 +3982,55 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                         drawBody(context, xx, yy, sizeRatio, m.shape, rot, m.borderless, m.drawFill, m.imageInterpolation);
                     }
 
+                    if (m.className === "craftrasSpiker") {
+                        const spikeCount = 12;
+                        const outerRadius = drawSize * 0.94;
+                        const innerRadius = drawSize * 0.30;
+                        const halfBase = drawSize * 0.14;
+                        const spikerRotation = performance.now() / 1000 * Math.PI;
+                        context.save();
+                        context.fillStyle = "#f7f7f3";
+                        context.strokeStyle = "#bfc3c7";
+                        context.lineWidth = Math.max(1.5, drawSize * 0.035);
+                        context.lineJoin = "round";
+                        for (let index = 0; index < spikeCount; index++) {
+                            const angle = spikerRotation + index * Math.PI * 2 / spikeCount;
+                            const tangentX = -Math.sin(angle) * halfBase;
+                            const tangentY = Math.cos(angle) * halfBase;
+                            const baseX = xx + Math.cos(angle) * outerRadius;
+                            const baseY = yy + Math.sin(angle) * outerRadius;
+                            context.beginPath();
+                            context.moveTo(baseX + tangentX, baseY + tangentY);
+                            context.lineTo(
+                                xx + Math.cos(angle) * innerRadius,
+                                yy + Math.sin(angle) * innerRadius,
+                            );
+                            context.lineTo(baseX - tangentX, baseY - tangentY);
+                            context.closePath();
+                            context.fill();
+                            context.stroke();
+                        }
+                        context.restore();
+                    }
+
+                    if (craftrasBandageTurret) {
+                        if (craftrasBandageImage.complete && craftrasBandageImage.naturalWidth) {
+                            const bandageSize = drawSize * 5.544;
+                            const bandageOffsetY = drawSize * 0.12;
+                            context.save();
+                            context.translate(xx, yy + bandageOffsetY);
+                            context.imageSmoothingEnabled = true;
+                            context.drawImage(
+                                craftrasBandageImage,
+                                -bandageSize / 2,
+                                -bandageSize / 2,
+                                bandageSize,
+                                bandageSize,
+                            );
+                            context.restore();
+                        }
+                    }
+
                     if (m.className === "craftrasClericHealCircle" && craftrasClericImages.healCircle.complete && craftrasClericImages.healCircle.naturalWidth) {
                         const circleSize = drawSize * 4.7;
                         context.save();
@@ -3604,13 +4066,30 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                         context.translate(xx, yy);
                         context.rotate(rot + Math.PI / 2);
                         context.imageSmoothingEnabled = true;
-                        const helmetSize = drawSize * (craftrasHelmetId === "blesser_hat" ? 4.29 : craftrasHelmetId === "cleric_hat" || craftrasHelmetId === "pope_hat" ? 3.9 : craftrasHelmetId === "merchant_hat" || craftrasHelmetId === "monster_merchant_hat" ? 3.55 : 3);
+                        const helmetSize = drawSize * (craftrasHelmetId === "sturdy_helmet"
+                            ? 3.294
+                            : craftrasHelmetId === "great_iron_helmet" || craftrasHelmetId === "great_diamond_helmet"
+                            ? 4.2
+                            : craftrasHelmetId === "ruby_helmet" || craftrasHelmetId === "sapphire_helmet"
+                            ? 6
+                            : craftrasHelmetId === "blesser_hat" ? 4.29
+                            : craftrasHelmetId === "cleric_hat" || craftrasHelmetId === "pope_hat" ? 3.9
+                            : craftrasHelmetId === "bominik_hat" ? 5.2
+                            : craftrasHelmetId === "jane_hat" ? 4.1
+                            : craftrasHelmetId === "miner_hat" || craftrasHelmetId === "healer_hat" ? 4.8
+                            : craftrasHelmetId === "merchant_hat" || craftrasHelmetId === "monster_merchant_hat" ? 3.55 : 3);
                         const helmetLift = craftrasHelmetId === "cleric_hat"
                             ? 0.38
                             : craftrasHelmetId === "pope_hat"
                             ? 1.46
                             : craftrasHelmetId === "blesser_hat" ? 0.86
+                            : craftrasHelmetId === "bominik_hat" ? 0.82
+                            : craftrasHelmetId === "jane_hat" ? 0.74
+                            : craftrasHelmetId === "miner_hat" || craftrasHelmetId === "healer_hat" ? 0.62
                             : craftrasHelmetId === "merchant_hat" || craftrasHelmetId === "monster_merchant_hat" ? 0.74
+                            : craftrasHelmetId === "sturdy_helmet" ? 0.5
+                            : craftrasHelmetId === "great_iron_helmet" || craftrasHelmetId === "great_diamond_helmet" ? 0.34
+                            : craftrasHelmetId === "ruby_helmet" || craftrasHelmetId === "sapphire_helmet" ? 0.45
                             : craftrasHelmetId === "zombie_crown" ? 0.73 : 0.16;
                         drawCraftrasHelmetImage(context, helmetImage, craftrasHelmetId, -helmetSize / 2, -helmetSize / 2 - drawSize * helmetLift, helmetSize);
                         context.restore();
@@ -3692,24 +4171,62 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     }
 
                     const heldToolImage = craftrasToolImages[craftrasHeldToolId];
-                    if (craftrasHeldToolTurret && heldToolImage?.complete && heldToolImage.naturalWidth) {
+                    const heldCustomTool = craftrasCustomToolDefinitions[craftrasHeldToolId];
+                    if (heldCustomTool && craftrasHeldCustomLayerTurrets.length) {
+                        const layerById = Object.fromEntries((heldCustomTool.layers || []).map(layer => [layer.id, layer]));
+                        const orderedLayers = craftrasHeldCustomLayerTurrets
+                            .filter(entry => entry.itemId === craftrasHeldToolId)
+                            .sort((left, right) => (Number(layerById[left.layerId]?.priority) || 0) - (Number(layerById[right.layerId]?.priority) || 0));
+                        for (const entry of orderedLayers) {
+                            const layer = layerById[entry.layerId];
+                            const image = heldCustomTool._layerImages?.[entry.layerId];
+                            if (!layer || !image?.complete || !image.naturalWidth) continue;
+                            const t = entry.turret;
+                            const ang = t.direction + t.angle + rot;
+                            const len = t.offset * drawSize;
+                            const facing = t.forceAngle === null || t.forceAngle === undefined
+                                ? (t.mirrorMasterAngle || turretsObeyRot) ? rot + t.angle : t.facing
+                                : t.angle;
+                            const weaponWidth = drawSize * (Number(heldCustomTool.renderScale) || 3.25) * (Number(t.sizeFactor) || 1);
+                            const weaponHeight = weaponWidth * image.naturalHeight / Math.max(1, image.naturalWidth);
+                            const anchorX = Math.max(0, Math.min(1, Number(layer.anchor?.x) || 0));
+                            const anchorY = Math.max(0, Math.min(1, Number(layer.anchor?.y) || 0));
+                            context.save();
+                            context.translate(xx + len * Math.cos(ang), yy + len * Math.sin(ang));
+                            context.rotate(facing + (Number(heldCustomTool.rotationOffset) || 0) * Math.PI / 180);
+                            if (layer.flipX) context.scale(-1, 1);
+                            const layerOpacity = Number.isFinite(Number(layer.opacity)) ? Number(layer.opacity) : 1;
+                            context.globalAlpha *= Math.max(0, Math.min(1, layerOpacity));
+                            context.imageSmoothingEnabled = true;
+                            context.drawImage(image, -weaponWidth * anchorX, -weaponHeight * anchorY, weaponWidth, weaponHeight);
+                            context.restore();
+                        }
+                    }
+                    if (!heldCustomTool && craftrasHeldToolTurret && heldToolImage?.complete && heldToolImage.naturalWidth) {
                         const t = craftrasHeldToolTurret;
                         const ang = t.direction + t.angle + rot;
                         const len = t.offset * drawSize;
                         const facing = t.forceAngle === null || t.forceAngle === undefined
                             ? (t.mirrorMasterAngle || turretsObeyRot) ? rot + t.angle : t.facing
                             : t.angle;
-                        const isSwordTool = craftrasHeldToolId === "sword" || craftrasHeldToolId === "the_great" || craftrasHeldToolId === "the_great_friend" || craftrasHeldToolId?.endsWith("_sword");
+                        const customTool = craftrasCustomToolDefinitions[craftrasHeldToolId];
+                        const isSwordTool = !!customTool || craftrasHeldToolId === "sword" || craftrasHeldToolId === "the_great" || craftrasHeldToolId === "the_great_friend" || craftrasHeldToolId?.endsWith("_sword");
                         const isHammerTool = craftrasHeldToolId === "blacksmith_hammer";
-                        const isStaffTool = craftrasHeldToolId === "cleric_staff" || craftrasHeldToolId === "cleric_staff_op" || craftrasHeldToolId === "pope_staff" || craftrasHeldToolId === "blesser_staff";
-                        const toolSize = drawSize * (craftrasHeldToolId === "the_great" ? 2.175 : craftrasHeldToolId === "the_great_friend" ? 4.7 : isSwordTool ? 3.25 : isHammerTool ? 3.45 : isStaffTool ? 5.325 : 3.05);
+                        const isStaffTool = craftrasHeldToolId === "cleric_staff" || craftrasHeldToolId === "zombie_wizard_staff" || craftrasHeldToolId === "cleric_staff_op" || craftrasHeldToolId === "pope_staff" || craftrasHeldToolId === "blesser_staff" || craftrasHeldToolId === "blue_laser_beam";
+                        const toolSize = drawSize * (customTool
+                            ? (Number(customTool.renderScale) || 3.25) * (Number(t.sizeFactor) || 1)
+                            : craftrasHeldToolId === "the_great" ? 2.175 : craftrasHeldToolId === "the_great_friend" ? 4.7 : craftrasHeldToolId === "jane_sword" ? 4.35 : isSwordTool ? 3.25 : isHammerTool ? 3.45 : craftrasHeldToolId === "zombie_wizard_staff" ? 5.325 / 1.4 : isStaffTool ? 5.325 : 3.05);
                         const staffCooling = isStaffTool && (t.alpha ?? 1) <= 0.55;
                         context.save();
                         context.translate(xx + len * Math.cos(ang), yy + len * Math.sin(ang));
-                        const toolRotationOffset = craftrasHeldToolId === "the_great"
+                        const toolRotationOffset = customTool
+                            ? (Number(customTool.rotationOffset) || 0) * Math.PI / 180
+                            : craftrasHeldToolId === "the_great"
                             ? Math.PI / 4 - 80 * Math.PI / 180
-                            : craftrasHeldToolId === "the_great_friend"
+                            : craftrasHeldToolId === "the_great_friend" || craftrasHeldToolId === "jane_sword"
                             ? -Math.PI / 2
+                            : craftrasHeldToolId === "blue_laser_beam"
+                            ? Math.PI / 2
                             : Math.PI / 4;
                         context.rotate(facing + toolRotationOffset);
                         context.imageSmoothingEnabled = true;
@@ -3720,21 +4237,41 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                             context.filter = `hue-rotate(${Math.floor(Date.now() / 8) % 360}deg) saturate(2.4) brightness(1.25)`;
                         } else if (craftrasHeldToolId === "destroyer") {
                             context.filter = "brightness(0) saturate(1)";
+                        } else if (craftrasHeldToolId === "laser_test") {
+                            context.filter = "brightness(0) saturate(100%) invert(42%) sepia(95%) saturate(3500%) hue-rotate(306deg) brightness(108%) contrast(102%)";
                         }
-                        if (craftrasHeldToolId === "the_great") {
+                        if (customTool) {
+                            const imageRatio = heldToolImage.naturalHeight / Math.max(1, heldToolImage.naturalWidth);
+                            const weaponWidth = toolSize;
+                            const weaponHeight = weaponWidth * imageRatio;
+                            const anchorX = Math.max(0, Math.min(1, Number(customTool.anchor?.x) || 0));
+                            const anchorY = Math.max(0, Math.min(1, Number(customTool.anchor?.y) || 0));
+                            context.drawImage(heldToolImage, -weaponWidth * anchorX, -weaponHeight * anchorY, weaponWidth, weaponHeight);
+                        } else if (craftrasHeldToolId === "the_great") {
                             const imageRatio = heldToolImage.naturalHeight / Math.max(1, heldToolImage.naturalWidth);
                             const weaponWidth = toolSize;
                             const weaponHeight = toolSize * imageRatio;
                             context.drawImage(heldToolImage, -weaponWidth * 0.5, -weaponHeight * 0.23, weaponWidth, weaponHeight);
-                        } else if (craftrasHeldToolId === "the_great_friend") {
+                        } else if (craftrasHeldToolId === "the_great_friend" || craftrasHeldToolId === "jane_sword") {
                             const imageRatio = heldToolImage.naturalHeight / Math.max(1, heldToolImage.naturalWidth);
                             const weaponWidth = toolSize;
                             const weaponHeight = weaponWidth * imageRatio;
-                            context.drawImage(heldToolImage, -weaponWidth * 0.5, -weaponHeight * 0.24, weaponWidth, weaponHeight);
+                            const anchorY = craftrasHeldToolId === "jane_sword" ? 0.19 : 0.24;
+                            context.drawImage(heldToolImage, -weaponWidth * 0.5, -weaponHeight * anchorY, weaponWidth, weaponHeight);
                         } else if (isSwordTool) {
                             context.drawImage(heldToolImage, -toolSize * 0.28, -toolSize * 0.72, toolSize, toolSize);
                         } else if (isHammerTool) {
                             context.drawImage(heldToolImage, -toolSize * 0.46, -toolSize * 0.58, toolSize, toolSize);
+                        } else if (craftrasHeldToolId === "blue_laser_beam") {
+                            const imageRatio = heldToolImage.naturalHeight / Math.max(1, heldToolImage.naturalWidth);
+                            const weaponHeight = drawSize * 5.4;
+                            const weaponWidth = weaponHeight / Math.max(0.01, imageRatio);
+                            context.drawImage(heldToolImage, -weaponWidth * 0.5, -weaponHeight * 0.5, weaponWidth, weaponHeight);
+                        } else if (craftrasHeldToolId === "zombie_wizard_staff") {
+                            const imageRatio = heldToolImage.naturalHeight / Math.max(1, heldToolImage.naturalWidth);
+                            const weaponHeight = toolSize;
+                            const weaponWidth = weaponHeight / Math.max(0.01, imageRatio);
+                            context.drawImage(heldToolImage, -weaponWidth * 0.44, -weaponHeight * 0.62, weaponWidth, weaponHeight);
                         } else if (isStaffTool) {
                             context.drawImage(heldToolImage, -toolSize * 0.44, -toolSize * 0.62, toolSize, toolSize);
                         } else {
@@ -3756,6 +4293,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                             context.translate(heldX, heldY);
                             context.rotate(heldAngle + Math.PI / 4);
                             context.imageSmoothingEnabled = true;
+                            if (craftrasHeldItemId === "parry_tool_op") {
+                                context.filter = `hue-rotate(${Math.floor(Date.now() / 8) % 360}deg) saturate(2.6) brightness(1.2)`;
+                            }
                             if (heldImage?.complete && heldImage.naturalWidth) {
                                 const imageWidth = heldSize * 0.84;
                                 context.drawImage(heldImage, -imageWidth / 2, -heldSize * 0.42, imageWidth, heldSize * 0.84);
@@ -3788,7 +4328,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             // --- Draw turrets above with cached trig values ---
             for (let i = 0; i < turrets.length; i++) {
                 let t = turrets[i];
-                if (isCraftrasHelmetTurret(t) || isCraftrasM134Turret(t) || isCraftrasRocketLauncherTurret(t) || isCraftrasHeldToolTurret(t) || isCraftrasHeldItemTurret(t) || isCraftrasOffhandShieldTurret(t) || isCraftrasClericImageTurret(t)) continue;
+                if (isCraftrasHelmetTurret(t) || isCraftrasBandageTurret(t) || isCraftrasM134Turret(t) || isCraftrasRocketLauncherTurret(t) || isCraftrasHeldToolTurret(t) || isCraftrasHeldItemTurret(t) || isCraftrasOffhandShieldTurret(t) || isCraftrasClericImageTurret(t)) continue;
                 if (t.isProp) t = util.requestEntityImage(t);
                 // Cache facing calculation
                 if (t.lerpedFacing === undefined) {
@@ -3931,6 +4471,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ctx[0].clip();
         }
         ctx[0].fillRect(roomX, roomY, roomWidth, roomHeight);
+        if (global.craftrasWorld?.world2ChallengeMode) {
+            ctx[0].globalAlpha = 1;
+            ctx[0].fillStyle = "#dabb70";
+            ctx[0].fillRect(roomX, roomY, roomWidth, roomHeight);
+        }
         if (global.roomSetup.length) {
             let W = global.roomSetup[0].length,
                 H = global.roomSetup.length;
@@ -3947,8 +4492,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                         ctx[0].globalAlpha = 1;
                         if (!tile.renderImage) {
                             tile.renderImage = new Image();
-                            const imageCacheBust = window.__tileImageCacheBust || (window.__tileImageCacheBust = Date.now());
-                            tile.renderImage.src = `img/${tile.image}?v=${imageCacheBust}`;
+                            // These images are part of the startup preload manifest, so reuse
+                            // the already decoded browser copy instead of issuing a new URL.
+                            tile.renderImage.src = `/img/${tile.image}`;
                             tile.renderImage.onerror = () => {
                                 console.warn(`Failed to get ${tile.image}! If you are the developer of this game, make sure that you typed the path correctly. Using unknown image.`)
                                 tile.renderImage.src = `img/missingno.png`;
@@ -4130,8 +4676,12 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             const localY = blockY - chunkY * chunkSize;
             return cells[localY * chunkSize + localX] || 0;
         };
-        const getBlockStyle = code => {
+        const getBlockStyle = (code, world2Block = false) => {
             let fill = "#96999f", stroke = "#676a70";
+            if (world2Block && code >= 4 && code <= 8) {
+                fill = "#6f737a";
+                stroke = "#454950";
+            }
             if (code === 1) { fill = "#8a6748"; stroke = "#60452f"; }
             else if (code === 2) { fill = "#79bd63"; stroke = "#4d8643"; }
             else if (code === 3) { fill = "#b48761"; stroke = "#7c5b42"; }
@@ -4146,8 +4696,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             else if (code === CRAFTRAS_TORCH_BLOCK_CODE) { fill = "#7b4a24"; stroke = "#2d180b"; }
             else if (code === CRAFTRAS_STEEL_TORCH_BLOCK_CODE) { fill = "#9ca6ad"; stroke = "#3f474d"; }
             else if (code === 22) { fill = "#29d6b4"; stroke = "#075f57"; }
+            else if (code === 29) { fill = "#596dff"; stroke = "#202b99"; }
             else if (code === 24) { fill = "#419cff"; stroke = "#0c4b91"; }
             else if (code === 26) { fill = "#a653ff"; stroke = "#4b167d"; }
+            else if (code === 27) { fill = "#dabb70"; stroke = "#a88442"; }
+            else if (code === 28) { fill = "#5f646b"; stroke = "#3d4248"; }
             return { fill, stroke };
         };
 
@@ -4160,7 +4713,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
 
         const floorSize = Math.max(1, blockSize * ratio);
         const floorHalfSize = floorSize / 2;
-        const drawDetailedFloors = floorSize >= 2.5;
+        const drawDetailedFloors = !world.world2ChallengeMode && floorSize >= 2.5;
         if (drawDetailedFloors) for (let chunkY = minChunkY; chunkY <= maxChunkY; chunkY++) {
             for (let chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
                 const entries = world.floorChunkEntries?.get(`${chunkX},${chunkY}`);
@@ -4197,6 +4750,31 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     context.fillRect(screenX - floorSize * 0.30, screenY - floorSize * 0.17, fleck * 2.2, fleck);
                     context.fillRect(screenX + floorSize * 0.12, screenY + floorSize * 0.20, fleck * 2.6, fleck);
                     context.fillRect(screenX + floorSize * 0.25, screenY - floorSize * 0.28, fleck, fleck);
+                } else if (code === 27) {
+                    const grain = Math.max(1, floorSize * 0.035);
+                    const offset = ((blockX * 17 + blockY * 31) & 7) / 7;
+                    context.fillStyle = "rgba(255, 241, 174, 0.28)";
+                    context.fillRect(screenX - floorSize * (0.34 - offset * 0.12), screenY - floorSize * 0.22, grain * 2.4, grain);
+                    context.fillRect(screenX + floorSize * 0.18, screenY + floorSize * (0.16 + offset * 0.08), grain * 1.6, grain);
+                    context.strokeStyle = "rgba(137, 101, 43, 0.18)";
+                    context.lineWidth = Math.max(0.7, floorSize * 0.018);
+                    context.beginPath();
+                    context.moveTo(screenX - floorSize * 0.36, screenY + floorSize * (0.04 + offset * 0.08));
+                    context.quadraticCurveTo(screenX, screenY - floorSize * 0.08, screenX + floorSize * 0.36, screenY + floorSize * 0.02);
+                    context.stroke();
+                } else if (code === 28) {
+                    const chip = Math.max(1, floorSize * 0.045);
+                    const offset = ((blockX * 13 + blockY * 19) & 7) / 7;
+                    context.fillStyle = "rgba(27, 31, 36, 0.24)";
+                    context.fillRect(screenX - floorSize * (0.30 - offset * 0.10), screenY - floorSize * 0.20, chip * 2.2, chip);
+                    context.fillRect(screenX + floorSize * 0.17, screenY + floorSize * 0.21, chip * 1.5, chip);
+                    context.strokeStyle = "rgba(178, 184, 191, 0.13)";
+                    context.lineWidth = Math.max(0.7, floorSize * 0.018);
+                    context.beginPath();
+                    context.moveTo(screenX - floorSize * 0.30, screenY + floorSize * 0.24);
+                    context.lineTo(screenX - floorSize * 0.05, screenY + floorSize * 0.05);
+                    context.lineTo(screenX + floorSize * (0.16 + offset * 0.08), screenY + floorSize * 0.12);
+                    context.stroke();
                 }
                 const placedImage = craftrasPlacedBlockImages[code];
                 if (placedImage?.complete && placedImage.naturalWidth) {
@@ -4283,7 +4861,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     drawCraftrasPolygon(context, screenX, screenY, size, 9, -Math.PI / 2, "#166b35", "#0e4c25");
                     context.restore();
                 } else {
-                    const { fill, stroke } = getBlockStyle(code);
+                    const { fill, stroke } = getBlockStyle(code, CraftrasWorld.isInsideWorld2?.(blockX, blockY));
                     context.globalAlpha = code === 24 ? 0.62 * cellAlpha : cellAlpha;
                     context.fillStyle = fill;
                     context.fillRect(left, top, size, size);
@@ -4311,6 +4889,18 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                         context.fillRect(-size * 0.24, -size * 0.24, size * 0.48, size * 0.48);
                         context.fillStyle = "#f5e86b";
                         context.fillRect(-size * 0.10, -size * 0.10, size * 0.20, size * 0.20);
+                        context.restore();
+                    }
+                    if (drawDetailedBlocks && code === 29) {
+                        context.save();
+                        context.translate(screenX, screenY);
+                        context.rotate(Math.PI / 4);
+                        context.fillStyle = "rgba(12, 18, 65, 0.78)";
+                        context.fillRect(-size * 0.27, -size * 0.27, size * 0.54, size * 0.54);
+                        context.fillStyle = "#f4df62";
+                        context.fillRect(-size * 0.12, -size * 0.12, size * 0.24, size * 0.24);
+                        context.fillStyle = "#ffffff";
+                        context.fillRect(-size * 0.045, -size * 0.045, size * 0.09, size * 0.09);
                         context.restore();
                     }
                 }
@@ -4342,7 +4932,10 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
 
                 if (drawDetailedBlocks && code >= 5 && code <= 8) {
                     const markerRadius = size * 0.42;
-                    const oreImage = craftrasOreOverlayImages[code];
+                    const world2OreImage = CraftrasWorld.isInsideWorld2?.(blockX, blockY)
+                        ? craftrasWorld2OreOverlayImages[code]
+                        : null;
+                    const oreImage = world2OreImage || craftrasOreOverlayImages[code];
                     if (oreImage?.complete && oreImage.naturalWidth) {
                         context.save();
                         context.imageSmoothingEnabled = false;
@@ -4506,10 +5099,26 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         context.imageSmoothingEnabled = previousSmoothing;
     }
 
+    function isCraftrasPlayerInWorld2() {
+        const world = global.craftrasWorld;
+        return !!world?.active
+            && !!world.world2Enabled
+            && Number.isFinite(global.player.renderx)
+            && global.player.renderx >= world.world2MinX;
+    }
+
     function drawCraftrasClouds(px, py, ratio) {
         const world = global.craftrasWorld;
         const api = CraftrasWorld;
         if (!world?.active || !api?.worldToBlock || !api?.generateCell || !api?.getOutsideScore || !api?.hash01) return;
+        if (world.world2ChallengeMode) {
+            world.cloudLayerAlpha = 0;
+            return;
+        }
+        if (isCraftrasPlayerInWorld2()) {
+            world.cloudLayerAlpha = 0;
+            return;
+        }
         const seed = world.seed || 1337;
         const blockSize = world.blockSize || 82;
         const playerBlock = api.worldToBlock(global.player.renderx, global.player.rendery);
@@ -4581,9 +5190,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
 
     function getCraftrasKingdomRainVisibilityAt(worldX, worldY) {
         const world = global.craftrasWorld;
-        const weatherFogAlpha = world?.challengeMode ? world.weatherStormAlpha : world?.weatherStormVisualAlpha;
-        const villageWarmth = world?.challengeMode ? world.challengeVillageWarmthAlpha || 0 : 0;
-        const fogRatio = 1 - villageWarmth * (1 - CRAFTRAS_CHALLENGE_VILLAGE_MIN_FOG_RATIO);
+        const storyEightFog = !!world?.challengeMode && !!world.challengeStoryEightReached;
+        const storyEightTransition = storyEightFog && !!global.craftrasChallengeStoryEffect?.active;
+        const weatherFogAlpha = storyEightFog ? storyEightTransition ? 0 : 0.5 : world?.challengeMode ? world.weatherStormAlpha : world?.weatherStormVisualAlpha;
+        const villageWarmth = !storyEightFog && world?.challengeMode ? world.challengeVillageWarmthAlpha || 0 : 0;
+        const fogRatio = storyEightFog ? 1 : 1 - villageWarmth * (1 - CRAFTRAS_CHALLENGE_VILLAGE_MIN_FOG_RATIO);
         const stormVisibility = (weatherFogAlpha || 0) * (world?.kingdomFogPresenceAlpha || 0) * fogRatio;
         if (stormVisibility <= 0.005) return 1;
         const blockSize = world.blockSize || 82;
@@ -4597,6 +5208,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
 
     function getCraftrasKingdomEntityVisibility(instance) {
         if (instance.id === gui.playerid) return 1;
+        const indexes = String(instance.index || "").split("-");
+        const mockup = global.mockups[+indexes[0]] || global.missingno[0];
+        if (mockup?.className === "craftrasChallengeMagicPulseSphere") return 1;
         return getCraftrasKingdomRainVisibilityAt(
             instance.render?.x ?? instance.x ?? 0,
             instance.render?.y ?? instance.y ?? 0,
@@ -4630,6 +5244,25 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         const world = global.craftrasWorld;
         const api = CraftrasWorld;
         if (!world?.active || !api?.worldToBlock || !api?.generateCell) return 0;
+        const playerBlock = api.worldToBlock(global.player.renderx, global.player.rendery);
+        const playerCell = api.generateCell(playerBlock.x, playerBlock.y, world.seed || 1337);
+        const playerInWorld2 = isCraftrasPlayerInWorld2();
+        const whiteInfernoTarget = playerInWorld2
+            && playerCell?.region === "surface"
+            && global.craftrasWeather?.whiteInfernoState === "active" ? 1 : 0;
+        world.whiteInfernoAlpha ??= 0;
+        world.whiteInfernoAlpha += (whiteInfernoTarget - world.whiteInfernoAlpha) * CRAFTRAS_WHITE_INFERNO_FADE_LERP;
+        if (Math.abs(whiteInfernoTarget - world.whiteInfernoAlpha) < 0.001) world.whiteInfernoAlpha = whiteInfernoTarget;
+
+        if (playerInWorld2) {
+            world.weatherRainAlpha = 0;
+            world.weatherStormAlpha = 0;
+            world.weatherSurfaceAlpha = 0;
+            world.weatherVisualAlpha = 0;
+            world.weatherStormVisualAlpha = 0;
+            world.kingdomFogPresenceAlpha = 0;
+            return 0;
+        }
         const targetRain = global.craftrasWeather?.type === "rain" ? 1 : 0;
         world.weatherRainAlpha ??= 0;
         world.weatherRainAlpha += (targetRain - world.weatherRainAlpha) * CRAFTRAS_WEATHER_FADE_LERP;
@@ -4644,7 +5277,6 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ? Math.min(targetRain, world.weatherStormAlpha + stormStep)
             : Math.max(targetRain, world.weatherStormAlpha - stormStep);
 
-        const playerBlock = api.worldToBlock(global.player.renderx, global.player.rendery);
         const targetVillageWarmth = getCraftrasChallengeVillageWarmth(playerBlock);
         world.challengeVillageWarmthAlpha ??= 0;
         const warmthStep = elapsed / CRAFTRAS_CHALLENGE_VILLAGE_WARMTH_DURATION_MS;
@@ -4662,7 +5294,6 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ? Math.min(targetKingdomFogPresence, world.kingdomFogPresenceAlpha + kingdomFogStep)
             : Math.max(targetKingdomFogPresence, world.kingdomFogPresenceAlpha - kingdomFogStep);
 
-        const playerCell = api.generateCell(playerBlock.x, playerBlock.y, world.seed || 1337);
         const targetSurface = playerCell?.region === "surface" ? 1 : 0;
         world.weatherSurfaceAlpha ??= targetSurface;
         world.weatherSurfaceAlpha += (targetSurface - world.weatherSurfaceAlpha) * CRAFTRAS_WEATHER_SURFACE_FADE_LERP;
@@ -4670,6 +5301,237 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         world.weatherVisualAlpha = world.weatherRainAlpha * world.weatherSurfaceAlpha;
         world.weatherStormVisualAlpha = world.weatherStormAlpha * world.weatherSurfaceAlpha;
         return world.weatherVisualAlpha;
+    }
+
+    function drawCraftrasWhiteInferno(px, py, ratio) {
+        const world = global.craftrasWorld;
+        const entrance = global.craftrasBominikInferno;
+        let entranceAlpha = 0;
+        if (entrance?.active) {
+            const elapsed = Math.max(0, Date.now() - entrance.startedAt);
+            const fadeElapsed = elapsed - entrance.holdDuration;
+            entranceAlpha = fadeElapsed <= 0
+                ? 1
+                : Math.max(0, 1 - fadeElapsed / Math.max(100, entrance.fadeDuration));
+            if (entranceAlpha <= 0) entrance.active = false;
+        }
+        const alpha = Math.max(world?.whiteInfernoAlpha || 0, entranceAlpha);
+        if (alpha <= 0.005 || !world?.chunks?.size) return;
+
+        const context = ctx[1];
+        context.save();
+        context.fillStyle = `rgba(255, 255, 255, ${(alpha * CRAFTRAS_WHITE_INFERNO_SCREEN_ALPHA).toFixed(3)})`;
+        context.fillRect(0, 0, global.screenWidth, global.screenHeight);
+
+        const blockSize = world.blockSize;
+        const wallSize = world.wallSize;
+        const chunkSize = world.chunkSize;
+        const halfScreenWorldX = global.screenWidth / ratio / 2;
+        const halfScreenWorldY = global.screenHeight / ratio / 2;
+        const minBlockX = Math.floor((global.player.renderx - halfScreenWorldX) / blockSize) - 1;
+        const maxBlockX = Math.floor((global.player.renderx + halfScreenWorldX) / blockSize) + 1;
+        const minBlockY = Math.floor((global.player.rendery - halfScreenWorldY) / blockSize) - 1;
+        const maxBlockY = Math.floor((global.player.rendery + halfScreenWorldY) / blockSize) + 1;
+        const minChunkX = Math.floor(minBlockX / chunkSize);
+        const maxChunkX = Math.floor(maxBlockX / chunkSize);
+        const minChunkY = Math.floor(minBlockY / chunkSize);
+        const maxChunkY = Math.floor(maxBlockY / chunkSize);
+        const size = Math.max(1, wallSize * ratio);
+        const halfSize = size / 2;
+
+        context.fillStyle = `rgba(0, 0, 0, ${(alpha * CRAFTRAS_WHITE_INFERNO_BLOCK_ALPHA).toFixed(3)})`;
+        for (let chunkY = minChunkY; chunkY <= maxChunkY; chunkY++) {
+            for (let chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                const entries = world.chunkEntries?.get(`${chunkX},${chunkY}`);
+                if (!entries?.length) continue;
+                const chunkBlockX = chunkX * chunkSize;
+                const chunkBlockY = chunkY * chunkSize;
+                for (const entry of entries) {
+                    const blockX = chunkBlockX + entry.localX;
+                    const blockY = chunkBlockY + entry.localY;
+                    if (blockX < minBlockX || blockX > maxBlockX || blockY < minBlockY || blockY > maxBlockY) continue;
+                    const code = entry.code & 31;
+                    if (!code || code === 23 || code === 24 || code === 25 || code === 26) continue;
+                    const worldX = blockX * blockSize + blockSize / 2;
+                    const worldY = blockY * blockSize + blockSize / 2;
+                    const screenX = ratio * worldX - px + global.screenWidth / 2;
+                    const screenY = ratio * worldY - py + global.screenHeight / 2;
+                    context.fillRect(
+                        Math.round(screenX - halfSize),
+                        Math.round(screenY - halfSize),
+                        Math.ceil(size),
+                        Math.ceil(size),
+                    );
+                }
+            }
+        }
+        context.restore();
+    }
+
+    function drawCraftrasJaneScreenCutEffect() {
+        const effect = global.craftrasJaneScreenCut;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const duration = Math.max(300, effect.duration || 3_000);
+        if (elapsed >= duration) {
+            effect.active = false;
+            return;
+        }
+        const context = ctx[1];
+        const canvas = context.canvas;
+        const width = canvas.width || global.screenWidth;
+        const height = canvas.height || global.screenHeight;
+        const centerY = height / 2;
+        const instant = !!effect.instant;
+        const warningDuration = instant ? 0 : Math.max(100, effect.warningDuration || 200);
+        const parryWindow = instant ? 0 : Math.max(100, effect.parryWindow || 200);
+        const impactAt = warningDuration;
+        const clamp01 = value => Math.max(0, Math.min(1, value));
+        const smooth = value => {
+            const t = clamp01(value);
+            return t * t * (3 - 2 * t);
+        };
+
+        if (elapsed >= impactAt && craftrasJaneScreenSliceContext) {
+            if (craftrasJaneScreenSliceCanvas.width !== width || craftrasJaneScreenSliceCanvas.height !== height) {
+                craftrasJaneScreenSliceCanvas.width = width;
+                craftrasJaneScreenSliceCanvas.height = height;
+            }
+            craftrasJaneScreenSliceContext.clearRect(0, 0, width, height);
+            craftrasJaneScreenSliceContext.drawImage(canvas, 0, 0, width, height);
+            const cutElapsed = elapsed - impactAt;
+            const cutDuration = Math.max(1, duration - impactAt);
+            const splitInDuration = instant ? 70 : 100;
+            const splitHoldDuration = instant ? 250 : 1_000;
+            const splitReturnDuration = Math.max(1, cutDuration - splitInDuration - splitHoldDuration);
+            const intensity = cutElapsed < splitInDuration
+                ? smooth(cutElapsed / splitInDuration)
+                : cutElapsed < splitInDuration + splitHoldDuration
+                    ? 1
+                    : 1 - smooth((cutElapsed - splitInDuration - splitHoldDuration) / splitReturnDuration);
+            const shift = Math.max(20, effect.maxShift || 72) * intensity;
+            const cutAngle = Number(effect.cutAngle) || 0;
+            const directionX = Math.cos(cutAngle);
+            const directionY = Math.sin(cutAngle);
+            const diagonal = Math.hypot(width, height);
+            context.clearRect(0, 0, width, height);
+            context.fillStyle = effect.colorMode === "white" ? "#ffffff" : "#ff2fb7";
+            context.fillRect(0, 0, width, height);
+            const drawHalf = (upper, direction) => {
+                context.save();
+                context.translate(width / 2, centerY);
+                context.rotate(cutAngle);
+                context.beginPath();
+                context.rect(-diagonal, upper ? -diagonal : 0, diagonal * 2, diagonal);
+                context.clip();
+                context.rotate(-cutAngle);
+                context.translate(-width / 2, -centerY);
+                context.drawImage(
+                    craftrasJaneScreenSliceCanvas,
+                    directionX * shift * direction,
+                    directionY * shift * direction,
+                    width,
+                    height,
+                );
+                context.restore();
+            };
+            drawHalf(true, -1);
+            drawHalf(false, 1);
+        }
+
+        const warningProgress = instant ? 1 : smooth(elapsed / warningDuration);
+        const cutProgress = elapsed < impactAt ? 0 : smooth((elapsed - impactAt) / 90);
+        const pulse = 0.5 + Math.sin(elapsed / 24) * 0.5;
+        const infernoAlpha = instant
+            ? 0.08 + 0.68 * (1 - smooth(elapsed / duration))
+            : elapsed < impactAt
+                ? 0.24 + warningProgress * 0.48 + pulse * 0.08
+                : Math.max(0.08, 0.34 * (1 - smooth((elapsed - impactAt) / Math.max(1, duration - impactAt))));
+        const gradient = context.createRadialGradient(width / 2, centerY, 0, width / 2, centerY, Math.hypot(width, height) * 0.62);
+        if (effect.colorMode === "white") {
+            gradient.addColorStop(0, `rgba(255, 255, 255, ${Math.min(0.96, infernoAlpha + 0.16).toFixed(3)})`);
+            gradient.addColorStop(0.55, `rgba(245, 248, 255, ${infernoAlpha.toFixed(3)})`);
+            gradient.addColorStop(1, `rgba(178, 188, 205, ${Math.min(0.84, infernoAlpha + 0.10).toFixed(3)})`);
+        } else {
+            gradient.addColorStop(0, `rgba(255, 72, 196, ${Math.min(0.92, infernoAlpha + 0.12).toFixed(3)})`);
+            gradient.addColorStop(0.55, `rgba(255, 20, 167, ${infernoAlpha.toFixed(3)})`);
+            gradient.addColorStop(1, `rgba(95, 0, 59, ${Math.min(0.88, infernoAlpha + 0.16).toFixed(3)})`);
+        }
+        context.save();
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, width, height);
+        const lineThickness = (4 + warningProgress * 7 + cutProgress * 8)
+            * (effect.colorMode === "white" ? 0.5 : 1);
+        context.fillStyle = `rgba(0, 0, 0, ${Math.min(1, 0.35 + warningProgress * 0.65).toFixed(3)})`;
+        context.save();
+        context.translate(width / 2, centerY);
+        context.rotate(Number(effect.cutAngle) || 0);
+        context.fillRect(-Math.hypot(width, height), -lineThickness / 2, Math.hypot(width, height) * 2, lineThickness);
+        context.restore();
+        const prompt = instant
+            ? ""
+            : elapsed < warningDuration
+                ? "!!!!"
+                : elapsed < warningDuration + parryWindow
+                    ? "NOW!"
+                    : "";
+        if (prompt) {
+            const fontSize = Math.max(64, Math.min(width, height) * 0.17);
+            context.font = `900 ${fontSize}px sans-serif`;
+            context.textAlign = "center";
+            context.textBaseline = "middle";
+            context.lineJoin = "round";
+            context.lineWidth = Math.max(6, fontSize * 0.075);
+            context.strokeStyle = "rgba(34, 0, 23, 0.96)";
+            context.fillStyle = prompt === "NOW!" ? "#ffffff" : "#ffb7e7";
+            context.strokeText(prompt, width / 2, centerY);
+            context.fillText(prompt, width / 2, centerY);
+        }
+        context.restore();
+    }
+
+    function drawCraftrasJanePhaseTwoSkillTwoScreenEffect() {
+        const effect = global.craftrasJanePhaseTwoSkillTwoScreen;
+        if (!effect?.active || !craftrasJaneScreenSliceContext) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const duration = Math.max(1_000, effect.duration || 18_000);
+        if (elapsed >= duration) {
+            effect.active = false;
+            return;
+        }
+        const context = ctx[1];
+        const canvas = context.canvas;
+        const width = canvas.width || global.screenWidth;
+        const height = canvas.height || global.screenHeight;
+        const centerY = height / 2;
+        const clamp01 = value => Math.max(0, Math.min(1, value));
+        const smooth = value => {
+            const t = clamp01(value);
+            return t * t * (3 - 2 * t);
+        };
+        const enter = smooth(elapsed / 180);
+        const leave = 1 - smooth((elapsed - Math.max(180, duration - 900)) / 900);
+        const pulse = 0.93 + Math.sin(elapsed / 210) * 0.07;
+        const shift = Math.max(16, effect.maxShift || 54) * enter * leave * pulse;
+        if (shift <= 0.01) return;
+        if (craftrasJaneScreenSliceCanvas.width !== width || craftrasJaneScreenSliceCanvas.height !== height) {
+            craftrasJaneScreenSliceCanvas.width = width;
+            craftrasJaneScreenSliceCanvas.height = height;
+        }
+        craftrasJaneScreenSliceContext.clearRect(0, 0, width, height);
+        craftrasJaneScreenSliceContext.drawImage(canvas, 0, 0, width, height);
+        context.save();
+        context.clearRect(0, 0, width, height);
+        context.fillStyle = "#210017";
+        context.fillRect(0, 0, width, height);
+        context.drawImage(craftrasJaneScreenSliceCanvas, 0, 0, width, centerY, -shift, 0, width, centerY);
+        context.drawImage(craftrasJaneScreenSliceCanvas, 0, centerY, width, height - centerY, shift, centerY, width, height - centerY);
+        const lineWidth = Math.max(5, Math.min(14, 6 + shift * 0.09));
+        context.shadowColor = "#ff48bd";
+        context.shadowBlur = 22;
+        context.fillStyle = "rgba(0, 0, 0, 0.96)";
+        context.fillRect(0, centerY - lineWidth / 2, width, lineWidth);
+        context.restore();
     }
 
     function drawCraftrasStormClouds(ratio) {
@@ -4723,9 +5585,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
     function drawCraftrasKingdomFog(ratio) {
         const world = global.craftrasWorld;
         const kingdomPresence = world?.kingdomFogPresenceAlpha || 0;
-        const weatherFogAlpha = world?.challengeMode ? world.weatherStormAlpha : world?.weatherStormVisualAlpha;
-        const villageWarmth = world?.challengeMode ? world.challengeVillageWarmthAlpha || 0 : 0;
-        const fogRatio = 1 - villageWarmth * (1 - CRAFTRAS_CHALLENGE_VILLAGE_MIN_FOG_RATIO);
+        const storyEightFog = !!world?.challengeMode && !!world.challengeStoryEightReached;
+        const storyEightTransition = storyEightFog && !!global.craftrasChallengeStoryEffect?.active;
+        const weatherFogAlpha = storyEightFog ? storyEightTransition ? 0 : 0.5 : world?.challengeMode ? world.weatherStormAlpha : world?.weatherStormVisualAlpha;
+        const villageWarmth = storyEightFog ? 1 : world?.challengeMode ? world.challengeVillageWarmthAlpha || 0 : 0;
+        const fogRatio = storyEightFog ? 1 : 1 - villageWarmth * (1 - CRAFTRAS_CHALLENGE_VILLAGE_MIN_FOG_RATIO);
         const visibility = (weatherFogAlpha || 0) * kingdomPresence * fogRatio;
         const restorationFog = getCraftrasKingdomRestorationFogAlpha() * kingdomPresence;
         if (visibility <= 0.005 && restorationFog <= 0.005) return;
@@ -4746,7 +5610,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         ctx[1].fillStyle = fog;
         ctx[1].fillRect(0, 0, global.screenWidth, global.screenHeight);
         ctx[1].restore();
-        if (villageWarmth > 0.005) {
+        if (villageWarmth > 0.005 && !storyEightFog) {
             ctx[1].save();
             ctx[1].fillStyle = `rgba(255, 229, 137, ${(villageWarmth * 0.07).toFixed(3)})`;
             ctx[1].fillRect(0, 0, global.screenWidth, global.screenHeight);
@@ -4798,6 +5662,18 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ctx[1].drawImage(ctx[0].canvas, 0, 0, global.screenWidth, global.screenHeight);
             if (global.glCanvas) ctx[1].drawImage(global.glCanvas, 0, 0, global.screenWidth, global.screenHeight);
         } else if (document.getElementById("gameCanvas-background").style.display === "none") document.getElementById("gameCanvas-background").style.display = "block";
+        const craftrasVisibilityCache = new Map();
+        const getFrameVisibility = instance => {
+            let visibility = craftrasVisibilityCache.get(instance.id);
+            if (visibility) return visibility;
+            visibility = {
+                cave: getCraftrasCaveMobVisibility(instance),
+                kingdom: getCraftrasKingdomEntityVisibility(instance),
+                infoAlpha: null,
+            };
+            craftrasVisibilityCache.set(instance.id, visibility);
+            return visibility;
+        };
         // Draw things
         for (let instance of global.entities) {
             if (!instance.render.draws) {
@@ -4853,10 +5729,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             y += global.screenHeight / 2;
             let alpha = instance.id === gui.playerid ? 1 : instance.alpha;
             alpha = handleScreenDistance(alpha, instance, false);
-            const caveMobVisibility = getCraftrasCaveMobVisibility(instance);
+            const visibility = getFrameVisibility(instance);
+            const caveMobVisibility = visibility.cave;
             if (caveMobVisibility <= 0.01) continue;
             alpha *= caveMobVisibility;
-            const kingdomRainVisibility = getCraftrasKingdomEntityVisibility(instance);
+            const kingdomRainVisibility = visibility.kingdom;
             if (kingdomRainVisibility <= 0.01) continue;
             alpha *= kingdomRainVisibility;
             const isKingdomGhostBuilder = String(instance.name || "").substring(7) === "Ghost Builder";
@@ -4864,28 +5741,30 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         }
         if (!global.screenshotGuiHidden) {
             for (let instance of global.entities) {
-                let alpha = instance.id === gui.playerid ? instance.alpha : instance.alpha;
-                alpha = handleScreenDistance(alpha, instance);
-                const caveMobVisibility = getCraftrasCaveMobVisibility(instance);
+                const visibility = getFrameVisibility(instance);
+                const caveMobVisibility = visibility.cave;
                 if (caveMobVisibility <= 0.01) continue;
-                alpha *= caveMobVisibility;
-                const kingdomRainVisibility = getCraftrasKingdomEntityVisibility(instance);
+                const kingdomRainVisibility = visibility.kingdom;
                 if (kingdomRainVisibility <= 0.01) continue;
-                alpha *= kingdomRainVisibility;
+                if (visibility.infoAlpha == null) {
+                    visibility.infoAlpha = handleScreenDistance(instance.alpha, instance) * caveMobVisibility * kingdomRainVisibility;
+                }
+                const alpha = visibility.infoAlpha;
                 let x = instance.id === gui.playerid ? global.player.screenx : ratio * instance.render.x - px,
                     y = instance.id === gui.playerid ? global.player.screeny : ratio * instance.render.y - py;
                 drawHealth(x, y, instance, ratio, gui.visibleEntities ? kingdomRainVisibility : alpha, instance.size);
                 drawName(x, y, instance, ratio, gui.visibleEntities ? Math.min(alpha * 0.75 + 0.25, kingdomRainVisibility) : alpha, instance.size);
             }
             for (let instance of global.entities) {
-                let alpha = instance.id === gui.playerid ? instance.alpha : instance.alpha;
-                alpha = handleScreenDistance(alpha, instance);
-                const caveMobVisibility = getCraftrasCaveMobVisibility(instance);
+                const visibility = getFrameVisibility(instance);
+                const caveMobVisibility = visibility.cave;
                 if (caveMobVisibility <= 0.01) continue;
-                alpha *= caveMobVisibility;
-                const kingdomRainVisibility = getCraftrasKingdomEntityVisibility(instance);
+                const kingdomRainVisibility = visibility.kingdom;
                 if (kingdomRainVisibility <= 0.01) continue;
-                alpha *= kingdomRainVisibility;
+                if (visibility.infoAlpha == null) {
+                    visibility.infoAlpha = handleScreenDistance(instance.alpha, instance) * caveMobVisibility * kingdomRainVisibility;
+                }
+                const alpha = visibility.infoAlpha;
                 let x = instance.id === gui.playerid ? global.player.screenx : ratio * instance.render.x - px,
                     y = instance.id === gui.playerid ? global.player.screeny : ratio * instance.render.y - py;
                 drawChatMessages(x, false, py, instance, ratio, gui.visibleEntities ? kingdomRainVisibility : alpha, instance.size, px, py);
@@ -5341,6 +6220,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         let height = 18;
         let x = global.screenWidth / 2;
         let y = spacing + 5;
+        let renderedMessageCount = 0;
+        let skipButtonPlaced = false;
+        let skipButtonLayout = null;
+        global.craftrasDialogueSkipToken = null;
+        global.clickables.dialogueSkip.hide();
         if (global.mobile) {
             if (global.canUpgrade) {
                 mobileUpgradeGlide.set(0 + (global.canUpgrade || global.upgradeHover));
@@ -5352,6 +6236,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         // Draw each message
         var Bd = Date.now();
         var yy = config.animationSettings.ScaleBar;
+        for (const [token, lastSeenAt] of global.craftrasFastDialogueTokens) {
+            if (Bd - lastSeenAt > 1_500) global.craftrasFastDialogueTokens.delete(token);
+        }
         for (let i = global.messages.length - 1; i >= 0; i--) {
             let msg = global.messages[i],
                 txt = msg.text,
@@ -5366,6 +6253,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                  global.messages.splice(i, 1);
                  continue;
             }
+            renderedMessageCount++;
 
             let K = Math.max(0, Math.min(1, time / 300, duration / 300));
             if (msg.textJSON) { // If a message is like a big ass box then draw this instead.
@@ -5397,9 +6285,64 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 // Draw the text
                 ctx[2].globalAlpha = K;
                 drawText(text, x, y + yy / 1.3 + (messageHeight - height) * 0.38, messageHeight - 4.3, messageColor, "center", false, 1, 5.5);
+                if (msg.skipToken && global.craftrasFastDialogueTokens.has(msg.skipToken)) {
+                    global.craftrasFastDialogueTokens.set(msg.skipToken, Bd);
+                }
+                if (
+                    !skipButtonPlaced
+                    && msg.skipToken
+                    && !global.craftrasFastDialogueTokens.has(msg.skipToken)
+                    && K > 0.2
+                ) {
+                    const buttonWidth = 68;
+                    const buttonHeight = 28;
+                    const buttonX = Math.min(
+                        global.screenWidth - buttonWidth / 2 - 8,
+                        x + msg.len / 2 + buttonWidth / 2 + 12,
+                    );
+                    const buttonY = Math.max(6, y + yy / 2 - buttonHeight / 2);
+                    skipButtonLayout = {
+                        x: buttonX,
+                        y: buttonY,
+                        width: buttonWidth,
+                        height: buttonHeight,
+                        alpha: K,
+                    };
+                    global.craftrasDialogueSkipToken = msg.skipToken;
+                    skipButtonPlaced = true;
+                }
                 y += 23 * messageScale * (3 - 2 * K) * K * K;
             }
         }
+        if (skipButtonLayout) {
+            const {
+                x: buttonX,
+                y: buttonY,
+                width: buttonWidth,
+                height: buttonHeight,
+                alpha: buttonAlpha,
+            } = skipButtonLayout;
+            const clickableRatio = global.canvas.height / global.screenHeight / global.ratio;
+            global.clickables.dialogueSkip.place(
+                0,
+                (buttonX - buttonWidth / 2) * clickableRatio,
+                buttonY * clickableRatio,
+                buttonWidth * clickableRatio,
+                buttonHeight * clickableRatio,
+            );
+            ctx[2].save();
+            ctx[2].globalAlpha = Math.max(0.35, buttonAlpha);
+            ctx[2].fillStyle = "#3f8cff";
+            drawGuiRect(buttonX - buttonWidth / 2, buttonY, buttonWidth, buttonHeight);
+            ctx[2].fillStyle = "#2459a6";
+            drawGuiRect(buttonX - buttonWidth / 2, buttonY + buttonHeight * 0.7, buttonWidth, buttonHeight * 0.3);
+            ctx[2].strokeStyle = "#183b70";
+            ctx[2].lineWidth = 2;
+            drawGuiRect(buttonX - buttonWidth / 2, buttonY, buttonWidth, buttonHeight, true);
+            drawText("Skip", buttonX, buttonY + buttonHeight * 0.5, 14, color.guiwhite, "center", true);
+            ctx[2].restore();
+        }
+        global.craftrasMessageBottom = renderedMessageCount ? y : 0;
         ctx[2].globalAlpha = 1;
     }
 
@@ -5451,11 +6394,14 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             // Skip rendering if completely faded out
             if (valpha <= 0) continue;
             
-            ctx[1].globalAlpha = 0.5 * valpha * alpha * alpha * fade;
-            drawBar(x - msgLengthHalf, x + msgLengthHalf, y - g * (instance.id === gui.playerid ? 2.26 : barScale) - slideOffset, 0.75 * g, gameDraw.getColorDark(gameDraw.getColor(instance.color.split(" ")[0])), ctx[1]);
+            const parryStatus = text === "PARRY SUCCESS" || text === "PARRY BROKEN";
+            if (!parryStatus) {
+                ctx[1].globalAlpha = 0.5 * valpha * alpha * alpha * fade;
+                drawBar(x - msgLengthHalf, x + msgLengthHalf, y - g * (instance.id === gui.playerid ? 2.26 : barScale) - slideOffset, 0.75 * g, gameDraw.getColorDark(gameDraw.getColor(instance.color.split(" ")[0])), ctx[1]);
+            }
             ctx[1].globalAlpha = valpha * alpha * fade;
             config.graphical.fontStrokeRatio *= 1.2;
-            drawText(text, x, y - g * (instance.id === gui.playerid ? 2.05 : textScale) - slideOffset, 0.50 * g, color.guiwhite, "center", false, 1, true, ctx[1]);
+            drawText(text, x, y - g * (instance.id === gui.playerid ? 2.05 : textScale) - slideOffset, parryStatus ? 0.38 * g : 0.50 * g, text === "PARRY BROKEN" ? "#ff3a4c" : text === "PARRY SUCCESS" ? "#45a8ff" : color.guiwhite, "center", false, 1, true, ctx[1]);
             config.graphical.fontStrokeRatio /= 1.2;
         }
         ctx[1].restore();
@@ -5654,12 +6600,6 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         const playerDisplayName = (global.player.name || "").substring(7).trim() || "Player";
         const levelText = "Level " + gui.__s.getLevel() + " " + playerDisplayName;
         drawText(levelText, x + width / 2 + 1, y + height / 2 + 9, 21, color.guiwhite, "center", false, 6);
-        const merchantPoints = Number(global.craftrasBlesser?.open ? global.craftrasBlesser?.points : global.craftrasMerchant?.points) || 0;
-        const pointText = `Points ${util.formatLargeNumber(Math.round(merchantPoints))}`;
-        ctx[2].font = "bold " + (15 + config.graphical.fontSizeBoost) + "px Ubuntu";
-        const levelTextWidth = ctx[2].measureText(levelText).width;
-        const pointX = Math.min(x + width - 12, x + width / 2 + levelTextWidth / 2 + 34);
-        drawText(pointText, pointX, y + height / 2 + 6, 15, "#ffd84d", pointX >= x + width - 16 ? "right" : "left", false, 4.5);
         height = 17;
         y -= height + 5;
         if (global.GUIStatus.renderPlayerKillbar) {
@@ -5695,7 +6635,10 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         // Draw minimap and FPS monitors
         // Minimap stuff starts here
         let len = alcoveSize; // * global.screenWidth;
-        let height = (len / global.gameWidth) * global.gameHeight;
+        const craftrasMap = global.craftrasWorld?.active && global.craftrasWorld?.world2Enabled;
+        const mapWorldWidth = craftrasMap ? global.craftrasWorld.regionSize || global.craftrasWorld.worldSize : global.gameWidth;
+        const mapWorldHeight = craftrasMap ? mapWorldWidth : global.gameHeight;
+        let height = (len / mapWorldWidth) * mapWorldHeight;
         let upgradeColumns = Math.ceil(gui.upgrades.length / 9);
         let x = global.mobile ? spacing : global.screenWidth - spacing - len - 5;
         let y = global.mobile ? spacing : global.screenHeight - height - spacing - 5;
@@ -5708,6 +6651,18 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             // Calculate minimap center if needed
             let centerX = x + len / 2;
             let centerY = y + height / 2;
+            const displayRegion = craftrasMap ? global.craftrasWorld.displayRegion || 1 : 1;
+            const mapCenterWorldX = craftrasMap && displayRegion === 2 ? global.craftrasWorld.world2CenterX : 0;
+            const mapLeftWorldX = mapCenterWorldX - mapWorldWidth / 2;
+            const mapTopWorldY = -mapWorldHeight / 2;
+            const mapXForWorld = worldX => config.game.centeredMinimap
+                ? centerX + (worldX - global.player.cx.animX) / mapWorldWidth * len
+                : x + (worldX - mapLeftWorldX) / mapWorldWidth * len;
+            const mapYForWorld = worldY => config.game.centeredMinimap
+                ? centerY + (worldY - global.player.cy.animY) / mapWorldHeight * height
+                : y + (worldY - mapTopWorldY) / mapWorldHeight * height;
+            const isInsideDisplayedRegion = worldX => !craftrasMap
+                || Math.abs(worldX - mapCenterWorldX) <= mapWorldWidth / 2;
         
             ctx[2].globalAlpha = 0.4;
             ctx[2].save();
@@ -5733,16 +6688,10 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                         // Calculate cell world position
                         let cellWorldX = (xcell / W - 0.5) * global.gameWidth;
                         let cellWorldY = (ycell / H - 0.5) * global.gameHeight;
-                        
-                        // Calculate relative position to player
-                        let relX = cellWorldX - playerWorldX;
-                        let relY = cellWorldY - playerWorldY;
-                        
-                        // Convert to minimap coordinates
-                        let minimapX = config.game.centeredMinimap ? centerX + (relX / global.gameWidth) * len : x + (j * len) / W;
-                        let minimapY = config.game.centeredMinimap ? centerY + (relY / global.gameHeight) * height : y + (i * height) / H;
-                        let cellWidth = len / W;
-                        let cellHeight = height / H;
+                        let minimapX = mapXForWorld(cellWorldX);
+                        let minimapY = mapYForWorld(cellWorldY);
+                        let cellWidth = global.gameWidth / W / mapWorldWidth * len;
+                        let cellHeight = global.gameHeight / H / mapWorldHeight * height;
                         if (!cell) {
                             ctx[2].fillStyle = gameDraw.getColor("border", true);
                             drawGuiRect(minimapX, minimapY, cellWidth, cellHeight);
@@ -5775,33 +6724,23 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 for (const marker of global.craftrasRouteMarkers) {
                     const worldX = marker[0] * blockSize + blockSize / 2;
                     const worldY = marker[1] * blockSize + blockSize / 2;
-                    const relX = worldX - global.player.cx.animX;
-                    const relY = worldY - global.player.cy.animY;
-                    const minimapX = config.game.centeredMinimap
-                        ? centerX + relX / global.gameWidth * len
-                        : x + (worldX / global.gameWidth + 0.5) * len;
-                    const minimapY = config.game.centeredMinimap
-                        ? centerY + relY / global.gameHeight * height
-                        : y + (worldY / global.gameHeight + 0.5) * height;
+                    if (!isInsideDisplayedRegion(worldX)) continue;
+                    const minimapX = mapXForWorld(worldX);
+                    const minimapY = mapYForWorld(worldY);
                     drawGuiRect(minimapX - markerSize / 2, minimapY - markerSize / 2, markerSize, markerSize);
                 }
             }
             ctx[2].globalAlpha = 1;
             for (let entity of minimap.get()) {
+                if (!isInsideDisplayedRegion(entity.x)) continue;
                 ctx[2].fillStyle = gameDraw.mixColors(gameDraw.modifyColor(entity.color), color.black, 0.3);
                 ctx[2].globalAlpha = entity.alpha;
-                
-                // Calculate entity position relative to player
-                let relX = entity.x - global.player.cx.animX;
-                let relY = entity.y - global.player.cy.animY;
-                
-                // Convert to minimap coordinates
-                let minimapX = config.game.centeredMinimap ? centerX + (relX / global.gameWidth) * len : x + (entity.x / global.gameWidth + 0.5) * len;
-                let minimapY = config.game.centeredMinimap ? centerY + (relY / global.gameHeight) * height : y + (entity.y / global.gameHeight + 0.5) * height;
+                let minimapX = mapXForWorld(entity.x);
+                let minimapY = mapYForWorld(entity.y);
                 
                 switch (entity.type) {
                     case 3: {
-                        const markerSize = Math.max(!global.mobile ? 5 : 7, (entity.size / global.gameWidth) * len * 1.35);
+                        const markerSize = Math.max(!global.mobile ? 5 : 7, (entity.size / mapWorldWidth) * len * 1.35);
                         const pulse = 0.75 + 0.25 * Math.sin(Date.now() / 180);
                         ctx[2].globalAlpha = entity.alpha * 0.28 * pulse;
                         ctx[2].fillStyle = "#ff3030";
@@ -5813,12 +6752,12 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     case 2:
                         // Draw wall entities
                         let trueSize = (entity.size + 2) / 1.1283791671;
-                        let sizeOnMap = (trueSize / global.gameWidth) * len;
+                        let sizeOnMap = (trueSize / mapWorldWidth) * len;
                         drawGuiRect(minimapX - sizeOnMap, minimapY - sizeOnMap, sizeOnMap * 2, sizeOnMap * 2);
                         break;
                     case 1:
                         // Draw rock/other entities
-                        let entitySize = (entity.size / global.gameWidth) * len;
+                        let entitySize = (entity.size / mapWorldWidth) * len;
                         drawGuiCircle(minimapX, minimapY, entitySize);
                         break;
                     case 0:
@@ -5835,7 +6774,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ctx[2].strokeStyle = color.guiblack;
             ctx[2].fillStyle = color.guiblack;
             // Draw yourself in the minimap
-            drawGuiCircle(config.game.centeredMinimap ? centerX : x + (global.player.cx.animX / global.gameWidth + 0.5) * len, config.game.centeredMinimap ? centerY : y + (global.player.cy.animY / global.gameHeight + 0.5) * height, !global.mobile ? 2 : 3.5, false);
+            drawGuiCircle(config.game.centeredMinimap ? centerX : mapXForWorld(global.player.cx.animX), config.game.centeredMinimap ? centerY : mapYForWorld(global.player.cy.animY), !global.mobile ? 2 : 3.5, false);
             ctx[2].restore();
             ctx[2].globalAlpha = 1;
             ctx[2].fillStyle = color.black;
@@ -6563,15 +7502,124 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
 
     const drawCraftrasSpectatorUI = () => {
         if (!global.craftrasSpectator || global.died || global.disconnected) {
+            global.craftrasSpectatorRespawnBounds = null;
             if (!global.died) global.clickables.deathRespawn.hide();
             return;
         }
         const x = global.screenWidth / 2;
-        const y = Math.max(120, global.screenHeight - 174);
+        const y = Math.max(120, global.screenHeight - 280);
         ctx[2].save();
         ctx[2].globalAlpha = 0.94;
         drawText("SPECTATOR", x, y - 34, 18, "#dfe8ff", "center", true, 1, 1, ctx[2]);
-        drawButton(x, y, 170, 42, 1, "rect", "Respawn", 22, false, false, false, true, "deathRespawn", global.canvas.height / global.screenHeight / global.ratio, 0);
+        if (global.craftrasWorld?.challengeMode) {
+            global.craftrasSpectatorRespawnBounds = null;
+            global.clickables.deathRespawn.hide();
+        } else {
+            const width = 190;
+            const height = 48;
+            const rect = global.canvas.cv.getBoundingClientRect();
+            const scaleX = rect.width / Math.max(1, global.screenWidth);
+            const scaleY = rect.height / Math.max(1, global.screenHeight);
+            global.craftrasSpectatorRespawnBounds = {
+                left: rect.left + (x - width / 2) * scaleX,
+                top: rect.top + y * scaleY,
+                right: rect.left + (x + width / 2) * scaleX,
+                bottom: rect.top + (y + height) * scaleY,
+            };
+            drawButton(x, y, width, height, 1, "rect", "Respawn", 22, false, false, false, true, "deathRespawn", global.canvas.height / global.screenHeight / global.ratio, 0);
+        }
+        ctx[2].restore();
+    };
+
+    const drawCraftrasBossHealthBar = () => {
+        const duo = global.craftrasSwordGuy2DuoHealth;
+        if (duo?.active && Date.now() < duo.expiresAt && duo.bosses?.length) {
+            const width = Math.max(300, Math.min(640, global.screenWidth * 0.48));
+            const height = 16;
+            const gap = 29;
+            const x = Math.round((global.screenWidth - width) / 2);
+            const messageBottom = Math.max(0, Number(global.craftrasMessageBottom) || 0);
+            const firstY = Math.min(
+                Math.max(38, global.screenHeight - height * 2 - gap - 24),
+                Math.max(38, Math.ceil(messageBottom + 30)),
+            );
+            ctx[2].save();
+            duo.bosses.forEach((boss, index) => {
+                boss.displayAmount += (boss.amount - boss.displayAmount) * 0.12;
+                if (Math.abs(boss.displayAmount - boss.amount) < 0.05) boss.displayAmount = boss.amount;
+                const y = firstY + index * (height + gap);
+                const healthRatio = Math.max(0, Math.min(1, boss.amount / boss.max));
+                const displayRatio = Math.max(0, Math.min(1, boss.displayAmount / boss.max));
+                const mainColor = index === 0 ? "#4aa3ff" : "#ad55ee";
+                const delayedColor = index === 0 ? "#244c7d" : "#5b2d73";
+                ctx[2].fillStyle = "rgba(12, 13, 16, 0.9)";
+                ctx[2].fillRect(x - 3, y - 3, width + 6, height + 6);
+                ctx[2].fillStyle = delayedColor;
+                ctx[2].fillRect(x, y, width * displayRatio, height);
+                ctx[2].fillStyle = mainColor;
+                ctx[2].fillRect(x, y, width * healthRatio, height);
+                ctx[2].strokeStyle = "#f1f3f5";
+                ctx[2].lineWidth = 2;
+                ctx[2].strokeRect(x, y, width, height);
+                drawText(boss.name, global.screenWidth / 2, y - 10, 17, "#ffffff", "center", true, 1, 1, ctx[2]);
+                drawText(
+                    `${Math.ceil(boss.amount)} / ${Math.ceil(boss.max)}`,
+                    global.screenWidth / 2,
+                    y + height / 2,
+                    11,
+                    "#ffffff",
+                    "center",
+                    true,
+                    1,
+                    1,
+                    ctx[2],
+                );
+            });
+            ctx[2].restore();
+            return;
+        }
+        if (duo) duo.active = false;
+        const boss = global.craftrasBossHealth;
+        if (!boss?.active || Date.now() >= boss.expiresAt || boss.max <= 0) {
+            if (boss) boss.active = false;
+            return;
+        }
+        boss.displayAmount += (boss.amount - boss.displayAmount) * 0.12;
+        if (Math.abs(boss.displayAmount - boss.amount) < 0.05) boss.displayAmount = boss.amount;
+        const width = Math.max(300, Math.min(640, global.screenWidth * 0.48));
+        const height = 18;
+        const x = Math.round((global.screenWidth - width) / 2);
+        const messageBottom = Math.max(0, Number(global.craftrasMessageBottom) || 0);
+        const y = Math.min(
+            Math.max(38, global.screenHeight - height - 24),
+            Math.max(38, Math.ceil(messageBottom + 30)),
+        );
+        const healthRatio = Math.max(0, Math.min(1, boss.amount / boss.max));
+        const displayRatio = Math.max(0, Math.min(1, boss.displayAmount / boss.max));
+
+        ctx[2].save();
+        ctx[2].fillStyle = "rgba(12, 13, 16, 0.9)";
+        ctx[2].fillRect(x - 3, y - 3, width + 6, height + 6);
+        ctx[2].fillStyle = "#611f2b";
+        ctx[2].fillRect(x, y, width * displayRatio, height);
+        ctx[2].fillStyle = "#df3548";
+        ctx[2].fillRect(x, y, width * healthRatio, height);
+        ctx[2].strokeStyle = "#f1f3f5";
+        ctx[2].lineWidth = 2;
+        ctx[2].strokeRect(x, y, width, height);
+        drawText(boss.name || "Boss", global.screenWidth / 2, y - 11, 19, "#ffffff", "center", true, 1, 1, ctx[2]);
+        drawText(
+            `${Math.ceil(boss.amount)} / ${Math.ceil(boss.max)}`,
+            global.screenWidth / 2,
+            y + height / 2,
+            12,
+            "#ffffff",
+            "center",
+            true,
+            1,
+            1,
+            ctx[2],
+        );
         ctx[2].restore();
     };
 
@@ -6623,6 +7671,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         const buttonWidth = Math.max(118, Math.min(172, (panelWidth - 52) / 2));
         const buttonFontSize = panelWidth < 380 ? 13 : 16;
         const buttonY = panelY + panelHeight - 58;
+        const world2Challenge = entry.kind === "world2";
         ctx[2].save();
         ctx[2].globalAlpha = 0.97;
         ctx[2].fillStyle = "rgba(18, 22, 28, 0.96)";
@@ -6630,14 +7679,17 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         ctx[2].lineWidth = 2;
         ctx[2].fillRect(panelX, panelY, panelWidth, panelHeight);
         ctx[2].strokeRect(panelX, panelY, panelWidth, panelHeight);
-        drawText("WORLD 1 Challenge", centerX, panelY + 38, 25, "#ffffff", "center", true, 1, 1, ctx[2]);
-        drawText("[Royal Key Required]", centerX, panelY + 70, 16, "#f2cf63", "center", true, 1, 1, ctx[2]);
-        drawText("All team members will be transported.", centerX, panelY + 105, 15, "#d9e0e8", "center", false, 1, 1, ctx[2]);
+        drawText(world2Challenge ? "WORLD 2 Challenge" : "WORLD 1 Challenge", centerX, panelY + 38, 25, "#ffffff", "center", true, 1, 1, ctx[2]);
+        drawText(world2Challenge ? "[Ancient Key Required]" : "[Royal Key Required]", centerX, panelY + 70, 16, "#f2cf63", "center", true, 1, 1, ctx[2]);
+        if (world2Challenge) {
+            drawText("Difficulty: Hard  |  Reward: 1 Token (One-time)", centerX, panelY + 98, 14, "#ffd84d", "center", false, 1, 1, ctx[2]);
+        }
+        drawText("All team members will be transported.", centerX, panelY + (world2Challenge ? 123 : 105), 15, "#d9e0e8", "center", false, 1, 1, ctx[2]);
         if (entry.teamName) {
-            drawText(`${entry.teamName} (${entry.memberCount}/8)`, centerX, panelY + 137, 14, entry.isHost ? "#ffd84a" : "#c9d3df", "center", false, 1, 1, ctx[2]);
+            drawText(`${entry.teamName} (${entry.memberCount}/8)`, centerX, panelY + (world2Challenge ? 151 : 137), 14, entry.isHost ? "#ffd84a" : "#c9d3df", "center", false, 1, 1, ctx[2]);
         } else {
-            drawText("No team yet? Create one using", centerX, panelY + 135, 13, "#b9c3cf", "center", false, 1, 1, ctx[2]);
-            drawText("the $team command.", centerX, panelY + 155, 13, "#b9c3cf", "center", false, 1, 1, ctx[2]);
+            drawText("No team yet? Create one using", centerX, panelY + (world2Challenge ? 151 : 135), 13, "#b9c3cf", "center", false, 1, 1, ctx[2]);
+            drawText("the $team command.", centerX, panelY + (world2Challenge ? 171 : 155), 13, "#b9c3cf", "center", false, 1, 1, ctx[2]);
         }
         drawButton(centerX - buttonWidth / 2 - 8, buttonY, buttonWidth, 40, 1, "rect", "Start Challenge", buttonFontSize, "#36ad58", "#23783c", "#164d28", true, "challengeEntry", ratio, 0);
         drawButton(centerX + buttonWidth / 2 + 8, buttonY, buttonWidth, 40, 1, "rect", "Cancel", buttonFontSize, "#df4b4b", "#9e2f34", "#5f1c21", true, "challengeEntry", ratio, 1);
@@ -6645,6 +7697,10 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
     };
 
     const applyScreenShake = (type = "camera", returnOption = false) => {
+        if (global.died || global.craftrasSpectator || global.disconnected) {
+            resetScreenShake();
+            return;
+        }
         let properties = type == "gui" ? config.graphical.shakeProperties.UIShake : config.graphical.shakeProperties.CameraShake;
         var cdx = 0;
         var cdy = 0;
@@ -6723,6 +7779,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         drawCraftrasCaveDarknessOverlay(ratio);
         drawCraftrasCurseDarknessOverlay(ratio);
         drawCraftrasRain();
+        drawCraftrasChallengeStoryEffect();
+        drawCraftrasWhiteInferno(px, py, ratio);
+        drawCraftrasLaserBeams(px, py, ratio);
+        drawCraftrasJaneScreenCutEffect();
+        drawCraftrasJanePhaseTwoSkillTwoScreenEffect();
     };
 
     function drawCraftrasCaveDarknessOverlay(ratio) {
@@ -6775,7 +7836,78 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         ctx[1].restore();
     }
 
+    function drawCraftrasChallengeStoryEffect() {
+        const effect = global.craftrasChallengeStoryEffect;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const whiteoutDuration = Math.max(1, effect.whiteoutDuration || 3000);
+        const fogDuration = Math.max(whiteoutDuration, effect.fogDuration || 8000);
+        if (elapsed >= fogDuration) {
+            effect.active = false;
+            return;
+        }
+
+        const whiteProgress = Math.min(1, elapsed / whiteoutDuration);
+        const whiteAlpha = whiteProgress < 0.36
+            ? smoothstep01(whiteProgress / 0.36)
+            : whiteProgress < 0.5
+                ? 1
+                : 1 - smoothstep01((whiteProgress - 0.5) / 0.5);
+        const fogIn = smoothstep01(Math.max(0, Math.min(1, (elapsed - whiteoutDuration * 0.34) / (whiteoutDuration * 0.5))));
+        const fogOut = 1 - smoothstep01(Math.max(0, Math.min(1, (elapsed - fogDuration * 0.72) / (fogDuration * 0.28))));
+        const fogAlpha = fogIn * fogOut;
+        const centerX = global.screenWidth / 2;
+        const centerY = global.screenHeight / 2;
+        const diagonal = Math.hypot(global.screenWidth, global.screenHeight);
+        const fog = ctx[1].createRadialGradient(centerX, centerY, diagonal * 0.08, centerX, centerY, diagonal * 0.72);
+        fog.addColorStop(0, `rgba(255, 250, 205, ${(fogAlpha * 0.08).toFixed(3)})`);
+        fog.addColorStop(0.42, `rgba(255, 236, 142, ${(fogAlpha * 0.24).toFixed(3)})`);
+        fog.addColorStop(1, `rgba(255, 218, 92, ${(fogAlpha * 0.48).toFixed(3)})`);
+        ctx[1].save();
+        ctx[1].fillStyle = fog;
+        ctx[1].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        if (whiteAlpha > 0.001) {
+            ctx[1].fillStyle = `rgba(255, 255, 244, ${whiteAlpha.toFixed(3)})`;
+            ctx[1].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        }
+        ctx[1].restore();
+    }
+
+    function updateCraftrasWorldRegionTransition() {
+        const world = global.craftrasWorld;
+        if (!world?.active || !world.world2Enabled || !Number.isFinite(global.player.renderx)) return;
+        const transition = global.craftrasServerTransition;
+        const now = Date.now();
+        const detectedRegion = global.player.renderx >= world.world2MinX ? 2 : 1;
+
+        if (!world.displayRegion) {
+            world.displayRegion = detectedRegion;
+            return;
+        }
+        if (world.pendingRegion) {
+            if (transition?.phase === "hold" && now >= (transition.worldRegionHoldUntil || 0)) {
+                world.displayRegion = world.pendingRegion;
+                transition.phase = "in";
+                transition.startedAt = now;
+                transition.duration = 600;
+            } else if (!transition?.active) {
+                world.pendingRegion = 0;
+            }
+            return;
+        }
+        if (detectedRegion === world.displayRegion || transition?.active) return;
+
+        world.pendingRegion = detectedRegion;
+        transition.active = true;
+        transition.phase = "out";
+        transition.startedAt = now;
+        transition.duration = 500;
+        transition.alpha = 0;
+        transition.worldRegionHoldUntil = now + 700;
+    }
+
     function drawCraftrasServerTransition() {
+        updateCraftrasWorldRegionTransition();
         const transition = global.craftrasServerTransition;
         if (!transition?.active) return;
         const now = Date.now();
@@ -6793,6 +7925,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 transition.active = false;
                 transition.phase = "idle";
                 transition.alpha = 0;
+                transition.worldRegionHoldUntil = 0;
+                if (global.craftrasWorld) global.craftrasWorld.pendingRegion = 0;
                 return;
             }
         }
@@ -6817,6 +7951,423 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         }
         ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
         ctx[2].restore();
+    }
+
+    function drawCraftrasChallengeBlueParry() {
+        const effect = global.craftrasChallengeBlueParry;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const numberDuration = Math.max(200, effect.numberDuration || 500);
+        const bangDuration = Math.max(100, effect.bangDuration || 200);
+        const countdownDuration = numberDuration * 3 + bangDuration;
+        const flashDuration = Math.max(500, effect.flashDuration || 2000);
+        if (elapsed >= countdownDuration + flashDuration) {
+            effect.active = false;
+            return;
+        }
+        ctx[2].save();
+        if (elapsed < countdownDuration) {
+            const labels = ["!", "!!", "!!!", "DIE"];
+            const step = elapsed < numberDuration * 3
+                ? Math.min(2, Math.floor(elapsed / numberDuration))
+                : 3;
+            const whiteProgress = Math.min(1, elapsed / Math.max(1, numberDuration * 3));
+            ctx[2].fillStyle = `rgba(255, 255, 255, ${(whiteProgress * 0.72).toFixed(3)})`;
+            ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+            const fontSize = Math.max(110, Math.min(global.screenWidth, global.screenHeight) * 0.32);
+            ctx[2].textAlign = "center";
+            ctx[2].textBaseline = "middle";
+            ctx[2].font = `900 ${fontSize}px Ubuntu`;
+            ctx[2].lineWidth = Math.max(8, fontSize * 0.055);
+            const fillColors = ["#f2f2f2", "#ff8a8a", "#ff3030", "#ff1616"];
+            const strokeColors = [
+                "rgba(50, 50, 58, 0.92)",
+                "rgba(92, 20, 30, 0.92)",
+                "rgba(82, 4, 12, 0.94)",
+                "rgba(62, 0, 8, 0.96)",
+            ];
+            ctx[2].strokeStyle = strokeColors[step];
+            ctx[2].fillStyle = fillColors[step];
+            ctx[2].strokeText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+            ctx[2].fillText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+        } else {
+            const progress = Math.min(1, (elapsed - countdownDuration) / flashDuration);
+            const alpha = progress < 0.88 ? 1 : 1 - smoothstep01((progress - 0.88) / 0.12);
+            ctx[2].fillStyle = `rgba(210, 18, 38, ${Math.min(1, alpha).toFixed(3)})`;
+            ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        }
+        ctx[2].restore();
+    }
+
+    function drawCraftrasSwordGuy2Parry() {
+        const effect = global.craftrasSwordGuy2Parry;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const stepDuration = Math.max(100, effect.stepDuration || 500);
+        const nowDuration = Math.max(100, effect.nowDuration || 200);
+        const warningDuration = stepDuration * 3;
+        const sequenceDuration = warningDuration + nowDuration;
+        const flashDuration = Math.max(200, effect.flashDuration || 500);
+        if (elapsed >= sequenceDuration + flashDuration) {
+            effect.active = false;
+            return;
+        }
+        ctx[2].save();
+        if (elapsed < sequenceDuration) {
+            const step = elapsed < warningDuration
+                ? Math.min(2, Math.floor(elapsed / stepDuration))
+                : 3;
+            const labels = ["!", "!!", "!!!", "NOW!"];
+            const backgroundAlpha = step === 3 ? 0.92 : 0.08 + step * 0.08;
+            ctx[2].fillStyle = `rgba(22, 112, 255, ${backgroundAlpha.toFixed(3)})`;
+            ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+            const fontSize = Math.max(110, Math.min(global.screenWidth, global.screenHeight) * (step === 3 ? 0.25 : 0.32));
+            ctx[2].textAlign = "center";
+            ctx[2].textBaseline = "middle";
+            ctx[2].font = `900 ${fontSize}px Ubuntu`;
+            ctx[2].lineWidth = Math.max(8, fontSize * 0.055);
+            ctx[2].strokeStyle = "rgba(5, 35, 105, 0.96)";
+            ctx[2].fillStyle = step === 3 ? "#ffffff" : "#aee4ff";
+            ctx[2].strokeText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+            ctx[2].fillText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+        } else {
+            const progress = Math.min(1, (elapsed - sequenceDuration) / flashDuration);
+            const alpha = 1 - smoothstep01(progress);
+            ctx[2].fillStyle = `rgba(20, 105, 255, ${alpha.toFixed(3)})`;
+            ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        }
+        ctx[2].restore();
+    }
+
+    function drawCraftrasWorld2MagicWarning() {
+        const effect = global.craftrasWorld2MagicWarning;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const stepDuration = Math.max(100, effect.stepDuration || 500);
+        const warningDuration = stepDuration * 3;
+        const flashDuration = Math.max(200, effect.flashDuration || 500);
+        if (elapsed >= warningDuration + flashDuration) {
+            effect.active = false;
+            return;
+        }
+        ctx[2].save();
+        if (elapsed < warningDuration) {
+            const step = Math.min(2, Math.floor(elapsed / stepDuration));
+            const labels = ["!", "!!", "!!!"];
+            const intensity = 0.1 + step * 0.1;
+            ctx[2].fillStyle = `rgba(105, 0, 72, ${intensity.toFixed(3)})`;
+            ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+            const fontSize = Math.max(100, Math.min(global.screenWidth, global.screenHeight) * 0.3);
+            ctx[2].textAlign = "center";
+            ctx[2].textBaseline = "middle";
+            ctx[2].font = `900 ${fontSize}px Ubuntu`;
+            ctx[2].lineWidth = Math.max(8, fontSize * 0.055);
+            ctx[2].strokeStyle = "rgba(58, 0, 42, 0.96)";
+            ctx[2].fillStyle = step === 2 ? "#ff4d9a" : "#ffc0dc";
+            ctx[2].strokeText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+            ctx[2].fillText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+        } else {
+            const progress = Math.min(1, (elapsed - warningDuration) / flashDuration);
+            const alpha = 0.68 * (1 - smoothstep01(progress));
+            ctx[2].fillStyle = `rgba(145, 0, 92, ${alpha.toFixed(3)})`;
+            ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        }
+        ctx[2].restore();
+    }
+
+    function drawCraftrasSwordGuy2Opening() {
+        const effect = global.craftrasSwordGuy2Opening;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const chargeDuration = Math.max(1500, effect.chargeDuration || 3000);
+        const stepDuration = Math.max(200, effect.stepDuration || 500);
+        const nowDuration = Math.max(100, effect.nowDuration || 200);
+        if (elapsed >= chargeDuration + nowDuration) {
+            effect.active = false;
+            return;
+        }
+        const whiteProgress = Math.max(0, Math.min(1, elapsed / chargeDuration));
+        const whiteAlpha = smoothstep01(whiteProgress);
+        const labelStart = Math.max(0, chargeDuration - stepDuration * 3);
+        ctx[2].save();
+        ctx[2].fillStyle = `rgba(255, 255, 255, ${whiteAlpha.toFixed(3)})`;
+        ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        if (elapsed >= labelStart) {
+            const labelElapsed = elapsed - labelStart;
+            const step = labelElapsed < stepDuration * 3
+                ? Math.min(2, Math.floor(labelElapsed / stepDuration))
+                : 3;
+            const labels = ["!", "!!", "!!!", "NOW"];
+            const fontSize = Math.max(105, Math.min(global.screenWidth, global.screenHeight) * 0.28);
+            ctx[2].textAlign = "center";
+            ctx[2].textBaseline = "middle";
+            ctx[2].font = `900 ${fontSize}px Ubuntu`;
+            ctx[2].lineWidth = Math.max(8, fontSize * 0.055);
+            ctx[2].strokeStyle = "rgba(255, 255, 255, 0.88)";
+            ctx[2].fillStyle = "#050505";
+            ctx[2].strokeText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+            ctx[2].fillText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+        }
+        ctx[2].restore();
+    }
+
+    function drawCraftrasSwordGuy2DashCountdown() {
+        const effect = global.craftrasSwordGuy2DashCountdown;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const bangDuration = Math.max(100, effect.bangDuration || 200);
+        if (elapsed >= bangDuration) {
+            effect.active = false;
+            return;
+        }
+        const progress = Math.min(1, elapsed / bangDuration);
+        ctx[2].save();
+        const fontSize = Math.max(54, Math.min(global.screenWidth, global.screenHeight) * 0.085);
+        const playerOffsetX = Number(global.player?.screenx) || 0;
+        const playerOffsetY = Number(global.player?.screeny) || 0;
+        const x = global.screenWidth / 2 + playerOffsetX;
+        const y = global.screenHeight / 2 + playerOffsetY - Math.max(76, fontSize * 1.3);
+        ctx[2].textAlign = "center";
+        ctx[2].textBaseline = "middle";
+        ctx[2].font = `900 ${fontSize}px Ubuntu`;
+        ctx[2].lineWidth = Math.max(5, fontSize * 0.09);
+        ctx[2].globalAlpha = 1 - smoothstep01(progress);
+        ctx[2].strokeStyle = "rgba(92, 0, 8, 0.98)";
+        ctx[2].fillStyle = "#ff2020";
+        ctx[2].strokeText("!", x, y);
+        ctx[2].fillText("!", x, y);
+        ctx[2].restore();
+    }
+
+    function drawCraftrasJanePinkFlash() {
+        const effect = global.craftrasJanePinkFlash;
+        if (!effect?.active) return;
+        const progress = Math.max(0, Math.min(1, (Date.now() - effect.startedAt) / Math.max(1, effect.duration || 420)));
+        if (progress >= 1) {
+            effect.active = false;
+            return;
+        }
+        const alpha = (effect.alpha || 0.24) * (1 - smoothstep01(progress));
+        ctx[2].save();
+        ctx[2].fillStyle = `rgba(255, 72, 184, ${alpha.toFixed(3)})`;
+        ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        ctx[2].restore();
+    }
+
+    function drawCraftrasJaneSkillFourCountdown() {
+        const effect = global.craftrasJaneSkillFourCountdown;
+        if (!effect?.active) return;
+        const elapsed = Math.max(0, Date.now() - effect.startedAt);
+        const stepDuration = Math.max(100, effect.stepDuration || 500);
+        const impactDuration = Math.max(100, effect.impactDuration || 200);
+        const warningDuration = stepDuration * 3;
+        if (elapsed >= warningDuration + impactDuration) {
+            effect.active = false;
+            return;
+        }
+        const step = elapsed < warningDuration ? Math.min(2, Math.floor(elapsed / stepDuration)) : 3;
+        const labels = ["!", "!!", "!!!", "PARRY!"];
+        const intensity = step === 3 ? 0.72 : 0.08 + step * 0.08;
+        const fontSize = Math.max(90, Math.min(global.screenWidth, global.screenHeight) * (step === 3 ? 0.2 : 0.27));
+        ctx[2].save();
+        ctx[2].fillStyle = step === 3
+            ? `rgba(58, 140, 255, ${intensity.toFixed(3)})`
+            : `rgba(255, 50, 184, ${intensity.toFixed(3)})`;
+        ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
+        ctx[2].textAlign = "center";
+        ctx[2].textBaseline = "middle";
+        ctx[2].font = `900 ${fontSize}px Ubuntu`;
+        ctx[2].lineWidth = Math.max(7, fontSize * 0.06);
+        ctx[2].strokeStyle = step === 3 ? "rgba(8, 45, 130, 0.96)" : "rgba(105, 8, 70, 0.96)";
+        ctx[2].fillStyle = step === 3 ? "#dff5ff" : "#ffb5e4";
+        ctx[2].strokeText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+        ctx[2].fillText(labels[step], global.screenWidth / 2, global.screenHeight / 2);
+        ctx[2].restore();
+    }
+
+    function drawCraftrasLaserBeams(px, py, ratio) {
+        const beams = global.craftrasLaserBeams;
+        if (!(beams instanceof Map) || beams.size === 0) return;
+        const now = Date.now();
+        const playerX = Number(global.player.renderx) || 0;
+        const playerY = Number(global.player.rendery) || 0;
+        for (const [id, beam] of beams) {
+            const duration = Math.max(1, beam.duration || 700);
+            const elapsed = now - beam.startedAt;
+            const stopProgress = beam.stoppingAt
+                ? Math.max(0, (now - beam.stoppingAt) / Math.max(1, beam.stopDuration || 140))
+                : 0;
+            if (stopProgress >= 1) {
+                beams.delete(id);
+                continue;
+            }
+            if (elapsed >= duration) {
+                beams.delete(id);
+                continue;
+            }
+            const activeDelay = Math.max(0, Math.min(duration - 1, beam.activeDelay || 0));
+            const activeElapsed = Math.max(0, elapsed - activeDelay);
+            const activeDuration = Math.max(1, duration - activeDelay);
+            const progress = Math.max(0, Math.min(1, activeElapsed / activeDuration));
+            const fadeIn = smoothstep01(Math.min(1, activeElapsed / 55));
+            const fadeOutStart = Math.max(0, Math.min(0.99, Number(beam.fadeOutStart) || 0.72));
+            const fadeOut = 1 - smoothstep01(Math.max(0, (progress - fadeOutStart) / (1 - fadeOutStart)));
+            const flicker = 0.88 + Math.sin(now * 0.047 + Number(id) * 0.71) * 0.08
+                + Math.sin(now * 0.113 + Number(id) * 1.37) * 0.04;
+            const colorMode = String(beam.colorMode || "pink");
+            const isBlue = colorMode === "blue";
+            const isRed = colorMode === "red";
+            const beamRgb = isBlue ? "60, 145, 255" : isRed ? "255, 38, 52" : "255, 45, 184";
+            const beamFilter = isBlue
+                ? "hue-rotate(-105deg) saturate(2.1) brightness(1.08)"
+                : isRed ? "hue-rotate(35deg) saturate(2.35) brightness(1.03)" : "none";
+            const alpha = Math.max(0, fadeIn * fadeOut * (1 - stopProgress) * flicker * (Number(beam.alphaScale) || 1));
+            const length = Math.max(1, beam.length || 2400);
+            const width = Math.max(1, beam.width || 450);
+            let angle = (Number(beam.angle) || 0) + (Number(beam.angularVelocity) || 0) * activeElapsed;
+            if (Number.isFinite(beam.trackedTargetAngle)) {
+                const from = Number.isFinite(beam.trackedFromAngle) ? beam.trackedFromAngle : angle;
+                const difference = Math.atan2(
+                    Math.sin(beam.trackedTargetAngle - from),
+                    Math.cos(beam.trackedTargetAngle - from),
+                );
+                const trackingProgress = smoothstep01(Math.min(1, Math.max(0, now - (beam.trackedUpdatedAt || now)) / 55));
+                angle = from + difference * trackingProgress;
+            }
+            beam.renderAngle = angle;
+            const startX = global.screenWidth / 2 + ratio * beam.x - px;
+            const startY = global.screenHeight / 2 + ratio * beam.y - py;
+            const visualLength = length * ratio;
+            const visualHeight = width * ratio * (1.72 + Math.sin(now * 0.031) * 0.08);
+
+            if (elapsed < activeDelay) {
+                const warningPulse = 0.34 + (Math.sin(now * 0.024 + Number(id)) + 1) * 0.13;
+                ctx[1].save();
+                ctx[1].translate(startX, startY);
+                ctx[1].rotate(angle);
+                ctx[1].globalCompositeOperation = "lighter";
+                ctx[1].strokeStyle = `rgba(${beamRgb}, ${warningPulse.toFixed(3)})`;
+                ctx[1].shadowColor = `rgba(${beamRgb}, 0.9)`;
+                ctx[1].shadowBlur = 15;
+                ctx[1].lineWidth = Math.max(2, 5 * ratio);
+                ctx[1].beginPath();
+                ctx[1].moveTo(0, 0);
+                ctx[1].lineTo(visualLength, 0);
+                ctx[1].stroke();
+                ctx[1].restore();
+                continue;
+            }
+
+            ctx[1].save();
+            ctx[1].translate(startX, startY);
+            ctx[1].rotate(angle);
+            ctx[1].globalCompositeOperation = "lighter";
+            ctx[1].imageSmoothingEnabled = true;
+            ctx[1].shadowColor = `rgba(${beamRgb}, 0.95)`;
+            ctx[1].shadowBlur = Math.max(18, width * ratio * 0.8);
+            ctx[1].filter = beamFilter;
+            const isBlueLaserImage = beam.visualVariant === "blue";
+            const laserImage = isBlueLaserImage
+                ? craftrasBlueLaserBeamImage
+                : beam.visualVariant === "giant"
+                    ? craftrasGiantLaserBeamImage
+                    : craftrasLaserBeamImage;
+            // The regular laser PNG has a transparent 121px lead-in. Cropping it
+            // keeps the visible beam rooted at the same point as its hitbox.
+            const sourceCropLeft = isBlueLaserImage ? 0 : beam.visualVariant === "giant" ? 26.083 : 121;
+            const sourceAxisY = beam.visualVariant === "giant" ? 467 / 1024 : 0.5;
+            const sourceWidth = Math.max(1, laserImage.naturalWidth - sourceCropLeft);
+            if (laserImage.complete && laserImage.naturalWidth) {
+                if (isBlueLaserImage) {
+                    ctx[1].rotate(Math.PI / 2);
+                    ctx[1].globalAlpha = alpha * 0.38;
+                    ctx[1].drawImage(
+                        laserImage,
+                        0,
+                        0,
+                        laserImage.naturalWidth,
+                        laserImage.naturalHeight,
+                        -visualHeight * 0.78,
+                        -visualLength,
+                        visualHeight * 1.56,
+                        visualLength,
+                    );
+                    ctx[1].globalAlpha = alpha * 0.92;
+                    ctx[1].drawImage(
+                        laserImage,
+                        0,
+                        0,
+                        laserImage.naturalWidth,
+                        laserImage.naturalHeight,
+                        -visualHeight * 0.5,
+                        -visualLength,
+                        visualHeight,
+                        visualLength,
+                    );
+                } else {
+                ctx[1].globalAlpha = alpha * 0.34;
+                ctx[1].drawImage(
+                    laserImage,
+                    sourceCropLeft,
+                    0,
+                    sourceWidth,
+                    laserImage.naturalHeight,
+                    0,
+                    -visualHeight * 1.56 * sourceAxisY,
+                    visualLength,
+                    visualHeight * 1.56,
+                );
+                ctx[1].globalAlpha = alpha * 0.82;
+                ctx[1].drawImage(
+                    laserImage,
+                    sourceCropLeft,
+                    0,
+                    sourceWidth,
+                    laserImage.naturalHeight,
+                    0,
+                    -visualHeight * sourceAxisY,
+                    visualLength,
+                    visualHeight,
+                );
+                }
+            } else {
+                const gradient = ctx[1].createLinearGradient(0, 0, visualLength, 0);
+                gradient.addColorStop(0, "rgba(255, 255, 255, 0.95)");
+                gradient.addColorStop(0.08, `rgba(${beamRgb}, 0.95)`);
+                gradient.addColorStop(1, `rgba(${beamRgb}, 0.72)`);
+                ctx[1].globalAlpha = alpha;
+                ctx[1].strokeStyle = gradient;
+                ctx[1].lineWidth = Math.max(4, width * ratio * 0.28);
+                ctx[1].beginPath();
+                ctx[1].moveTo(0, 0);
+                ctx[1].lineTo(visualLength, 0);
+                ctx[1].stroke();
+            }
+            ctx[1].restore();
+
+            const forwardX = Math.cos(angle);
+            const forwardY = Math.sin(angle);
+            const dx = playerX - beam.x;
+            const dy = playerY - beam.y;
+            const forward = Math.max(0, Math.min(length, dx * forwardX + dy * forwardY));
+            const closestX = beam.x + forwardX * forward;
+            const closestY = beam.y + forwardY * forward;
+            const distance = Math.hypot(playerX - closestX, playerY - closestY);
+            const light = Math.max(0, 1 - distance / 900) * alpha;
+            if (light <= 0.002) continue;
+            const lightX = global.screenWidth / 2 + ratio * closestX - px;
+            const lightY = global.screenHeight / 2 + ratio * closestY - py;
+            const radius = Math.max(180, 620 * ratio);
+            const glow = ctx[1].createRadialGradient(lightX, lightY, 0, lightX, lightY, radius);
+            glow.addColorStop(0, `rgba(255, 245, 255, ${(light * 0.31).toFixed(3)})`);
+            glow.addColorStop(0.22, `rgba(${beamRgb}, ${(light * 0.22).toFixed(3)})`);
+            glow.addColorStop(1, `rgba(${beamRgb}, 0)`);
+            ctx[1].save();
+            ctx[1].globalCompositeOperation = "screen";
+            ctx[1].fillStyle = glow;
+            ctx[1].fillRect(lightX - radius, lightY - radius, radius * 2, radius * 2);
+            ctx[1].restore();
+        }
     }
 
     function drawCraftrasDaylightOverlay() {
@@ -6879,6 +8430,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         drawCraftrasHotbar();
         drawCraftrasDebuffs();
         drawCraftrasInventory();
+        drawCraftrasRecipeUnlockNotification();
+        global.craftrasMessageBottom = 0;
         if (global.GUIStatus.renderGUI) {
             drawMessages(spacing, alcoveSize);
             if (global.GUIStatus.renderUpgrades) drawSkillBars(spacing, alcoveSize);
@@ -6896,10 +8449,85 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         global.metrics.lastrender = getNow();
     }
 
+    function drawCraftrasBossSkillBar() {
+        const form = global.craftrasBossForm;
+        const skillSets = {
+            world1_basic: [
+                { key: "Q", name: "DASH COMBO" },
+                { key: "R", name: "FRIEND STORM" },
+                { key: "T", name: "BLADE BURST" },
+            ],
+            world2_basic: [
+                { key: "Q", name: "NOW" },
+                { key: "R", name: "TRIPLE DASH" },
+                { key: "T", name: "FRIEND STORM" },
+                { key: "Y", name: "CHASE DASH" },
+            ],
+            jane: [
+                { key: "Q", name: "SAW RUSH" },
+                { key: "R", name: "SWORD PRISON" },
+                { key: "T", name: "CLONE CHARGE" },
+                { key: "Y", name: "PETAL LASER" },
+                { key: "U", name: "JUDGMENT LASER" },
+                { key: "I", name: "P2 SAW RUSH" },
+                { key: "O", name: "P2 PRISON" },
+                { key: "P", name: "P2 CLONE LASER" },
+            ],
+        };
+        const skills = skillSets[form.type] || skillSets.world1_basic;
+        const columns = Math.min(4, skills.length);
+        const rows = Math.ceil(skills.length / columns);
+        const slotWidth = Math.max(82, Math.min(138, (global.screenWidth - 40) / columns - 8));
+        const slotHeight = 46;
+        const gap = 6;
+        const totalWidth = slotWidth * columns + gap * (columns - 1);
+        const startX = Math.round((global.screenWidth - totalWidth) / 2);
+        const y = Math.round(global.screenHeight - rows * slotHeight - (rows - 1) * gap - 132);
+        const health = global.craftrasHealth ?? { amount: 3000, max: 3000 };
+        const healthRatio = Math.max(0, Math.min(1, health.amount / Math.max(1, health.max)));
+        const healthY = y - 24;
+
+        ctx[2].save();
+        ctx[2].fillStyle = "rgba(20, 24, 32, 0.9)";
+        ctx[2].fillRect(startX, healthY, totalWidth, 15);
+        ctx[2].fillStyle = "#e44343";
+        ctx[2].fillRect(startX + 2, healthY + 2, Math.max(0, (totalWidth - 4) * healthRatio), 11);
+        ctx[2].strokeStyle = "rgba(225, 235, 255, 0.9)";
+        ctx[2].lineWidth = 1.5;
+        ctx[2].strokeRect(startX, healthY, totalWidth, 15);
+        drawText(`${Math.ceil(health.amount)} / ${Math.ceil(health.max)}`, startX + totalWidth / 2, healthY + 7.5, 10, color.guiwhite, "center", true, 1, 1, ctx[2]);
+        drawText("M  CANCEL", startX + totalWidth, healthY - 9, 10, "#ff9dba", "right", true, 1, 1, ctx[2]);
+
+        const now = Date.now();
+        for (let index = 0; index < skills.length; index++) {
+            const column = index % columns;
+            const row = Math.floor(index / columns);
+            const x = startX + column * (slotWidth + gap);
+            const slotY = y + row * (slotHeight + gap);
+            const active = form.activeSkill === index;
+            const cooldownMs = Math.max(0, (form.cooldownEndsAt?.[index] || 0) - now);
+            const ready = cooldownMs <= 0 && form.activeSkill < 0;
+            ctx[2].fillStyle = active ? "rgba(52, 106, 171, 0.94)" : ready ? "rgba(34, 54, 72, 0.92)" : "rgba(28, 30, 36, 0.92)";
+            ctx[2].strokeStyle = active ? "#7ec8ff" : ready ? "#dceeff" : "#6f7782";
+            ctx[2].lineWidth = active ? 3 : 1.5;
+            ctx[2].fillRect(x, slotY, slotWidth, slotHeight);
+            ctx[2].strokeRect(x, slotY, slotWidth, slotHeight);
+            drawText(skills[index].key, x + 14, slotY + 13, 13, active ? "#ffffff" : "#8fd3ff", "center", true, 1, 1, ctx[2]);
+            drawText(skills[index].name, x + slotWidth / 2, slotY + 27, 10, color.guiwhite, "center", true, 1, 1, ctx[2]);
+            const state = active ? "ACTIVE" : cooldownMs > 0 ? `${Math.ceil(cooldownMs / 100) / 10}s` : "READY";
+            drawText(state, x + slotWidth - 8, slotY + 12, 10, active ? "#ffffff" : cooldownMs > 0 ? "#ffd45e" : "#79edaa", "right", true, 1, 1, ctx[2]);
+        }
+        ctx[2].restore();
+    }
+
     function drawCraftrasHotbar() {
         const hotbar = global.craftrasHotbar;
         const isCraftras = hotbar?.active || global.craftrasWorld?.active || /craftras/i.test(global.serverStats?.serverGamemodeName || "");
         if (!isCraftras || global.died || global.craftrasSpectator || global.disconnected) return;
+        if (global.craftrasBossForm?.active) {
+            drawCraftrasBossSkillBar();
+            return;
+        }
 
         const slotCount = 10;
         const gap = 4;
@@ -6915,6 +8543,24 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         const healthRatio = Math.max(0, Math.min(1, health.amount / Math.max(1, health.max)));
         const healthBarHeight = Math.max(12, Math.min(16, slotSize * 0.32));
         const healthBarY = Math.round(y - healthBarHeight - 10);
+        const selectedItem = hotbar.slots[hotbar.selected];
+        if (selectedItem?.id === "blue_laser_beam") {
+            const laser = global.craftrasBlueLaser || { gauge: 100, overheatedUntil: 0, firing: false };
+            const gauge = Math.max(0, Math.min(100, Number(laser.gauge) || 0));
+            const overheatedFor = Math.max(0, (laser.overheatedUntil || 0) - Date.now());
+            const gaugeY = healthBarY - 22;
+            ctx[2].fillStyle = "rgba(16, 25, 36, 0.92)";
+            ctx[2].fillRect(startX, gaugeY, totalWidth, 13);
+            ctx[2].fillStyle = overheatedFor > 0 ? "#ff4658" : laser.firing ? "#70e9ff" : "#478edb";
+            ctx[2].fillRect(startX + 2, gaugeY + 2, Math.max(0, (totalWidth - 4) * gauge / 100), 9);
+            ctx[2].strokeStyle = overheatedFor > 0 ? "#ff9da8" : "rgba(190, 235, 255, 0.9)";
+            ctx[2].lineWidth = 1.5;
+            ctx[2].strokeRect(startX, gaugeY, totalWidth, 13);
+            const laserLabel = overheatedFor > 0
+                ? `LASER OVERHEATED ${(overheatedFor / 1000).toFixed(1)}s`
+                : `LASER ${Math.round(gauge)}%`;
+            drawText(laserLabel, startX + totalWidth / 2, gaugeY + 6.5, 10, color.guiwhite, "center", true, 1, 1, ctx[2]);
+        }
         if (global.craftrasPlacement?.active && global.craftrasPlacement.adminLayerTools) {
             const floorMode = global.craftrasPlacement.mode === "floor";
             drawText(
@@ -6958,6 +8604,28 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             if (item?.count > 1) {
                 drawText(String(item.count), x + slotSize - 7, y + slotSize - 8, Math.max(9, slotSize * 0.22), color.guiwhite, "right", true, 1, 1, ctx[2]);
             }
+            if (selected && item?.id === "the_great_friend") {
+                const cooldownEndsAt = Number(global.craftrasFriendSkill?.cooldownEndsAt) || 0;
+                const cooldownMs = Math.max(0, cooldownEndsAt - Date.now());
+                const cooldownLabel = cooldownMs > 0
+                    ? `T ${Math.ceil(cooldownMs / 100) / 10}s`
+                    : "T READY";
+                const labelHeight = Math.max(13, slotSize * 0.28);
+                ctx[2].fillStyle = "rgba(8, 12, 18, 0.78)";
+                ctx[2].fillRect(x + 2, y + slotSize - labelHeight - 2, slotSize - 4, labelHeight);
+                drawText(
+                    cooldownLabel,
+                    x + slotSize / 2,
+                    y + slotSize - labelHeight / 2 - 2,
+                    Math.max(8, slotSize * 0.18),
+                    cooldownMs > 0 ? "#ffd45e" : "#6de5ff",
+                    "center",
+                    true,
+                    1,
+                    1,
+                    ctx[2],
+                );
+            }
         }
         const offhandX = Math.round(startX + totalWidth + gap * 2);
         const offhand = global.craftrasInventory?.offhand;
@@ -6989,6 +8657,68 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ctx[2].strokeRect(gaugeX, y, gaugeWidth, slotSize);
             drawText(`${Math.ceil(durability)}/${maxDurability}`, gaugeX + gaugeWidth + 4, y + slotSize / 2, Math.max(9, slotSize * 0.2), color.guiwhite, "left", true, 1, 1, ctx[2]);
         }
+        if (["parry_tool", "parry_tool_op", "magic_book"].includes(offhand?.id)) {
+            const parry = global.craftrasParry || {};
+            const reduction = Math.max(0, Math.min(100, Number(parry.reduction) || 0));
+            const counter = Math.max(0, Math.min(1000, Number(parry.counter) || 0));
+            const magicBook = global.craftrasMagicBook || {};
+            const gaugeWidth = Math.max(96, slotSize * 2.2);
+            const gaugeHeight = 10;
+            const gaugeX = Math.max(
+                8,
+                Math.min(global.screenWidth - gaugeWidth - 8, offhandX + slotSize + 12),
+            );
+            const drawGauge = (gaugeY, ratio, fill, label) => {
+                ctx[2].fillStyle = "rgba(24, 27, 32, 0.92)";
+                ctx[2].fillRect(gaugeX, gaugeY, gaugeWidth, gaugeHeight);
+                ctx[2].fillStyle = fill;
+                ctx[2].fillRect(gaugeX + 2, gaugeY + 2, Math.max(0, (gaugeWidth - 4) * ratio), gaugeHeight - 4);
+                ctx[2].strokeStyle = "rgba(225, 230, 238, 0.78)";
+                ctx[2].lineWidth = 1;
+                ctx[2].strokeRect(gaugeX, gaugeY, gaugeWidth, gaugeHeight);
+                drawText(label, gaugeX + gaugeWidth / 2, gaugeY + gaugeHeight / 2, 9, color.guiwhite, "center", true, 1, 1, ctx[2]);
+            };
+            drawGauge(
+                y - 30,
+                reduction / 100,
+                offhand.id === "parry_tool_op" ? `hsl(${Math.floor(Date.now() / 8) % 360} 85% 62%)` : "#63bfff",
+                offhand.id === "parry_tool_op" ? "AUTO PARRY" : `Parry ${Math.round(reduction)}%`,
+            );
+            if (offhand.id === "magic_book") {
+                const magic = Math.max(0, Math.min(5000, Number(magicBook.gauge) || 0));
+                drawGauge(
+                    y - 17,
+                    magic / 5000,
+                    magic >= 1500 ? "#d856ff" : "#8656db",
+                    `Magic ${Math.round(magic)}%`,
+                );
+                const now = Date.now();
+                const slashLeft = Math.max(0, (magicBook.slashCooldownUntil || 0) - now);
+                const barrageLeft = Math.max(0, (magicBook.barrageCooldownUntil || 0) - now);
+                const charge = Math.max(0, Math.min(100, Number(magicBook.charge) || 0));
+                const status = charge > 0
+                    ? `Charge ${Math.round(charge)}%`
+                    : `Slash ${slashLeft > 0 ? (slashLeft / 1000).toFixed(1) + "s" : "READY"}  R ${barrageLeft > 0 ? (barrageLeft / 1000).toFixed(1) + "s" : "READY"}`;
+                drawText(status, gaugeX + gaugeWidth / 2, y - 42, 9, "#f0d9ff", "center", true, 1, 1, ctx[2]);
+            } else {
+                drawGauge(y - 17, counter / 1000, counter >= 500 ? "#ffd84d" : "#8f78ff", `Counter ${Math.round(counter)}%`);
+            }
+        }
+        ctx[2].restore();
+    }
+
+    function drawCraftrasParryFlash() {
+        const parry = global.craftrasParry;
+        if (!parry?.flashStartedAt) return;
+        const duration = Math.max(1, parry.flashDuration || 200);
+        const progress = (Date.now() - parry.flashStartedAt) / duration;
+        if (progress >= 1) {
+            parry.flashStartedAt = 0;
+            return;
+        }
+        ctx[2].save();
+        ctx[2].fillStyle = `rgba(255, 255, 255, ${Math.max(0, 1 - progress).toFixed(3)})`;
+        ctx[2].fillRect(0, 0, global.screenWidth, global.screenHeight);
         ctx[2].restore();
     }
 
@@ -7011,12 +8741,15 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             const image = craftrasDebuffImages[debuff.id];
 
             ctx[2].fillStyle = "rgba(20, 22, 27, 0.86)";
-            const buffIds = new Set(["health_buff", "strength_buff"]);
+            const buffIds = new Set(["health_buff", "strength_buff", "health_buff_2", "strength_buff_2", "haste_buff_2", "world1_blessing"]);
             ctx[2].strokeStyle = debuff.id === "poison" ? "#70c95a" : buffIds.has(debuff.id) ? "#80dfff" : "#d94b4b";
             ctx[2].lineWidth = 2;
             ctx[2].fillRect(left, y, iconSize, iconSize);
             if (image?.complete && image.naturalWidth) {
+                ctx[2].save();
+                if (debuff.id === "world2_curse") ctx[2].filter = "brightness(0)";
                 ctx[2].drawImage(image, left + 2, y + 2, iconSize - 4, iconSize - 4);
+                ctx[2].restore();
             }
             ctx[2].strokeRect(left, y, iconSize, iconSize);
 
@@ -7029,9 +8762,27 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         }
 
         if (hovered) {
-            const width = 286;
-            const height = 84;
-            const x = Math.min(left + iconSize + 10, global.screenWidth - width - 10);
+            const width = Math.max(160, Math.min(320, global.screenWidth - 20));
+            const descriptionSize = 12;
+            const descriptionFontSize = descriptionSize + config.graphical.fontSizeBoost;
+            ctx[2].font = `bold ${descriptionFontSize}px Ubuntu`;
+            const descriptionLines = [];
+            let currentLine = "";
+            for (const word of String(hovered.description || "").split(/\s+/).filter(Boolean)) {
+                const candidate = currentLine ? `${currentLine} ${word}` : word;
+                if (!currentLine || ctx[2].measureText(candidate).width <= width - 24) {
+                    currentLine = candidate;
+                } else {
+                    descriptionLines.push(currentLine);
+                    currentLine = word;
+                }
+            }
+            if (currentLine) descriptionLines.push(currentLine);
+            if (!descriptionLines.length) descriptionLines.push("");
+            const descriptionLineHeight = 16;
+            const durationOffset = 49 + descriptionLines.length * descriptionLineHeight;
+            const height = durationOffset + 18;
+            const x = Math.max(10, Math.min(left + iconSize + 10, global.screenWidth - width - 10));
             const y = Math.max(10, Math.min(hoveredY, global.screenHeight - height - 10));
             ctx[2].fillStyle = "rgba(18, 20, 25, 0.94)";
             ctx[2].strokeStyle = "rgba(230, 234, 240, 0.72)";
@@ -7039,15 +8790,18 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ctx[2].fillRect(x, y, width, height);
             ctx[2].strokeRect(x, y, width, height);
             drawText(hovered.name, x + 12, y + 18, 15, color.guiwhite, "left", true, 1, 1, ctx[2]);
-            drawText(hovered.description, x + 12, y + 43, 12, "#d6d9df", "left", false, 1, 1, ctx[2]);
+            for (let index = 0; index < descriptionLines.length; index++) {
+                drawText(descriptionLines[index], x + 12, y + 43 + index * descriptionLineHeight, descriptionSize, "#d6d9df", "left", false, 1, 1, ctx[2]);
+            }
             const duration = hovered.remaining < 0 ? "Duration: Infinite" : `Time remaining: ${hovered.remaining}s`;
-            drawText(duration, x + 12, y + 66, 11, "#aeb5c0", "left", false, 1, 1, ctx[2]);
+            drawText(duration, x + 12, y + durationOffset, 11, "#aeb5c0", "left", false, 1, 1, ctx[2]);
         }
         ctx[2].restore();
     }
 
     function drawCraftrasInventoryItem(item, x, y, size) {
         if (!item) return;
+        registerCraftrasCustomTool(item);
         if (drawCraftrasToolIcon(ctx[2], item.id, x, y, size)) {
             // Tool rendered above.
         } else if (drawCraftrasMobHeadIcon(ctx[2], item.id, x, y, size)) {
@@ -7072,6 +8826,9 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ctx[2].save();
             if (craftrasFlatItemIds.has(item.id)) {
                 ctx[2].imageSmoothingEnabled = true;
+                if (item.id === "parry_tool_op") {
+                    ctx[2].filter = `hue-rotate(${Math.floor(Date.now() / 8) % 360}deg) saturate(2.6) brightness(1.2)`;
+                }
                 ctx[2].drawImage(craftrasItemImages[item.id], x + size * 0.08, y + size * 0.08, size * 0.84, size * 0.84);
                 ctx[2].restore();
             } else {
@@ -7145,6 +8902,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 gold_block: "#efc83c",
                 diamond_block: "#4bd7e8",
                 challenge_start_block: "#29d6b4",
+                world2_challenge_block: "#596dff",
                 challenge_spawn_block: "#73e67b",
                 transparent_block: "#419cff",
                 route_marker_block: "#258dff",
@@ -7154,6 +8912,11 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 queen_spider_summon_ticket: "#b06cff",
                 annihilator_summon_ticket: "#ff7048",
                 sword_guy_summon_ticket: "#f1f1f1",
+                bandage: "#d8cab2",
+                burnt_bone: "#5d4032",
+                fire_orb: "#ff532c",
+                fire_soul: "#ff6a1f",
+                worm_shell: "#8d5f3d",
             };
             const blockColor = itemColors[item.id] || "#d7dbe2";
             ctx[2].fillStyle = blockColor;
@@ -7174,7 +8937,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         }
     }
 
-    const craftrasRecipeBookRecipes = [
+    const craftrasRecipeBookFallbackRecipes = [
         {
             name: "Zombie Crown",
             note: "Blacksmith Lv 40",
@@ -7231,6 +8994,59 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             output: "bone_bomb",
             outputCount: 2,
         },
+        {
+            name: "Steel Rod",
+            note: "Crafting Table",
+            pattern: [
+                ["iron_ingot", "iron_ingot", "iron_ingot"],
+                ["iron_ingot", "stick", "iron_ingot"],
+                ["iron_ingot", "iron_ingot", "iron_ingot"],
+            ],
+            output: "steel_rod",
+        },
+        {
+            name: "Hardened Bone",
+            note: "Shapeless",
+            pattern: [
+                ["iron_block", "bone", null],
+                [null, null, null],
+                [null, null, null],
+            ],
+            output: "hardened_bone",
+        },
+        {
+            name: "Horn Sword",
+            note: "Blacksmith Lv 100",
+            unlock: "horn_sword",
+            pattern: [
+                [null, "horn", null],
+                [null, "horn", null],
+                [null, "steel_rod", null],
+            ],
+            output: "horn_sword",
+        },
+        {
+            name: "Sturdy Helmet",
+            note: "Blacksmith Lv 80",
+            unlock: "sturdy_helmet",
+            pattern: [
+                ["worm_shell", "worm_shell", "worm_shell"],
+                ["worm_shell", "iron_block", "worm_shell"],
+                [null, null, null],
+            ],
+            output: "sturdy_helmet",
+        },
+        {
+            name: "Zombie Wizard's Staff",
+            note: "Blacksmith Recipe",
+            unlock: "zombie_wizard_staff",
+            pattern: [
+                [null, "magic_crystal", null],
+                [null, "hardened_bone", null],
+                [null, "stick", null],
+            ],
+            output: "zombie_wizard_staff",
+        },
     ];
 
     function drawCraftrasRecipeIcon(itemId, x, y, size) {
@@ -7246,31 +9062,63 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         optionsMenu_drawRoundedRect(x, y, width, height, 7);
         ctx[2].fill();
         ctx[2].stroke();
-        drawText("Recipe Book", x + 14, y + 24, 19, "#ffd84d", "left", true, 1, 1, ctx[2]);
+        drawText("Recipe Book", x + 14, y + 23, 18, "#ffd84d", "left", true, 1, 1, ctx[2]);
+
+        const searchX = x + 10;
+        const searchY = y + 34;
+        const searchWidth = width - 20;
+        const searchHeight = 28;
+        ctx[2].fillStyle = global.craftrasRecipeSearchActive ? "rgba(58, 64, 73, 0.98)" : "rgba(38, 43, 51, 0.96)";
+        ctx[2].strokeStyle = global.craftrasRecipeSearchActive ? "#ffd84d" : "rgba(135, 145, 158, 0.75)";
+        ctx[2].lineWidth = 1.5;
+        optionsMenu_drawRoundedRect(searchX, searchY, searchWidth, searchHeight, 4);
+        ctx[2].fill();
+        ctx[2].stroke();
+        const searchText = String(global.craftrasRecipeSearch || "");
+        const caret = global.craftrasRecipeSearchActive && Math.floor(Date.now() / 500) % 2 ? "|" : "";
+        drawText(searchText ? `${searchText}${caret}` : "Search recipes...", searchX + 9, searchY + searchHeight / 2 + 1, 12, searchText ? color.guiwhite : "#8d97a4", "left", false, 1, 1, ctx[2]);
 
         const cardX = x + 10;
         const cardWidth = width - 20;
         const slotSize = 22;
         const slotGap = 3;
         const unlockedRecipes = Array.isArray(global.craftrasUnlockedRecipes) ? global.craftrasUnlockedRecipes : [];
-        const visibleRecipes = craftrasRecipeBookRecipes.filter(recipe => !recipe.unlock || unlockedRecipes.includes(recipe.unlock));
+        const sourceRecipes = Array.isArray(global.craftrasRecipeBookRecipes) && global.craftrasRecipeBookRecipes.length
+            ? global.craftrasRecipeBookRecipes
+            : craftrasRecipeBookFallbackRecipes;
+        const query = searchText.trim().toLowerCase();
+        const visibleRecipes = sourceRecipes.filter(recipe => !query || `${recipe.name || ""} ${recipe.output || ""} ${recipe.search || ""}`.toLowerCase().includes(query));
+        const cardHeight = 108;
+        const cardGap = 8;
+        const cardStartY = y + 70;
+        const visibleCount = Math.max(1, Math.floor((height - 78) / (cardHeight + cardGap)));
+        const maxScroll = Math.max(0, visibleRecipes.length - visibleCount);
+        global.craftrasRecipeVisibleCount = visibleCount;
+        global.craftrasRecipeMaxScroll = maxScroll;
+        global.craftrasRecipeScroll = Math.max(0, Math.min(maxScroll, Math.floor(Number(global.craftrasRecipeScroll) || 0)));
         if (!visibleRecipes.length) {
-            drawText("No unlocked recipes", x + width / 2, y + 95, 14, "#aeb6c2", "center", true, 1, 1, ctx[2]);
-            drawText("Use boss scrolls at the Blacksmith", x + width / 2, y + 118, 11, "#ffd84d", "center", false, 1, 1, ctx[2]);
+            drawText("No matching recipes", x + width / 2, y + 110, 14, "#aeb6c2", "center", true, 1, 1, ctx[2]);
             return;
         }
-        for (let recipeIndex = 0; recipeIndex < visibleRecipes.length; recipeIndex++) {
+        ctx[2].save();
+        ctx[2].beginPath();
+        ctx[2].rect(x + 2, cardStartY, width - 4, height - (cardStartY - y) - 5);
+        ctx[2].clip();
+        const firstRecipe = global.craftrasRecipeScroll;
+        const lastRecipe = Math.min(visibleRecipes.length, firstRecipe + visibleCount + 1);
+        for (let recipeIndex = firstRecipe; recipeIndex < lastRecipe; recipeIndex++) {
             ctx[2].save();
             const recipe = visibleRecipes[recipeIndex];
-            const cardY = y + 40 + recipeIndex * 126;
+            const cardY = cardStartY + (recipeIndex - firstRecipe) * (cardHeight + cardGap);
+            const locked = !!recipe.unlock && !unlockedRecipes.includes(recipe.unlock);
             ctx[2].fillStyle = "rgba(38, 43, 51, 0.96)";
-            ctx[2].strokeStyle = "rgba(135, 145, 158, 0.65)";
+            ctx[2].strokeStyle = locked ? "rgba(174, 96, 96, 0.8)" : "rgba(135, 145, 158, 0.65)";
             ctx[2].lineWidth = 1.25;
-            optionsMenu_drawRoundedRect(cardX, cardY, cardWidth, 116, 5);
+            optionsMenu_drawRoundedRect(cardX, cardY, cardWidth, cardHeight, 5);
             ctx[2].fill();
             ctx[2].stroke();
             drawText(recipe.name, cardX + 10, cardY + 20, 14, color.guiwhite, "left", true, 1, 1, ctx[2]);
-            if (recipe.note) drawText(recipe.note, cardX + cardWidth - 10, cardY + 20, 10, "#ffd84d", "right", true, 1, 1, ctx[2]);
+            drawText(locked ? `LOCKED - ${recipe.note || "Recipe"}` : recipe.note || "Crafting", cardX + cardWidth - 10, cardY + 20, 9, locked ? "#ff8d8d" : "#ffd84d", "right", true, 1, 1, ctx[2]);
 
             const gridX = cardX + 10;
             const gridY = cardY + 32;
@@ -7303,6 +9151,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             }
             ctx[2].restore();
         }
+        ctx[2].restore();
+        if (maxScroll > 0) drawText(`${firstRecipe + 1}-${Math.min(visibleRecipes.length, firstRecipe + visibleCount)} / ${visibleRecipes.length}`, x + width - 10, y + height - 8, 9, "#aeb6c2", "right", false, 1, 1, ctx[2]);
     }
 
     function drawCraftrasRecipeBookButton(x, y, width, height, open) {
@@ -7315,6 +9165,48 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         ctx[2].fill();
         ctx[2].stroke();
         drawText(open ? "Close" : "Recipes", x + width / 2, y + height / 2 + 1, 13, open ? "#ffd84d" : color.guiwhite, "center", true, 1, 1, ctx[2]);
+    }
+
+    function drawCraftrasRecipeUnlockNotification() {
+        const queue = global.craftrasRecipeUnlockQueue;
+        if (!Array.isArray(queue) || !queue.length || global.screenshotGuiHidden) return;
+        const entry = queue[0];
+        if (!entry.startedAt) entry.startedAt = Date.now();
+        const items = Array.isArray(entry.items) ? entry.items : [];
+        if (!items.length) {
+            queue.shift();
+            return;
+        }
+        const enterDuration = 320;
+        const holdDuration = items.length * 1000;
+        const exitDuration = 360;
+        const elapsed = Date.now() - entry.startedAt;
+        const totalDuration = enterDuration + holdDuration + exitDuration;
+        if (elapsed >= totalDuration) {
+            queue.shift();
+            return;
+        }
+        const panelWidth = 230;
+        const panelHeight = 106;
+        let slide = 0;
+        if (elapsed < enterDuration) slide = 1 - Math.min(1, elapsed / enterDuration);
+        else if (elapsed > enterDuration + holdDuration) slide = Math.min(1, (elapsed - enterDuration - holdDuration) / exitDuration);
+        const x = global.screenWidth - panelWidth - 18 + slide * (panelWidth + 30);
+        const y = Math.max(86, global.screenHeight * 0.2);
+        const itemIndex = Math.min(items.length - 1, Math.max(0, Math.floor((elapsed - enterDuration) / 1000)));
+        const item = items[itemIndex];
+        ctx[2].save();
+        ctx[2].fillStyle = "rgba(20, 25, 31, 0.96)";
+        ctx[2].strokeStyle = "#ffd84d";
+        ctx[2].lineWidth = 2;
+        optionsMenu_drawRoundedRect(x, y, panelWidth, panelHeight, 6);
+        ctx[2].fill();
+        ctx[2].stroke();
+        drawText("RECIPE UNLOCK", x + panelWidth / 2, y + 19, 16, "#ffd84d", "center", true, 1, 1, ctx[2]);
+        drawCraftrasInventoryItem({ ...item, count: 1 }, x + 18, y + 34, 54);
+        drawText(item.name || item.id, x + 82, y + 59, 14, color.guiwhite, "left", true, 1, 1, ctx[2]);
+        drawText(`${itemIndex + 1} / ${items.length}`, x + panelWidth - 12, y + 88, 10, "#aeb6c2", "right", false, 1, 1, ctx[2]);
+        ctx[2].restore();
     }
 
     function drawCraftrasCharacterPreview(centerX, centerY, radius, helmet) {
@@ -7330,13 +9222,26 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         ctx[2].translate(centerX, centerY);
         ctx[2].rotate(angle + Math.PI / 2);
         ctx[2].imageSmoothingEnabled = true;
-        const size = radius * (helmet?.id === "blesser_hat" ? 4.4 : helmet?.id === "cleric_hat" || helmet?.id === "pope_hat" ? 4.0 : helmet?.id === "merchant_hat" || helmet?.id === "monster_merchant_hat" ? 3.6 : 3.075);
+        const size = radius * (helmet?.id === "sturdy_helmet"
+            ? 3.382
+            : helmet?.id === "great_iron_helmet" || helmet?.id === "great_diamond_helmet"
+            ? 4.3
+            : helmet?.id === "ruby_helmet" || helmet?.id === "sapphire_helmet"
+            ? 6.15
+            : helmet?.id === "blesser_hat" ? 4.4
+            : helmet?.id === "cleric_hat" || helmet?.id === "pope_hat" ? 4.0
+            : helmet?.id === "jane_hat" ? 4.1
+            : helmet?.id === "merchant_hat" || helmet?.id === "monster_merchant_hat" ? 3.6 : 3.075);
         const helmetLift = helmet?.id === "cleric_hat"
             ? 0.38
             : helmet?.id === "pope_hat"
             ? 1.46
             : helmet?.id === "blesser_hat" ? 0.86
+            : helmet?.id === "jane_hat" ? 0.74
             : helmet?.id === "merchant_hat" || helmet?.id === "monster_merchant_hat" ? 0.74
+            : helmet?.id === "sturdy_helmet" ? 0.5
+            : helmet?.id === "great_iron_helmet" || helmet?.id === "great_diamond_helmet" ? 0.34
+            : helmet?.id === "ruby_helmet" || helmet?.id === "sapphire_helmet" ? 0.45
             : helmet?.id === "zombie_crown" ? 0.73 : 0.16;
         drawCraftrasHelmetImage(ctx[2], helmetImage, helmet?.id, -size / 2, -size / 2 - radius * helmetLift, size);
         ctx[2].restore();
@@ -7430,14 +9335,15 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
         drawCraftrasRecipeBookButton(recipeButtonX, recipeButtonY, recipeButtonWidth, recipeButtonHeight, recipeOpen);
         const crafting = global.craftrasCrafting;
         const blacksmith = global.craftrasBlacksmith ?? { open: false, slot: null, offer: null, playerLevel: 0 };
-        const cleric = global.craftrasCleric ?? { open: false, mode: "token", rebirths: 0, playerLevel: 0, levelCap: 100, canRebirth: false, nextLevelCap: 200, healthBonus: 0, requirements: [], slots: Array(4).fill(null), canToken: false };
+        const cleric = global.craftrasCleric ?? { open: false, mode: "token", rebirths: 0, playerLevel: 0, levelCap: 100, canRebirth: false, nextLevelCap: 0, healthBonus: 0, requirements: [], slots: Array(4).fill(null), canToken: false };
         const merchant = global.craftrasMerchant ?? { open: false, points: 0, refreshIn: 0, offers: [], sellSlot: null };
-        const blesser = global.craftrasBlesser ?? { open: false, points: 0, offers: [] };
+        const blesser = global.craftrasBlesser ?? { open: false, points: 0, offers: [], kind: "blesser" };
         const furnace = global.craftrasFurnace ?? { open: false, slots: [null, null, null], progress: 0 };
         const chest = global.craftrasChest ?? { open: false, slots: Array(27).fill(null) };
         const clericTitle = cleric.mode === "pope" ? "Pope" : "Cleric";
-        const merchantTitle = merchant.kind === "monster" ? "Monster Merchant" : "Merchant";
-        drawText(chest.open ? "Chest" : furnace.open ? "Furnace" : blesser.open ? "Blesser" : merchant.open ? merchantTitle : cleric.open ? clericTitle : blacksmith.open ? "Blacksmith" : crafting.mode === 3 ? "Crafting Table" : "Inventory", panelX + 18, panelY + 24, 20, color.guiwhite, "left", true, 1, 1, ctx[2]);
+        const merchantTitle = merchant.kind === "monster" ? "Monster Merchant" : merchant.kind === "miner" ? "Miner" : "Merchant";
+        const blesserTitle = blesser.kind === "healer" ? "Healer" : "Blesser";
+        drawText(chest.open ? "Chest" : furnace.open ? "Furnace" : blesser.open ? blesserTitle : merchant.open ? merchantTitle : cleric.open ? clericTitle : blacksmith.open ? "Blacksmith" : crafting.mode === 3 ? "Crafting Table" : "Inventory", panelX + 18, panelY + 24, 20, color.guiwhite, "left", true, 1, 1, ctx[2]);
         drawText("E / Esc", panelX + panelWidth - 18, panelY + 24, 11, "#aeb6c2", "right", false, 1, 1, ctx[2]);
 
         const startX = panelX + 18;
@@ -7541,8 +9447,8 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             } else {
                 const canRebirth = !!cleric.canRebirth;
                 drawText(`Rebirth ${cleric.rebirths}`, panelX + panelWidth / 2, panelY + 73, 20, "#dfe8ff", "center", true, 1, 1, ctx[2]);
-                drawText(`Level ${cleric.playerLevel} / ${cleric.levelCap}`, panelX + panelWidth / 2, panelY + 98, 15, canRebirth ? "#a9f08a" : "#f0c36d", "center", false, 1, 1, ctx[2]);
-                drawText(`Next cap ${cleric.nextLevelCap}   HP +${Math.round(cleric.healthBonus || 0)}`, panelX + panelWidth / 2, panelY + 118, 12, "#c8ced8", "center", false, 1, 1, ctx[2]);
+                drawText(`Level ${cleric.playerLevel}`, panelX + panelWidth / 2, panelY + 98, 15, canRebirth ? "#a9f08a" : "#f0c36d", "center", false, 1, 1, ctx[2]);
+                drawText(`Rebirth needs Level ${cleric.levelCap}   HP +${Math.round(cleric.healthBonus || 0)}`, panelX + panelWidth / 2, panelY + 118, 12, "#c8ced8", "center", false, 1, 1, ctx[2]);
                 const requirements = Array.isArray(cleric.requirements) ? cleric.requirements : [];
                 for (let index = 0; index < requirements.length; index++) {
                     const requirement = requirements[index];
@@ -7594,7 +9500,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             ctx[2].strokeRect(sellX, sellY, sellSize, sellSize);
             drawCraftrasInventoryItem(merchant.sellSlot, sellX, sellY, sellSize);
             if (!merchant.sellSlot) drawText("$", sellX + sellSize / 2 + 3, sellY + 23, 18, "#7f8996", "center", true, 1, 1, ctx[2]);
-            const sellLabel = merchant.kind === "monster" ? "Sell Loot" : "Sell Items";
+            const sellLabel = merchant.kind === "monster" ? "Sell Loot" : merchant.kind === "miner" ? "Sell Ores" : "Sell Items";
             if (global.mouse.x >= sellX && global.mouse.x <= sellX + sellSize && global.mouse.y >= sellY && global.mouse.y <= sellY + sellSize) hovered = merchant.sellSlot || { id: "merchant_sell", name: sellLabel };
             ctx[2].fillStyle = merchant.sellSlot ? "rgba(85, 94, 42, 0.95)" : "rgba(68, 52, 52, 0.95)";
             ctx[2].strokeStyle = merchant.sellSlot ? "#ffd84d" : "#d07070";
@@ -7875,6 +9781,22 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
 
 
     function drawOptionsMenu() {
+        if (global.craftrasWorld?.active) {
+            global.clickables?.optionsMenu?.switchButton?.hide?.();
+            global.optionsMenu_Anim.isOpened = false;
+            const economy = global.craftrasEconomy || { points: 0, tokens: 0, status: "Survival" };
+            const statusColors = {
+                Admin: "#4aa3ff",
+                Creative: "#ffd84d",
+                Spectator: "#b9a7ff",
+                Survival: "#ffffff",
+            };
+            const left = 20;
+            drawText(`Points ${util.formatLargeNumber(economy.points || 0)}`, left, 24, 22, "#ffd84d", "left", false, 1, 4);
+            drawText(`Token ${util.formatLargeNumber(economy.tokens || 0)}`, left, 52, 22, "#ffd84d", "left", false, 1, 4);
+            drawText(`Status ${economy.status || "Survival"}`, left, 78, 19, statusColors[economy.status] || "#ffffff", "left", false, 1, 4);
+            return;
+        }
         // Initialize tab offset for sliding animation and menu height animation
         if (!global.optionsMenu_Anim.tabOffset) {
             global.optionsMenu_Anim.tabOffset = Smoothbar(global.optionsMenu_Anim.activeTab || 0, 2, 3, 0.08, 0.025, true);
@@ -8427,12 +10349,21 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                 gameDrawDead();
             }
             drawCraftrasSpectatorUI();
+            if (!global.screenshotGuiHidden) drawCraftrasBossHealthBar();
             if (isNaN(global.time)) drawResyncScreen();
             if (global.disconnected) {
                 drawDisconnectedScreen();
             }
             if (global.dailyTankAd.renderUI) drawAdScreen();
             if (!global.screenshotGuiHidden) drawOptionsMenu(tick, 20, util.getScreenRatio());
+            drawCraftrasChallengeBlueParry();
+            drawCraftrasWorld2MagicWarning();
+            drawCraftrasSwordGuy2Parry();
+            drawCraftrasSwordGuy2Opening();
+            drawCraftrasSwordGuy2DashCountdown();
+            drawCraftrasJanePinkFlash();
+            drawCraftrasJaneSkillFourCountdown();
+            drawCraftrasParryFlash();
             drawCraftrasServerTransition();
             if (global.GUIStatus.fullHDMode) ctx[2].translate(-0.5, -0.5);
 

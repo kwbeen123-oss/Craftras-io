@@ -162,6 +162,50 @@ class gameServer {
             res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
             res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
             switch (req.url) {
+                case "/api/craftras/bring-player": {
+                    const remoteAddress = String(req.socket?.remoteAddress || "");
+                    const isLocalRequest = remoteAddress === "127.0.0.1"
+                        || remoteAddress === "::1"
+                        || remoteAddress === "::ffff:127.0.0.1";
+                    if (!isLocalRequest || req.method !== "POST") {
+                        res.writeHead(isLocalRequest ? 405 : 403, { "Content-Type": "application/json" });
+                        res.end(JSON.stringify({ ok: false, reason: isLocalRequest ? "method" : "forbidden" }));
+                        break;
+                    }
+                    let body = "";
+                    req.on("data", chunk => {
+                        body += chunk;
+                        if (body.length > 16_384) req.destroy();
+                    });
+                    req.on("end", () => {
+                        try {
+                            const parsed = JSON.parse(body || "{}");
+                            const normalize = value => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+                            const targetName = normalize(parsed.playerName);
+                            const targetSocket = socketManager.clients.find(client => (
+                                client?.player?.body && normalize(client.player.body.name) === targetName
+                            ));
+                            if (!targetSocket) {
+                                res.writeHead(404, { "Content-Type": "application/json" });
+                                res.end(JSON.stringify({ ok: false, reason: "not-found" }));
+                                return;
+                            }
+                            const apiDestination = String(parsed.apiDestination || "");
+                            const clientDestination = String(parsed.clientDestination || "");
+                            if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(apiDestination) || !clientDestination) {
+                                res.writeHead(400, { "Content-Type": "application/json" });
+                                res.end(JSON.stringify({ ok: false, reason: "destination" }));
+                                return;
+                            }
+                            socketManager.sendToServer(targetSocket, apiDestination, clientDestination);
+                            res.writeHead(200, { "Content-Type": "application/json" });
+                            res.end(JSON.stringify({ ok: true }));
+                        } catch (error) {
+                            res.writeHead(400, { "Content-Type": "application/json" });
+                            res.end(JSON.stringify({ ok: false, reason: "invalid-json" }));
+                        }
+                    });
+                } break;
                 case "/api/sendPlayer": {
                     let body = "";
                     req.on("data", c => body += c);
@@ -172,8 +216,8 @@ class gameServer {
                     } catch { }
                         if (json) {
                             if (json.key === process.env.API_KEY) {
-                                let { id, name, definition, score, level, skillcap, skill, points, killCount } = json;
-                                global.travellingPlayers.push({ id, name, definition, score, level, skillcap, skill, points, killCount });
+                                let { id, name, definition, score, level, skillcap, skill, points, killCount, craftrasEconomy } = json;
+                                global.travellingPlayers.push({ id, name, definition, score, level, skillcap, skill, points, killCount, craftrasEconomy });
                                 res.writeHead(200);
                                 res.end("OK");
                             } else {
@@ -225,7 +269,7 @@ class gameServer {
             // Send the info to the main server so the client can get the info. (in a expensive way)
             for (let i = 0; i < global.servers.length; i++) {
                 let server = global.servers[i];
-                if (server.loadedViaMainServer) global.servers[i] = this.getInfo(true);
+                if (server?.loadedViaMainServer) global.servers[i] = this.getInfo(true);
             }
             console.log(global.servers.length == 1 ? "Your game server has successfully started." : "Game server " + this.name + " successfully booted up via main server (port " + this.port + ")");
             onServerLoaded();

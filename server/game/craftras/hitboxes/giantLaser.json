@@ -1,0 +1,32 @@
+{
+  "format": "craftras-hitbox-runtime",
+  "version": 1,
+  "sourceImage": {
+    "name": "giant-laser.png",
+    "width": 1536,
+    "height": 1024,
+    "sha256": "c7caf05058efc2a7847bab5305bac7532b5fd04d38dfa7d9d60ffe629b52ef3e"
+  },
+  "render": {
+    "anchorX": 0,
+    "anchorY": 0.4560546875,
+    "heightMultiplier": 1.72,
+    "cropLeft": 26.083
+  },
+  "polygons": [
+    {
+      "id": "hitbox-1",
+      "name": "Hitbox 1",
+      "points": [
+        [26.083, 470.138],
+        [167.769, 392.855],
+        [201.258, 426.345],
+        [1455.819, 435.361],
+        [1536, 468.85],
+        [1453.243, 499.764],
+        [206.41, 507.492],
+        [171.633, 542.269]
+      ]
+    }
+  ]
+}

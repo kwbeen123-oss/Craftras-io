@@ -2,6 +2,7 @@ const configuredPort = Number(process.env.PORT);
 const primaryPort = Number.isInteger(configuredPort) && configuredPort > 0 ? configuredPort : 3000;
 const primaryHost = process.env.PUBLIC_HOST || `localhost:${primaryPort}`;
 const hostedMode = process.env.HOSTED_MODE === 'true';
+const builderServersEnabled = process.env.ENABLE_BUILDER_SERVERS === 'true';
 
 module.exports = {
     // Open Source Arras
@@ -36,6 +37,7 @@ module.exports = {
             host: 'localhost:3001',
             port: 3001,
             id: 'village',
+            builderServer: true,
             region: "Village Builder",
             gamemode: ['craftras_village'],
             player_cap: 20,
@@ -50,6 +52,7 @@ module.exports = {
             host: 'localhost:3002',
             port: 3002,
             id: 'steel-torch',
+            builderServer: true,
             region: "Steel Torch Builder",
             gamemode: ['craftras_steel_torch'],
             player_cap: 20,
@@ -64,6 +67,7 @@ module.exports = {
             host: 'localhost:3003',
             port: 3003,
             id: 'broken-kingdom',
+            builderServer: true,
             region: "Broken Kingdom Builder",
             gamemode: ['craftras_broken_kingdom'],
             player_cap: 20,
@@ -78,7 +82,8 @@ module.exports = {
             host: 'localhost:3004',
             port: 3004,
             id: 'cave-builder',
-            region: "Cave Builder",
+            builderServer: true,
+            region: "World Terrain Builder",
             gamemode: ['craftras_cave_builder'],
             player_cap: 20,
             featured: false,
@@ -92,6 +97,7 @@ module.exports = {
             host: 'localhost:3005',
             port: 3005,
             id: 'intact-kingdom',
+            builderServer: true,
             region: "Intact Kingdom Builder",
             gamemode: ['craftras_intact_kingdom'],
             player_cap: 20,
@@ -115,7 +121,37 @@ module.exports = {
             private: false,
             properties: {}
         },
-    ].filter(server => !hostedMode || server.id === 'server1'),
+        {
+            share_client_server: false,
+            host: 'localhost:3007',
+            port: 3007,
+            id: 'world2-village',
+            builderServer: true,
+            region: "World 2 Village Builder",
+            gamemode: ['craftras_world2_village'],
+            player_cap: 20,
+            featured: false,
+            hidden: true,
+            unlisted: true,
+            private: false,
+            properties: {}
+        },
+        {
+            share_client_server: false,
+            host: 'localhost:3008',
+            port: 3008,
+            id: 'world2-challenge',
+            region: "World 2 Challenge",
+            gamemode: ['craftras_world2_challenge'],
+            player_cap: 20,
+            featured: false,
+            hidden: true,
+            unlisted: true,
+            private: false,
+            properties: {}
+        },
+    ].filter(server => (!server.builderServer || builderServersEnabled)
+        && (!hostedMode || server.id === 'server1')),
 
     // Web Server
     allow_ACAO: false, // Access-Control-Allow-Origin, allows any server/client to access data from the WebServer.

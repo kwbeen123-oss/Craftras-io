@@ -47,6 +47,8 @@ console.log(`Created on date ${GLOBAL.creationDate} at timestamp ${GLOBAL.creati
 const publicRoot = path.join(__dirname, "../public/"),
 CraftrasSteelTorchMapFile = path.join(__dirname, "game/craftras/steelTorchMap.json"),
 CraftrasManualCavesFile = path.join(__dirname, "game/craftras/manualCaves.json"),
+CraftrasCustomItemsDir = path.join(__dirname, "../Craftras Item"),
+CraftrasCustomItemImagesDir = path.join(publicRoot, "img/custom-items"),
 mimeSet = {
     js: "application/javascript",
     json: "application/json",
@@ -54,8 +56,210 @@ mimeSet = {
     html: "text/html",
     md: "text/markdown",
     png: "image/png",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    webp: "image/webp",
     svg: "image/svg+xml",
+    gif: "image/gif",
+    bmp: "image/bmp",
+    avif: "image/avif",
 };
+
+const isLocalEditorRequest = req => {
+    const address = String(req.socket?.remoteAddress || "").toLowerCase();
+    const host = String(req.headers.host || "").split(":")[0].replace(/^\[|\]$/g, "").toLowerCase();
+    return (address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1")
+        && (host === "localhost" || host === "127.0.0.1" || host === "::1");
+};
+
+const clampCustomNumber = (value, fallback, min, max) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+};
+
+function sanitizeCustomItemProject(project) {
+    if (project?.format !== "craftras-item" || ![1, 2].includes(Number(project.version))) throw new Error("Unsupported item project.");
+    const item = project.item || {};
+    const id = String(item.id || "").trim().toLowerCase();
+    if (!/^[a-z0-9_]{2,48}$/.test(id)) throw new Error("Item ID must use 2-48 lowercase letters, numbers, or underscores.");
+    const weapon = project.weapon || {};
+    const fallbackLayer = {
+        id: "main", name: "Main weapon", primary: true, priority: 0,
+        image: project.image || project.hitbox?.image,
+        anchor: project.hitbox?.runtime?.anchor || { x: 0.5, y: 0.5 },
+        polygons: project.hitbox?.runtime?.polygons || [], damageEnabled: true,
+    };
+    const sourceLayers = Array.isArray(project.layers) && project.layers.length ? project.layers : [fallbackLayer];
+    const seenLayerIds = new Set();
+    let totalImageBytes = 0;
+    const layers = sourceLayers.slice(0, 12).map((source, layerIndex) => {
+        const primary = !!source.primary || layerIndex === 0;
+        let layerId = primary ? "main" : String(source.id || `layer_${layerIndex}`).trim().toLowerCase();
+        layerId = layerId.replace(/[^a-z0-9_]/g, "_").slice(0, 40) || `layer_${layerIndex}`;
+        while (seenLayerIds.has(layerId)) layerId = `${layerId}_${layerIndex}`.slice(0, 40);
+        seenLayerIds.add(layerId);
+        const imageDataUrl = String(source.image?.dataUrl || (primary ? project.image?.dataUrl : "") || "");
+        const imageMatch = /^data:(image\/(?:png|jpeg|webp));base64,([a-z0-9+/=]+)$/i.exec(imageDataUrl);
+        if (!imageMatch) throw new Error(`Layer ${layerIndex + 1} must contain a PNG, JPG, or WEBP image.`);
+        const mimeType = imageMatch[1].toLowerCase();
+        const extension = mimeType === "image/jpeg" ? "jpg" : mimeType.split("/")[1];
+        const imageBuffer = Buffer.from(imageMatch[2], "base64");
+        if (!imageBuffer.length || imageBuffer.length > 12_000_000) throw new Error(`Layer ${layerIndex + 1} image is empty or larger than 12 MB.`);
+        totalImageBytes += imageBuffer.length;
+        const polygons = (source.polygons || []).slice(0, 32).map((polygon, polygonIndex) => ({
+            id: String(polygon.id || `${layerId}-hitbox-${polygonIndex + 1}`).slice(0, 64),
+            name: String(polygon.name || `Hitbox ${polygonIndex + 1}`).slice(0, 64),
+            points: (polygon.points || []).slice(0, 64).map(point => [
+                clampCustomNumber(point?.[0], 0, -20, 20),
+                clampCustomNumber(point?.[1], 0, -20, 20),
+            ]),
+        })).filter(polygon => polygon.points.length >= 3);
+        return {
+            id: layerId,
+            name: String(source.name || `Layer ${layerIndex + 1}`).slice(0, 64),
+            primary,
+            priority: clampCustomNumber(source.priority, layerIndex, -100, 100),
+            scale: clampCustomNumber(source.scale, 1, 0.05, 20),
+            offsetX: clampCustomNumber(source.offsetX, 0, -50, 50),
+            offsetY: clampCustomNumber(source.offsetY, 0, -50, 50),
+            rotation: clampCustomNumber(source.rotation, 0, -1080, 1080),
+            flipX: !!source.flipX,
+            anchorMode: source.anchorMode === "body" ? "body" : source.anchorMode === "main" && !primary ? "main" : "weapon",
+            anchorModeExplicit: !!source.anchorModeExplicit,
+            opacity: clampCustomNumber(source.opacity, 1, 0, 1),
+            anchor: {
+                x: clampCustomNumber(source.anchor?.x, 0.5, 0, 1),
+                y: clampCustomNumber(source.anchor?.y, 0.5, 0, 1),
+            },
+            damageEnabled: source.damageEnabled !== false,
+            polygons,
+            image: `./img/custom-items/${id}-${layerId}.${extension}`,
+            imageSize: {
+                width: clampCustomNumber(source.image?.width, 1, 1, 16384),
+                height: clampCustomNumber(source.image?.height, 1, 1, 16384),
+            },
+            imageBuffer,
+            extension,
+        };
+    });
+    if (totalImageBytes > 48_000_000) throw new Error("All layer images together must be smaller than 48 MB.");
+    if (!layers.some(layer => layer.damageEnabled && layer.polygons.length)) {
+        throw new Error("At least one damage-enabled layer needs a hitbox polygon.");
+    }
+    const validLayerIds = new Set(layers.map(layer => layer.id));
+    const animation = project.animation || {};
+    const sanitizeKeyframes = source => (source || []).slice(0, 64).map(frame => {
+        const layerMotions = {};
+        for (const [layerId, motion] of Object.entries(frame.layers || {})) {
+            if (!validLayerIds.has(layerId)) continue;
+            layerMotions[layerId] = {
+                angle: clampCustomNumber(motion?.angle, 0, -1080, 1080),
+                x: clampCustomNumber(motion?.x, 0, -50, 50),
+                y: clampCustomNumber(motion?.y, 0, -50, 50),
+                scale: clampCustomNumber(motion?.scale, 1, 0.05, 20),
+            };
+        }
+        return {
+            time: clampCustomNumber(frame.time, 0, 0, 1),
+            angle: clampCustomNumber(frame.angle, -45, -1080, 1080),
+            gripAngle: clampCustomNumber(frame.gripAngle, 0, -1080, 1080),
+            gripOffset: clampCustomNumber(frame.gripOffset, 10, -100, 100),
+            size: clampCustomNumber(frame.size, 20, 1, 200),
+            layers: layerMotions,
+        };
+    }).sort((a, b) => a.time - b.time);
+    const legacyKeyframes = sanitizeKeyframes(animation.keyframes);
+    const comboSource = Array.isArray(animation.combo?.attacks) ? animation.combo.attacks.slice(0, 100) : [];
+    const comboAttacks = [];
+    for (const source of comboSource) {
+        const keyframes = sanitizeKeyframes(source?.keyframes);
+        const type = source?.type === "sheathe" ? "sheathe" : "slash";
+        if (keyframes.length < 2) continue;
+        comboAttacks.push({
+            type,
+            duration: clampCustomNumber(source?.duration ?? animation.duration, 700, 80, 10000),
+            cooldown: source?.cooldown === undefined || source?.cooldown === null || source?.cooldown === ""
+                ? 0
+                : clampCustomNumber(source.cooldown, 0, 0, 60000),
+            dash: !!source?.dash,
+            dashDistance: clampCustomNumber(source?.dashDistance, 3, 1, 20),
+            damage: source?.damage === undefined || source?.damage === null || source?.damage === ""
+                ? null
+                : clampCustomNumber(source.damage, 0, 0, 1e15),
+            anchorMode: ["body", "main"].includes(source?.anchorMode) ? source.anchorMode : "weapon",
+            screenCut: type !== "sheathe" && !!source?.screenCut,
+            keyframes,
+        });
+        // A sheath animation explicitly closes the combo; do not accept trailing attacks.
+        if (type === "sheathe") break;
+    }
+    const validActionKeys = new Set(["z", "x", "c", "v", "b", "n", "m"]);
+    const specialActions = [];
+    for (const source of (Array.isArray(animation.combo?.specialActions) ? animation.combo.specialActions : []).slice(0, 2)) {
+        const key = String(source?.key || "").toLowerCase();
+        const keyframes = sanitizeKeyframes(source?.keyframes);
+        if (!validActionKeys.has(key) || specialActions.some(action => action.key === key) || keyframes.length < 2) continue;
+        specialActions.push({
+            type: "emote",
+            key,
+            name: String(source?.name || `Special ${key.toUpperCase()}`).slice(0, 40),
+            duration: clampCustomNumber(source?.duration, 900, 80, 10000),
+            cooldown: clampCustomNumber(source?.cooldown, 0, 0, 60000),
+            anchorMode: ["body", "main"].includes(source?.anchorMode) ? source.anchorMode : "weapon",
+            keyframes,
+        });
+    }
+    const keyframes = comboAttacks[0]?.keyframes || legacyKeyframes;
+    if (keyframes.length < 2) throw new Error("Create at least two animation keyframes.");
+    const trail = weapon.trail || {};
+    const storedLayers = layers.map(layer => {
+        const stored = { ...layer };
+        delete stored.imageBuffer;
+        delete stored.extension;
+        return stored;
+    });
+    const primaryLayer = storedLayers.find(layer => layer.primary) || storedLayers[0];
+    return {
+        id,
+        name: String(item.name || id).trim().slice(0, 64),
+        description: String(item.description || "Custom Craftras weapon.").trim().slice(0, 240),
+        damage: clampCustomNumber(item.damage, 20, 0, 1e15),
+        image: primaryLayer.image,
+        layerFiles: layers.map(layer => ({
+            id: layer.id,
+            path: layer.image,
+            imageBuffer: layer.imageBuffer,
+            extension: layer.extension,
+        })),
+        weapon: {
+            renderScale: clampCustomNumber(weapon.renderScale, 3.25, 0.2, 20),
+            rotationOffset: clampCustomNumber(weapon.rotationOffset, -45, -1080, 1080),
+            attackDuration: comboAttacks[0]?.duration
+                ?? clampCustomNumber(animation.duration ?? weapon.attackDuration, 700, 80, 10000),
+            hitStart: clampCustomNumber(weapon.hitStart, 0.2, 0, 1),
+            hitEnd: clampCustomNumber(weapon.hitEnd, 0.7, 0, 1),
+            anchor: primaryLayer.anchor,
+            imageSize: primaryLayer.imageSize,
+            polygons: primaryLayer.polygons,
+            layers: storedLayers,
+            keyframes,
+            combo: comboAttacks.length ? {
+                resetMs: clampCustomNumber(animation.combo?.resetMs, 850, 150, 5000),
+                attacks: comboAttacks,
+            } : null,
+            specialActions,
+            trail: {
+                enabled: !!trail.enabled,
+                color: /^#[0-9a-f]{6}$/i.test(trail.color || "") ? trail.color : "#ff4fb8",
+                opacity: clampCustomNumber(trail.opacity, 0.55, 0, 1),
+                size: clampCustomNumber(trail.size, 1, 0.1, 8),
+                duration: clampCustomNumber(trail.duration, 300, 30, 3000),
+                interval: clampCustomNumber(trail.interval, 40, 16, 1000),
+            },
+            damageWalls: weapon.damageWalls !== false,
+        },
+    };
+}
 
 function staticHeaders(extension) {
     const headers = { "Content-Type": mimeSet[extension] || "text/html" };
@@ -65,6 +269,36 @@ function staticHeaders(extension) {
         headers.Expires = "0";
     }
     return headers;
+}
+
+const CraftrasImageExtensions = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".avif"]);
+
+function getCraftrasAssetManifest() {
+    const imageRoot = path.join(publicRoot, "img");
+    const assets = [];
+    const visit = directory => {
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+            const absolutePath = path.join(directory, entry.name);
+            if (entry.isDirectory()) {
+                visit(absolutePath);
+                continue;
+            }
+            if (!entry.isFile() || !CraftrasImageExtensions.has(path.extname(entry.name).toLowerCase())) continue;
+            const stat = fs.statSync(absolutePath);
+            const relativePath = path.relative(publicRoot, absolutePath);
+            const url = "/" + relativePath.split(path.sep).map(encodeURIComponent).join("/");
+            assets.push({ url, bytes: stat.size, modified: Math.trunc(stat.mtimeMs) });
+        }
+    };
+    visit(imageRoot);
+    assets.sort((a, b) => a.url.localeCompare(b.url));
+    const revisionSource = assets.map(asset => `${asset.url}:${asset.bytes}:${asset.modified}`).join("|");
+    return {
+        revision: crypto.createHash("sha1").update(revisionSource).digest("hex").slice(0, 16),
+        count: assets.length,
+        totalBytes: assets.reduce((total, asset) => total + asset.bytes, 0),
+        assets,
+    };
 }
 
 let wsServer; // WebSocket server instance
@@ -148,10 +382,14 @@ global.createCraftrasChallengeInstance = async metadata => {
         throw new Error("All private challenge slots are currently in use.");
     }
     const suffix = crypto.randomBytes(5).toString("hex");
-    const id = `world1-challenge-${Date.now().toString(36)}-${suffix}`;
+    const challengeWorld = Number(metadata?.challengeWorld) === 2 ? 2 : 1;
+    const challengeConfig = challengeWorld === 2 ? "craftras_world2_challenge" : "craftras_world1_challenge";
+    const challengeTitle = `World ${challengeWorld} Challenge`;
+    const id = `world${challengeWorld}-challenge-${Date.now().toString(36)}-${suffix}`;
     const instance = {
         id,
         port,
+        challengeWorld,
         players: 0,
         hadPlayers: false,
         closed: false,
@@ -166,14 +404,15 @@ global.createCraftrasChallengeInstance = async metadata => {
             false,
             "localhost",
             port,
-            ["craftras_world1_challenge"],
-            `World 1 Challenge - ${instance.teamName}`,
+            [challengeConfig],
+            `${challengeTitle} - ${instance.teamName}`,
             { id, maxPlayers: Math.max(8, instance.memberCount) },
             {
                 hidden: true,
                 unlisted: true,
                 private: true,
                 craftras_challenge_instance: true,
+                craftras_challenge_world: challengeWorld,
                 craftras_challenge_instance_id: id,
                 craftras_challenge_team_name: instance.teamName,
             },
@@ -201,7 +440,7 @@ global.createCraftrasChallengeInstance = async metadata => {
             if (!instance.hadPlayers) disposeChallengeInstance(instance, "unused reservation");
         }, CRAFTRAS_CHALLENGE_RESERVATION_TTL);
         instance.reservationTimer.unref?.();
-        console.log(`[Craftras Challenge] Instance ${id} ready on port ${port} for ${instance.teamName} (${instance.memberCount} player(s)).`);
+        console.log(`[Craftras Challenge] ${challengeTitle} instance ${id} ready on port ${port} for ${instance.teamName} (${instance.memberCount} player(s)).`);
         return {
             id,
             port,
@@ -277,6 +516,124 @@ server = http.createServer((req, res) => {
             });
             readString = JSON.stringify(countPlayers);
         } break;
+        case "/api/craftras/player-location": {
+            ok = false;
+            const remoteAddress = String(req.socket?.remoteAddress || "");
+            const isLocalRequest = remoteAddress === "127.0.0.1"
+                || remoteAddress === "::1"
+                || remoteAddress === "::ffff:127.0.0.1";
+            if (!isLocalRequest) {
+                res.writeHead(403, staticHeaders("json"));
+                res.end(JSON.stringify({ ok: false, reason: "forbidden" }));
+                break;
+            }
+            const normalize = value => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+            let requestedName = "";
+            try {
+                requestedName = decodeURIComponent(String(query.name || "").replace(/\+/g, " ")).trim();
+            } catch {
+                requestedName = String(query.name || "").trim();
+            }
+            const requestedNormalized = normalize(requestedName);
+            if (!requestedNormalized) {
+                res.writeHead(400, staticHeaders("json"));
+                res.end(JSON.stringify({ ok: false, reason: "missing-name" }));
+                break;
+            }
+            const candidates = [];
+            for (const serverInfo of global.servers || []) {
+                if (!serverInfo?.id) continue;
+                for (const playerName of Array.isArray(serverInfo.playerNames) ? serverInfo.playerNames : []) {
+                    const normalizedName = normalize(playerName);
+                    if (!normalizedName || !normalizedName.includes(requestedNormalized)) continue;
+                    candidates.push({
+                        serverInfo,
+                        playerName,
+                        exact: normalizedName === requestedNormalized,
+                    });
+                }
+            }
+            const exactMatches = candidates.filter(candidate => candidate.exact);
+            const matches = exactMatches.length ? exactMatches : candidates;
+            if (matches.length !== 1) {
+                res.writeHead(200, staticHeaders("json"));
+                res.end(JSON.stringify({
+                    ok: false,
+                    reason: matches.length ? "ambiguous" : "not-found",
+                    matches: matches.slice(0, 8).map(candidate => candidate.playerName),
+                }));
+                break;
+            }
+            const match = matches[0];
+            const configuredServer = (Config.servers || []).find(entry => entry.id === match.serverInfo.id);
+            const challengeInstance = challengeInstances.get(match.serverInfo.id);
+            const port = Number(match.serverInfo.port || configuredServer?.port);
+            const apiDestination = Number.isFinite(port)
+                ? `http://127.0.0.1:${port}`
+                : `http://${match.serverInfo.ip}`;
+            const clientDestination = challengeInstance
+                ? `/challenge-instance/${match.serverInfo.id}`
+                : configuredServer?.id === "server1"
+                    ? `http://${configuredServer.host}`
+                    : configuredServer
+                        ? `/server/${configuredServer.id}`
+                        : `http://${match.serverInfo.ip}`;
+            res.writeHead(200, staticHeaders("json"));
+            res.end(JSON.stringify({
+                ok: true,
+                playerName: match.playerName,
+                serverId: match.serverInfo.id,
+                region: match.serverInfo.region || match.serverInfo.id,
+                apiDestination,
+                clientDestination,
+            }));
+        } break;
+        case "/api/craftras/bring-player": {
+            ok = false;
+            const remoteAddress = String(req.socket?.remoteAddress || "");
+            const isLocalRequest = remoteAddress === "127.0.0.1"
+                || remoteAddress === "::1"
+                || remoteAddress === "::ffff:127.0.0.1";
+            if (!isLocalRequest || req.method !== "POST") {
+                res.writeHead(isLocalRequest ? 405 : 403, staticHeaders("json"));
+                res.end(JSON.stringify({ ok: false, reason: isLocalRequest ? "method" : "forbidden" }));
+                break;
+            }
+            let body = "";
+            req.on("data", chunk => {
+                body += chunk;
+                if (body.length > 16_384) req.destroy();
+            });
+            req.on("end", () => {
+                try {
+                    const parsed = JSON.parse(body || "{}");
+                    const normalize = value => String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+                    const targetName = normalize(parsed.playerName);
+                    const localGameManager = (global.servers || []).find(serverInfo => serverInfo?.gameManager)?.gameManager;
+                    const targetSocket = (localGameManager?.clients || []).find(client => (
+                        client?.player?.body && normalize(client.player.body.name) === targetName
+                    ));
+                    if (!targetSocket) {
+                        res.writeHead(404, staticHeaders("json"));
+                        res.end(JSON.stringify({ ok: false, reason: "not-found" }));
+                        return;
+                    }
+                    const apiDestination = String(parsed.apiDestination || "");
+                    const clientDestination = String(parsed.clientDestination || "");
+                    if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(apiDestination) || !clientDestination) {
+                        res.writeHead(400, staticHeaders("json"));
+                        res.end(JSON.stringify({ ok: false, reason: "destination" }));
+                        return;
+                    }
+                    localGameManager.socketManager.sendToServer(targetSocket, apiDestination, clientDestination);
+                    res.writeHead(200, staticHeaders("json"));
+                    res.end(JSON.stringify({ ok: true }));
+                } catch (error) {
+                    res.writeHead(400, staticHeaders("json"));
+                    res.end(JSON.stringify({ ok: false, reason: "invalid-json" }));
+                }
+            });
+        } break;
         case "/version": {
             readString = JSON.stringify({ver: 'v' + pjson.version, devBuild: Config.devBuild});
         } break;
@@ -290,6 +647,20 @@ server = http.createServer((req, res) => {
             readString = JSON.stringify(global.addonAuthorInfos);
         } break;
 
+        case "/api/craftras/assets": {
+            ok = false;
+            try {
+                res.writeHead(200, {
+                    ...staticHeaders("json"),
+                    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+                });
+                res.end(JSON.stringify(getCraftrasAssetManifest()));
+            } catch (error) {
+                res.writeHead(500, staticHeaders("json"));
+                res.end(JSON.stringify({ error: error.message }));
+            }
+        } break;
+
         case "/api/sendPlayer": {
             ok = false;
             let body = "";
@@ -301,8 +672,8 @@ server = http.createServer((req, res) => {
               } catch { }
                   if (json) {
                       if (json.key === process.env.API_KEY) {
-                            let { id, name, definition, score, level, skillcap, skill, points, killCount } = json;
-                            global.travellingPlayers.push({ id, name, definition, score, level, skillcap, skill, points, killCount });
+                            let { id, name, definition, score, level, skillcap, skill, points, killCount, craftrasEconomy } = json;
+                            global.travellingPlayers.push({ id, name, definition, score, level, skillcap, skill, points, killCount, craftrasEconomy });
                             res.writeHead(200);
                             res.end("OK");
                         } else {
@@ -379,6 +750,73 @@ server = http.createServer((req, res) => {
                     fs.renameSync(temporaryFile, CraftrasSteelTorchMapFile);
                     res.writeHead(200, staticHeaders("json"));
                     res.end(JSON.stringify({ ok: true, count: torches.length }));
+                } catch (error) {
+                    res.writeHead(400, staticHeaders("json"));
+                    res.end(JSON.stringify({ ok: false, error: error.message }));
+                }
+            });
+        } break;
+        case "/api/craftras/custom-items": {
+            ok = false;
+            if (!isLocalEditorRequest(req)) {
+                res.writeHead(403, staticHeaders("json"));
+                res.end(JSON.stringify({ ok: false, error: "Custom items can only be installed from this PC." }));
+                break;
+            }
+            if (req.method === "GET") {
+                fs.mkdirSync(CraftrasCustomItemsDir, { recursive: true });
+                const items = fs.readdirSync(CraftrasCustomItemsDir)
+                    .filter(filename => filename.endsWith(".json"))
+                    .map(filename => {
+                        try {
+                            const item = JSON.parse(fs.readFileSync(path.join(CraftrasCustomItemsDir, filename), "utf8"));
+                            return { id: item.id, name: item.name, image: item.image };
+                        } catch { return null; }
+                    })
+                    .filter(Boolean);
+                res.writeHead(200, staticHeaders("json"));
+                res.end(JSON.stringify({ ok: true, items }));
+                break;
+            }
+            if (req.method !== "POST") {
+                res.writeHead(405, staticHeaders("json"));
+                res.end(JSON.stringify({ ok: false, error: "Method Not Allowed" }));
+                break;
+            }
+            let body = "";
+            let tooLarge = false;
+            req.on("data", chunk => {
+                body += chunk;
+                if (body.length > 66_000_000) {
+                    tooLarge = true;
+                    req.destroy();
+                }
+            });
+            req.on("end", () => {
+                if (tooLarge) return;
+                try {
+                    const project = JSON.parse(body || "{}");
+                    const item = sanitizeCustomItemProject(project);
+                    fs.mkdirSync(CraftrasCustomItemsDir, { recursive: true });
+                    fs.mkdirSync(CraftrasCustomItemImagesDir, { recursive: true });
+                    const configFile = path.join(CraftrasCustomItemsDir, `${item.id}.json`);
+                    for (const layerFile of item.layerFiles) {
+                        const imageFile = path.join(CraftrasCustomItemImagesDir, `${item.id}-${layerFile.id}.${layerFile.extension}`);
+                        fs.writeFileSync(`${imageFile}.tmp`, layerFile.imageBuffer);
+                        fs.renameSync(`${imageFile}.tmp`, imageFile);
+                    }
+                    const stored = { ...item };
+                    delete stored.layerFiles;
+                    fs.writeFileSync(`${configFile}.tmp`, `${JSON.stringify(stored, null, 2)}\n`, "utf8");
+                    fs.renameSync(`${configFile}.tmp`, configFile);
+                    res.writeHead(200, staticHeaders("json"));
+                    res.end(JSON.stringify({
+                        ok: true,
+                        id: item.id,
+                        config: `Craftras Item/${item.id}.json`,
+                        images: item.layerFiles.map(layer => `public/img/custom-items/${item.id}-${layer.id}.${layer.extension}`),
+                        restartRequired: true,
+                    }));
                 } catch (error) {
                     res.writeHead(400, staticHeaders("json"));
                     res.end(JSON.stringify({ ok: false, error: error.message }));
@@ -481,6 +919,7 @@ function loadGameServer(loadViaMain = false, host, port, gamemode, region, webPr
 
         // Listen for messages from the worker to update the server's status
         worker.on("message", message => {
+            if (!Array.isArray(message)) return;
             const flag = message.shift();
             switch (flag) {
                 case false:
@@ -489,8 +928,13 @@ function loadGameServer(loadViaMain = false, host, port, gamemode, region, webPr
                     break;
                 case true:
                     // Update: change the server's player count
-                    if (global.servers[index]) global.servers[index].players = message[0];
-                    options.onPlayers?.(message.shift());
+                    const players = message.shift();
+                    const playerNames = message.shift();
+                    if (global.servers[index]) {
+                        global.servers[index].players = players;
+                        global.servers[index].playerNames = Array.isArray(playerNames) ? playerNames : [];
+                    }
+                    options.onPlayers?.(players);
                     break;
                 case "doneLoading":
                     // Once loading is complete, trigger the server loaded callback
@@ -564,6 +1008,43 @@ server.listen(Config.port, () => {
     })
 });
 
+function proxyGameWebSocket(req, socket, head, targetPort) {
+    wsServer.handleUpgrade(req, socket, head, client => {
+        const upstream = new WebSocketClient(`ws://127.0.0.1:${targetPort}`);
+        const pending = [];
+        let pendingBytes = 0;
+        const terminate = () => {
+            if (client.readyState === client.OPEN || client.readyState === client.CONNECTING) client.terminate();
+            if (upstream.readyState === WebSocketClient.OPEN || upstream.readyState === WebSocketClient.CONNECTING) upstream.terminate();
+        };
+        client.on("message", (data, isBinary) => {
+            if (upstream.readyState === WebSocketClient.OPEN) upstream.send(data, { binary: isBinary });
+            else {
+                pendingBytes += data.length || 0;
+                if (pendingBytes > 2_000_000) return terminate();
+                pending.push([data, isBinary]);
+            }
+        });
+        upstream.on("open", () => {
+            for (const [data, isBinary] of pending) upstream.send(data, { binary: isBinary });
+            pending.length = 0;
+            pendingBytes = 0;
+        });
+        upstream.on("message", (data, isBinary) => {
+            if (client.readyState === client.OPEN) client.send(data, { binary: isBinary });
+        });
+        client.on("close", () => {
+            if (upstream.readyState === WebSocketClient.OPEN) upstream.close();
+            else if (upstream.readyState === WebSocketClient.CONNECTING) upstream.terminate();
+        });
+        upstream.on("close", () => {
+            if (client.readyState === client.OPEN) client.close();
+        });
+        client.on("error", terminate);
+        upstream.on("error", terminate);
+    });
+}
+
 // Upgrade HTTP connections to WebSocket connections if applicable
 server.on("upgrade", (req, socket, head) => {
     const pathname = new URL(req.url || "/", "http://localhost").pathname;
@@ -575,40 +1056,20 @@ server.on("upgrade", (req, socket, head) => {
             socket.destroy();
             return;
         }
-        wsServer.handleUpgrade(req, socket, head, client => {
-            const upstream = new WebSocketClient(`ws://127.0.0.1:${instance.port}`);
-            const pending = [];
-            let pendingBytes = 0;
-            const terminate = () => {
-                if (client.readyState === client.OPEN || client.readyState === client.CONNECTING) client.terminate();
-                if (upstream.readyState === WebSocketClient.OPEN || upstream.readyState === WebSocketClient.CONNECTING) upstream.terminate();
-            };
-            client.on("message", (data, isBinary) => {
-                if (upstream.readyState === WebSocketClient.OPEN) upstream.send(data, { binary: isBinary });
-                else {
-                    pendingBytes += data.length || 0;
-                    if (pendingBytes > 2_000_000) return terminate();
-                    pending.push([data, isBinary]);
-                }
-            });
-            upstream.on("open", () => {
-                for (const [data, isBinary] of pending) upstream.send(data, { binary: isBinary });
-                pending.length = 0;
-                pendingBytes = 0;
-            });
-            upstream.on("message", (data, isBinary) => {
-                if (client.readyState === client.OPEN) client.send(data, { binary: isBinary });
-            });
-            client.on("close", () => {
-                if (upstream.readyState === WebSocketClient.OPEN) upstream.close();
-                else if (upstream.readyState === WebSocketClient.CONNECTING) upstream.terminate();
-            });
-            upstream.on("close", () => {
-                if (client.readyState === client.OPEN) client.close();
-            });
-            client.on("error", terminate);
-            upstream.on("error", terminate);
-        });
+        proxyGameWebSocket(req, socket, head, instance.port);
+        return;
+    }
+    const configuredMatch = /^\/server\/([a-z0-9-]+)$/i.exec(pathname);
+    if (configuredMatch) {
+        const configuredServer = (Config.servers || []).find(entry => (
+            entry.id === configuredMatch[1] && !entry.share_client_server
+        ));
+        if (!configuredServer) {
+            socket.write("HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n");
+            socket.destroy();
+            return;
+        }
+        proxyGameWebSocket(req, socket, head, configuredServer.port);
         return;
     }
     wsServer.handleUpgrade(req, socket, head, (ws) => {

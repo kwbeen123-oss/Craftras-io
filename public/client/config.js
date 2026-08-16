@@ -48,9 +48,23 @@ const config = {
         incognitoMode: false,
     }
   };
-  export { config }
+
+const resetShakeState = properties => {
+    properties.resetRevision = (properties.resetRevision || 0) + 1;
+    properties.shakeStartTime = -1;
+    properties.shakeDuration = -1;
+    properties.shakeAmount = -1;
+    properties.keepShake = false;
+};
+
+const resetScreenShake = () => {
+    resetShakeState(config.graphical.shakeProperties.CameraShake);
+    resetShakeState(config.graphical.shakeProperties.UIShake);
+};
+
+export { config, resetScreenShake }
 // globals.
-function createMessage(con, dur = 10_000, JSONMessage = false, scale = 1, textColor = null) {
+function createMessage(con, dur = 10_000, JSONMessage = false, scale = 1, textColor = null, skipToken = null) {
     scale = Math.max(0.5, Math.min(3, Number(scale) || 1));
     if (JSONMessage) {
         global.messages.push({
@@ -61,6 +75,7 @@ function createMessage(con, dur = 10_000, JSONMessage = false, scale = 1, textCo
             duration: dur,
             scale,
             color: textColor,
+            skipToken,
         });
     } else {
         global.messages.push({
@@ -70,6 +85,7 @@ function createMessage(con, dur = 10_000, JSONMessage = false, scale = 1, textCo
             duration: dur,
             scale,
             color: textColor,
+            skipToken,
         });
     }
 };
@@ -77,7 +93,7 @@ function resetTarget() {
     global.player.target.x = 0;
     global.player.target.y = 0;
 }
-import { global } from "./global.js?v=20260719-challenge-instance1";
+import { global } from "./global.js?v=20260815-play-fix1";
 global.tips = [[
         "Tip: You can view and edit your keybinds in the options menu.",
         "Tip: You can play on mobile by just going to [host link here] on your phone!" // TODO: make this automatically change to the host
@@ -93,5 +109,12 @@ global.tips = [[
         "Multiboxing is when you use a script to control multiple tanks at the same time. This is considered CHEATING and will result in a ban."
     ]
 ];
-global.createMessage = (content, duration, JSONMessageMode, scale, textColor) => createMessage(content, duration, JSONMessageMode, scale, textColor);
+global.createMessage = (content, duration, JSONMessageMode, scale, textColor, skipToken) => createMessage(
+    content,
+    duration,
+    JSONMessageMode,
+    scale,
+    textColor,
+    skipToken,
+);
 global.resetTarget = () => resetTarget();

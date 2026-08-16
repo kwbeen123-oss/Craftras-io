@@ -977,6 +977,36 @@ class Entity extends EventEmitter {
         }
     }
 
+    enterCraftrasSpectator() {
+        if (!Config.craftras || !this.socket || this.type !== "tank" || this.craftrasSpectatorFinalizing) return false;
+        const socket = this.socket;
+        if (!this.craftrasSpectator) {
+            this.craftrasSpectator = true;
+            this.craftrasSpectatorSince = Date.now();
+            this.craftrasSpectatorBaseSpeed = this.SPEED;
+            this.craftrasSpectatorBaseTopSpeed = this.topSpeed;
+            this.craftrasSpectatorBaseAcceleration = this.acceleration;
+            socket.craftrasSpectatorDeathRecords = socket.player?.records?.(this) || null;
+            socket.craftrasSpectatorBodyId = this.id;
+            socket.talk?.("CSPEC", 1);
+            this.sendMessage?.("You are now a spectator. A cleric can revive you.");
+        }
+        if (socket.player) socket.player.body = this;
+        socket.status.deceased = false;
+        socket.timeout?.stop?.();
+        this.health.amount = 1;
+        this.damageReceived = 0;
+        this.readyToDie = false;
+        this.invuln = true;
+        this.alpha = 0.36;
+        this.intangibility = true;
+        this.settings.no_collisions = true;
+        if (Array.isArray(this.collisionArray)) this.collisionArray.length = 0;
+        this.control.fire = false;
+        this.control.alt = false;
+        return true;
+    }
+
     contemplationOfMortality() {
         if (this.invuln || this.godmode) {
             this.damageReceived = 0;
@@ -1017,30 +1047,7 @@ class Entity extends EventEmitter {
         this.damageReceived = 0;
 
         // Check for death
-        if (Config.craftras && this.socket && this.type === "tank" && this.isDead() && !this.craftrasSpectatorFinalizing) {
-            if (!this.craftrasSpectator) {
-                this.craftrasSpectator = true;
-                this.craftrasSpectatorSince = Date.now();
-                this.craftrasSpectatorBaseSpeed = this.SPEED;
-                this.craftrasSpectatorBaseTopSpeed = this.topSpeed;
-                this.craftrasSpectatorBaseAcceleration = this.acceleration;
-                this.socket.craftrasSpectatorDeathRecords = this.socket.player?.records?.() || null;
-                this.socket.craftrasSpectatorBodyId = this.id;
-                this.socket.talk?.("CSPEC", 1);
-                this.sendMessage?.("You are now a spectator. A cleric can revive you.");
-            }
-            this.health.amount = 1;
-            this.damageReceived = 0;
-            this.readyToDie = false;
-            this.invuln = true;
-            this.alpha = 0.36;
-            this.intangibility = true;
-            this.settings.no_collisions = true;
-            this.collisionArray.length = 0;
-            this.control.fire = false;
-            this.control.alt = false;
-            return 0;
-        }
+        if (this.isDead() && this.enterCraftrasSpectator()) return 0;
         if (
             this.craftrasMobType === "sword_guy" &&
             (this.craftrasDeathLocked || this.craftrasSwordGuyPhase === 1 || this.craftrasSwordGuyPhase === "intro" || this.craftrasSwordGuyPhase === "recovering")

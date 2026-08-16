@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Craftras Boss Studio</title>
+    <link rel="stylesheet" href="./client/craftras-boss-editor.css?v=20260806-boss-studio-3">
+</head>
+<body>
+    <div class="studio-shell">
+        <header class="topbar">
+            <div class="brand"><strong>CRAFTRAS</strong><span>BOSS STUDIO</span></div>
+            <div class="project-title" id="projectTitle">Untitled Boss</div>
+            <div class="top-actions">
+                <button type="button" id="newBossButton">새 보스</button>
+                <button type="button" id="openProjectButton">열기</button>
+                <button type="button" class="icon-button" id="undoButton" title="실행 취소" aria-label="실행 취소">↶</button>
+                <button type="button" class="icon-button" id="redoButton" title="다시 실행" aria-label="다시 실행">↷</button>
+                <button type="button" id="saveProjectButton">프로젝트 저장</button>
+                <button type="button" class="primary" id="exportBossButton">보스 내보내기</button>
+            </div>
+        </header>
+
+        <aside class="catalog-panel">
+            <div class="panel-title"><strong>보스</strong><button type="button" id="addBossButton" title="새 보스">＋</button></div>
+            <input class="search" id="bossSearch" type="search" placeholder="보스 검색" autocomplete="off">
+            <div class="boss-list" id="bossList"></div>
+            <div class="catalog-divider"></div>
+            <div class="panel-title"><strong>에셋</strong><button type="button" id="addAssetButton" title="이미지 추가">＋</button></div>
+            <div class="asset-list" id="assetList"></div>
+        </aside>
+
+        <main class="work-area">
+            <section class="stage-panel">
+                <div class="stage-toolbar">
+                    <select id="phaseSelect" aria-label="페이즈"></select>
+                    <select id="skillSelect" aria-label="스킬"></select>
+                    <span class="toolbar-separator"></span>
+                    <button type="button" class="transport primary" id="playButton" title="재생">▶</button>
+                    <button type="button" class="transport" id="pauseButton" title="일시정지">Ⅱ</button>
+                    <button type="button" class="transport" id="stopButton" title="정지">■</button>
+                    <button type="button" class="transport" id="stepButton" title="한 프레임">▸|</button>
+                    <select id="speedSelect" aria-label="재생 속도">
+                        <option value="0.25">0.25×</option>
+                        <option value="0.5">0.5×</option>
+                        <option value="1" selected>1×</option>
+                        <option value="2">2×</option>
+                        <option value="4">4×</option>
+                    </select>
+                    <label class="inline-toggle"><input id="showHitboxes" type="checkbox"> 히트박스</label>
+                    <span class="stage-time" id="stageTime">00:00.000</span>
+                </div>
+                <div class="stage" id="stage">
+                    <canvas id="stageCanvas"></canvas>
+                    <div class="dialogue-preview hidden" id="dialoguePreview"><strong></strong><span></span></div>
+                    <div class="stage-empty" id="stageEmpty">보스와 스킬을 선택하세요</div>
+                </div>
+            </section>
+
+            <section class="timeline-panel">
+                <div class="timeline-header">
+                    <div class="timeline-tabs">
+                        <button type="button" class="active" data-timeline-view="actions">행동</button>
+                        <button type="button" data-timeline-view="phases">페이즈</button>
+                    </div>
+                    <div class="timeline-actions">
+                        <button type="button" id="addPhaseButton">페이즈 추가</button>
+                        <button type="button" id="addSkillButton">스킬 추가</button>
+                        <select id="actionTypeSelect" aria-label="행동 종류"></select>
+                        <button type="button" class="primary" id="addActionButton">행동 추가</button>
+                    </div>
+                </div>
+                <div class="timeline-scroll" id="timelineScroll">
+                    <div class="timeline-ruler" id="timelineRuler"></div>
+                    <div class="playhead" id="playhead"></div>
+                    <div class="action-tracks" id="actionTracks"></div>
+                </div>
+            </section>
+        </main>
+
+        <aside class="inspector-panel">
+            <div class="inspector-tabs">
+                <button type="button" class="active" data-inspector="boss">보스</button>
+                <button type="button" data-inspector="phase">페이즈</button>
+                <button type="button" data-inspector="skill">스킬</button>
+                <button type="button" data-inspector="action">행동</button>
+                <button type="button" data-inspector="asset">에셋</button>
+            </div>
+            <div class="inspector-content">
+                <section class="inspector-view active" data-view="boss">
+                    <div class="section-title">기본 정보</div>
+                    <label class="field"><span>표시 이름</span><input id="bossName" type="text"></label>
+                    <label class="field"><span>내부 ID</span><input id="bossId" type="text"></label>
+                    <div class="field-grid">
+                        <label class="field"><span>최대 체력</span><input id="bossHealth" type="number" min="1"></label>
+                        <label class="field"><span>크기</span><input id="bossSize" type="number" min="1" step="0.1"></label>
+                    </div>
+                    <div class="field-grid">
+                        <label class="field"><span>이동속도</span><input id="bossSpeed" type="number" min="0" step="0.1"></label>
+                        <label class="field"><span>몸 색상</span><input id="bossColor" type="color"></label>
+                    </div>
+                    <div class="section-title">AI</div>
+                    <label class="field"><span>기본 이동</span><select id="bossAiMode"></select></label>
+                    <div class="field-grid">
+                        <label class="field"><span>유지 거리</span><input id="bossDistance" type="number" min="0"></label>
+                        <label class="field"><span>감지 범위</span><input id="bossDetection" type="number" min="0"></label>
+                    </div>
+                    <div class="section-title">장비</div>
+                    <label class="field"><span>모자 에셋</span><select id="bossHatAsset"></select></label>
+                    <label class="field"><span>무기 에셋</span><select id="bossWeaponAsset"></select></label>
+                    <div class="field-grid three">
+                        <label class="field"><span>무기 크기</span><input id="weaponScale" type="number" min="0.01" step="0.05"></label>
+                        <label class="field"><span>무기 각도</span><input id="weaponAngle" type="number" step="1"></label>
+                        <label class="field"><span>무기 거리</span><input id="weaponOffset" type="number" step="1"></label>
+                    </div>
+                </section>
+
+                <section class="inspector-view" data-view="phase">
+                    <div class="section-title">페이즈</div>
+                    <label class="field"><span>이름</span><input id="phaseName" type="text"></label>
+                    <label class="field"><span>진입 조건</span><select id="phaseTrigger"></select></label>
+                    <label class="field"><span>체력 이하 (%)</span><input id="phaseHealthThreshold" type="number" min="0" max="100" step="0.1"></label>
+                    <label class="field"><span>진입 대사</span><textarea id="phaseDialogue" rows="4"></textarea></label>
+                    <div class="field-grid">
+                        <label class="field"><span>체력 재설정</span><input id="phaseHealth" type="number" min="0"></label>
+                        <label class="field"><span>색상 변경</span><input id="phaseColor" type="color"></label>
+                    </div>
+                    <label class="check-line"><input id="phaseInvulnerable" type="checkbox"> 진입 연출 중 무적</label>
+                    <button type="button" class="danger wide" id="deletePhaseButton">현재 페이즈 삭제</button>
+                </section>
+
+                <section class="inspector-view" data-view="skill">
+                    <div class="section-title">스킬</div>
+                    <label class="field"><span>이름</span><input id="skillName" type="text"></label>
+                    <div class="field-grid">
+                        <label class="field"><span>지속시간(ms)</span><input id="skillDuration" type="number" min="1" step="100"></label>
+                        <label class="field"><span>쿨타임(ms)</span><input id="skillCooldown" type="number" min="0" step="100"></label>
+                    </div>
+                    <div class="field-grid">
+                        <label class="field"><span>가중치</span><input id="skillWeight" type="number" min="0" step="0.1"></label>
+                        <label class="field"><span>시전 거리</span><input id="skillRange" type="number" min="0"></label>
+                    </div>
+                    <label class="check-line"><input id="skillLoop" type="checkbox"> 타임라인 반복</label>
+                    <label class="check-line"><input id="skillLockMovement" type="checkbox"> 시전 중 기본 이동 정지</label>
+                    <button type="button" class="danger wide" id="deleteSkillButton">현재 스킬 삭제</button>
+                </section>
+
+                <section class="inspector-view" data-view="action">
+                    <div class="section-title" id="actionInspectorTitle">행동</div>
+                    <div class="action-empty" id="actionEmpty">타임라인에서 행동을 선택하세요</div>
+                    <div id="actionFields"></div>
+                    <div class="action-command-row hidden" id="actionCommands">
+                        <button type="button" id="duplicateActionButton">복제</button>
+                        <button type="button" class="danger" id="deleteActionButton">삭제</button>
+                    </div>
+                </section>
+
+                <section class="inspector-view" data-view="asset">
+                    <div class="section-title">에셋</div>
+                    <div class="asset-preview" id="assetPreview"><span>NO ASSET</span></div>
+                    <label class="field"><span>이름</span><input id="assetName" type="text"></label>
+                    <label class="field"><span>종류</span><select id="assetKind"></select></label>
+                    <label class="field"><span>이미지 파일</span><button type="button" class="wide" id="replaceAssetImageButton">이미지 선택</button></label>
+                    <label class="field"><span>히트박스</span><button type="button" class="wide" id="attachHitboxButton">히트박스 JSON 연결</button></label>
+                    <div class="field-grid three">
+                        <label class="field"><span>기본 크기</span><input id="assetScale" type="number" min="0.01" step="0.05"></label>
+                        <label class="field"><span>기준점 X</span><input id="assetAnchorX" type="number" min="0" max="1" step="0.01"></label>
+                        <label class="field"><span>기준점 Y</span><input id="assetAnchorY" type="number" min="0" max="1" step="0.01"></label>
+                    </div>
+                    <label class="check-line"><input id="assetGlow" type="checkbox"> 빛 합성</label>
+                    <button type="button" class="danger wide" id="deleteAssetButton">에셋 삭제</button>
+                </section>
+            </div>
+        </aside>
+
+        <footer class="statusbar">
+            <span id="statusBoss">보스 없음</span>
+            <span id="statusSelection">선택 없음</span>
+            <span class="status-spacer"></span>
+            <span id="statusObjects">오브젝트 0</span>
+            <span id="statusFps">FPS 60</span>
+            <span id="statusSave">저장됨</span>
+        </footer>
+    </div>
+
+    <input id="projectInput" type="file" accept="application/json,.json,.craftras-boss.json" hidden>
+    <input id="assetImageInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+    <input id="hitboxInput" type="file" accept="application/json,.json,.craftras-hitbox.json" hidden>
+    <script type="module" src="./client/craftras-boss-editor.js?v=20260806-boss-studio-3"></script>
+</body>
+</html>

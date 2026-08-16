@@ -1,3 +1,5 @@
+import { getWorldTerrainType } from "./craftras-worldTerrainMap.js?v=20260810-world2-giant-cave1";
+
 const ARENA_SIZE_COMMAND = 2000;
 const ARENA_UNIT = 30;
 const WORLD_SIZE = ARENA_SIZE_COMMAND * ARENA_UNIT;
@@ -6,6 +8,7 @@ const BLOCK_GAP = 2;
 const BLOCK_SIZE = WALL_SIZE + BLOCK_GAP;
 const BLOCKS_X = Math.ceil(WORLD_SIZE / BLOCK_SIZE);
 const BLOCKS_Y = Math.ceil(WORLD_SIZE / BLOCK_SIZE);
+const WORLD2_BLOCK_OFFSET = BLOCKS_X;
 const MANUAL_CAVE_FILE = "manualCaves.json";
 const outsideScoreCache = new Map();
 
@@ -15,6 +18,7 @@ const FLOORS = Object.freeze({
     STONE: "stone_floor",
     WATER: "water_floor",
     MAGMA: "magma_floor",
+    SAND: "sand_floor",
 });
 
 const BLOCKS = Object.freeze({
@@ -42,6 +46,7 @@ const BLOCKS = Object.freeze({
     GOLD_BLOCK: "gold_block",
     DIAMOND_BLOCK: "diamond_block",
     CHALLENGE_START: "challenge_start",
+    WORLD2_CHALLENGE_START: "world2_challenge_start",
 });
 
 function clamp(v, min, max) {
@@ -249,6 +254,21 @@ function isInsideGeneratedWorld(x, y) {
     const minX = -Math.floor(BLOCKS_X / 2);
     const minY = -Math.floor(BLOCKS_Y / 2);
     return x >= minX && y >= minY && x < minX + BLOCKS_X && y < minY + BLOCKS_Y;
+}
+
+function isInsideWorld2(x, y) {
+    return isInsideGeneratedWorld(x - WORLD2_BLOCK_OFFSET, y);
+}
+
+function isInsidePlayableWorld(x, y) {
+    return isInsideGeneratedWorld(x, y) || isInsideWorld2(x, y);
+}
+
+function getMappedTerrainType(world, x, y) {
+    const minX = -Math.floor(BLOCKS_X / 2);
+    const minY = -Math.floor(BLOCKS_Y / 2);
+    const localX = x - minX - (world === 2 ? WORLD2_BLOCK_OFFSET : 0);
+    return getWorldTerrainType(world, localX, y - minY);
 }
 
 function buildOpenDistanceMap(seed, options = {}) {
@@ -753,26 +773,117 @@ function generateUndergroundCell(x, y, seed, outsideScore) {
     return { region: "underground", floor, block };
 }
 
+function getWorld2SurfaceScore(x, y, seed) {
+    return getMappedTerrainType(2, x, y) === 0 ? 0 : 1;
+}
+
+function getWorld2OreBlock(x, y, seed) {
+    const localX = x - WORLD2_BLOCK_OFFSET;
+    const vein = normalizedPerlin(localX, y, seed + 22_000, 18, 2);
+    const goldChance = 0.026 + Math.max(0, vein - 0.5) * 0.035;
+    if (hash01(localX, y, seed + 22_101) < 0.00934847549287334) return BLOCKS.CRYSTAL_ORE;
+    if (hash01(localX, y, seed + 22_102) < 0.01487259904734618) return BLOCKS.IRON_ORE;
+    if (hash01(localX, y, seed + 22_103) < goldChance) return BLOCKS.GOLD_ORE;
+    if (hash01(localX, y, seed + 22_104) < 0.011598734071384821) return BLOCKS.GOLD_ORE;
+    return BLOCKS.ROCK;
+}
+
+function distanceSquaredToSegment(px, py, ax, ay, bx, by) {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lengthSquared = dx * dx + dy * dy;
+    const blend = lengthSquared > 0
+        ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lengthSquared))
+        : 0;
+    const offsetX = px - (ax + dx * blend);
+    const offsetY = py - (ay + dy * blend);
+    return offsetX * offsetX + offsetY * offsetY;
+}
+
+function isWorld2CentralGiantCavePath(x, y) {
+    const minX = -Math.floor(BLOCKS_X / 2);
+    const minY = -Math.floor(BLOCKS_Y / 2);
+    const localX = x - minX - WORLD2_BLOCK_OFFSET;
+    const localY = y - minY;
+    const chamberX = (localX - 366) / 72;
+    const chamberY = (localY - 360) / 66;
+    if (chamberX * chamberX + chamberY * chamberY <= 1) return true;
+
+    const path = [[366, 410], [373, 466], [344, 500], [352, 548], [373, 572]];
+    for (let index = 1; index < path.length; index++) {
+        if (distanceSquaredToSegment(localX, localY, ...path[index - 1], ...path[index]) <= 7 * 7) return true;
+    }
+    return false;
+}
+
+function generateWorld2Cell(x, y, seed) {
+    const terrainType = getMappedTerrainType(2, x, y);
+    if (terrainType !== 0) {
+        return {
+            region: "surface",
+            floor: terrainType === 2 ? FLOORS.GRASS : FLOORS.SAND,
+            block: BLOCKS.AIR,
+            world: 2,
+        };
+    }
+    if (isWorld2CentralGiantCavePath(x, y)) {
+        return {
+            region: "underground",
+            floor: FLOORS.STONE,
+            block: BLOCKS.AIR,
+            world: 2,
+            giantCave: true,
+        };
+    }
+    return {
+        region: "underground",
+        floor: FLOORS.STONE,
+        block: getWorld2OreBlock(x, y, seed),
+        world: 2,
+    };
+}
+
+function isUndergroundCell(x, y, seed) {
+    if (isInsideWorld2(x, y)) return getMappedTerrainType(2, x, y) === 0;
+    if (!isInsideGeneratedWorld(x, y) || isBrokenKingdomSurfaceCell(x, y)) return false;
+    return getMappedTerrainType(1, x, y) === 0;
+}
+
 function generateCell(blockX, blockY, seed) {
     const x = blockX | 0;
     const y = blockY | 0;
 
+    if (isInsideWorld2(x, y)) return generateWorld2Cell(x, y, seed);
+    if (!isInsideGeneratedWorld(x, y)) {
+        return { region: "border", floor: FLOORS.STONE, block: BLOCKS.BEDROCK };
+    }
     const outsideScore = getOutsideScore(x, y, seed);
+    const minX = -Math.floor(BLOCKS_X / 2);
+    const mappedTerrainType = getMappedTerrainType(1, x, y);
+    if (mappedTerrainType !== 0 && x >= minX + BLOCKS_X - 16) {
+        return { region: "surface", floor: FLOORS.GRASS, block: BLOCKS.AIR, mapConnector: true };
+    }
     if (isBrokenKingdomSurfaceCell(x, y)) {
         return { ...generateSurfaceCell(x, y, seed, outsideScore), brokenKingdom: true };
     }
-    if (outsideScore > 0.56) return generateSurfaceCell(x, y, seed, outsideScore);
+    if (mappedTerrainType !== 0) {
+        const cell = generateSurfaceCell(x, y, seed, outsideScore);
+        if (outsideScore <= 0.56) return { ...cell, floor: FLOORS.GRASS, block: BLOCKS.AIR, mapCarvedSurface: true };
+        return cell;
+    }
     return generateUndergroundCell(x, y, seed, outsideScore);
 }
 
 function generateMap(seed = 1337) {
+    const minX = -Math.floor(BLOCKS_X / 2);
+    const minY = -Math.floor(BLOCKS_Y / 2);
     return {
         width: BLOCKS_X,
         height: BLOCKS_Y,
         worldSize: WORLD_SIZE,
         blockSize: BLOCK_SIZE,
         seed,
-        getCell: (x, y) => generateCell(x, y, seed),
+        getCell: (x, y) => generateCell(minX + x, minY + y, seed),
     };
 }
 
@@ -836,6 +947,7 @@ const craftrasWorldApi = {
     BLOCK_SIZE,
     BLOCKS_X,
     BLOCKS_Y,
+    WORLD2_BLOCK_OFFSET,
     FLOORS,
     BLOCKS,
     clamp,
@@ -847,6 +959,10 @@ const craftrasWorldApi = {
     fbm2D,
     normalizedPerlin,
     getOutsideScore,
+    getWorld2SurfaceScore,
+    isInsideWorld2,
+    isInsidePlayableWorld,
+    isUndergroundCell,
     isBrokenKingdomSurfaceCell,
     isNearBrokenKingdomSurfaceCell,
     getWaterScore,
@@ -884,6 +1000,7 @@ export {
     BLOCK_SIZE,
     BLOCKS_X,
     BLOCKS_Y,
+    WORLD2_BLOCK_OFFSET,
     FLOORS,
     BLOCKS,
     clamp,
@@ -895,6 +1012,10 @@ export {
     fbm2D,
     normalizedPerlin,
     getOutsideScore,
+    getWorld2SurfaceScore,
+    isInsideWorld2,
+    isInsidePlayableWorld,
+    isUndergroundCell,
     isBrokenKingdomSurfaceCell,
     isNearBrokenKingdomSurfaceCell,
     getWaterScore,

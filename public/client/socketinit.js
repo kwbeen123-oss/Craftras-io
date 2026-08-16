@@ -1,6 +1,6 @@
-import { global } from "./global.js?v=20260719-challenge-instance1";
-import { util } from "./util.js?v=20260719-challenge-instance1";
-import { config } from "./config.js?v=20260719-challenge-instance1";
+import { global } from "./global.js?v=20260815-play-fix1";
+import { util } from "./util.js?v=20260815-play-fix1";
+import { config, resetScreenShake } from "./config.js?v=20260815-play-fix1";
 import { protocol } from "./protocol.js?v=20260719-challenge-instance1";
 window.fakeLagMS = 0;
 var sync = [];
@@ -12,9 +12,12 @@ let level = 1;
 let kills = [0, 0, 0];
 let sscore = util.AdvancedSmoothBar(0, 2);
 const CRAFTRAS_INVENTORY_SAVE_KEY = "craftrasInventorySave:v1";
+const CRAFTRAS_ADMIN_SESSION_KEY = "craftrasAdminSession:v1";
+let craftrasPersistenceBlocked = false;
 const CRAFTRAS_ADMIN_ITEM_IDS = new Set([
-    "steel_torch", "bedrock", "challenge_start_block", "challenge_spawn_block", "transparent_block", "route_marker_block", "admin_pickaxe", "worldedit_axe", "destroyer", "m134", "rocket_launcher",
+    "steel_torch", "bedrock", "challenge_start_block", "world2_challenge_block", "challenge_spawn_block", "transparent_block", "route_marker_block", "admin_pickaxe", "worldedit_axe", "destroyer", "m134", "rocket_launcher", "laser_test", "blue_laser_beam", "screen_cut_test",
     "creative_24h", "creative_1h", "cleric_hat", "pope_hat", "pope_staff", "blesser_hat", "blesser_staff",
+    "jane_hat", "jane_sword",
 ]);
 const getCraftrasScoreForLevel = rawLevel => {
     const targetLevel = Math.max(1, Math.trunc(Number(rawLevel) || 1));
@@ -35,7 +38,7 @@ const sanitizeCraftrasBrowserStack = (stack, maxCount = 64) => {
     return { id: stack.id, name: typeof stack.name === "string" ? stack.name : stack.id, count };
 };
 const saveCraftrasInventoryToBrowser = () => {
-    if (!global.craftrasInventory?.active || global.craftrasChallengeInventoryTemporary) return false;
+    if (craftrasPersistenceBlocked || !global.craftrasInventory?.active || global.craftrasChallengeInventoryTemporary) return false;
     try {
         const save = {
             version: 1,
@@ -66,7 +69,7 @@ const loadCraftrasInventoryFromBrowser = () => {
     }
 };
 const sendCraftrasInventorySaveToServer = socket => {
-    if (global.craftrasChallengeInventoryTemporary) return false;
+    if (craftrasPersistenceBlocked || global.craftrasChallengeInventoryTemporary) return false;
     const save = loadCraftrasInventoryFromBrowser();
     if (!socket?.talk || !save) return false;
     try {
@@ -75,6 +78,25 @@ const sendCraftrasInventorySaveToServer = socket => {
     } catch {
         return false;
     }
+};
+const loadCraftrasAdminSession = () => {
+    try {
+        const session = JSON.parse(localStorage.getItem(CRAFTRAS_ADMIN_SESSION_KEY) || "null");
+        if (!session?.token || Number(session.expiresAt) <= Date.now()) {
+            localStorage.removeItem(CRAFTRAS_ADMIN_SESSION_KEY);
+            return null;
+        }
+        return session;
+    } catch {
+        localStorage.removeItem(CRAFTRAS_ADMIN_SESSION_KEY);
+        return null;
+    }
+};
+const sendCraftrasAdminSessionToServer = socket => {
+    const session = loadCraftrasAdminSession();
+    if (!socket?.talk || !session) return false;
+    socket.talk("AU", session.token);
+    return true;
 };
 let getNow = () => {
     return Date.now() - clockDiff - serverStart;
@@ -871,6 +893,17 @@ const protocols = {
     "https:": "wss://"
 };
 const localServerPattern = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::(\d+))?$/;
+const craftrasLocalServerIdsByPort = Object.freeze({
+    "3000": "server1",
+    "3001": "village",
+    "3002": "steel-torch",
+    "3003": "broken-kingdom",
+    "3004": "cave-builder",
+    "3005": "intact-kingdom",
+    "3006": "world1-challenge",
+    "3007": "world2-village",
+    "3008": "world2-challenge",
+});
 const normalizeServerAddress = serverAdd => {
     if (!serverAdd) return location.host || "localhost:3000";
     serverAdd = String(serverAdd).replace(/^wss?:\/\//, "");
@@ -878,8 +911,18 @@ const normalizeServerAddress = serverAdd => {
     const match = localServerPattern.exec(serverAdd || "");
     if (!match) return serverAdd;
     const advertisedPort = match[1];
-    if (location.protocol === "https:" || !advertisedPort || advertisedPort === location.port) return location.host;
+    const serverId = craftrasLocalServerIdsByPort[advertisedPort || location.port || "3000"];
+    if (!advertisedPort || serverId === "server1" || advertisedPort === location.port) return location.host;
+    if (serverId) return `${location.host}/server/${serverId}`;
     return `${location.hostname}:${advertisedPort}`;
+};
+const getCraftrasLocalServerId = serverAdd => {
+    const normalized = String(serverAdd || "").replace(/^https?:\/\//, "").replace(/^wss?:\/\//, "");
+    const proxied = /\/server\/([a-z0-9-]+)$/i.exec(normalized);
+    if (proxied) return proxied[1];
+    const match = localServerPattern.exec(normalized);
+    if (!match) return "";
+    return craftrasLocalServerIdsByPort[match[1] || location.port || "3000"] || "";
 };
 const buildCraftrasChunkEntries = cells => {
     const chunkSize = global.craftrasWorld.chunkSize;
@@ -898,6 +941,22 @@ const buildCraftrasChunkEntries = cells => {
 const rebuildCraftrasChunkEntries = (entryMap, key, cells) => {
     if (!entryMap || !cells) return;
     entryMap.set(key, buildCraftrasChunkEntries(cells));
+    if (entryMap !== global.craftrasWorld?.chunkEntries) return;
+    global.craftrasWorld.torchChunkEntries ??= new Map();
+    const torchEntries = [];
+    const chunkSize = global.craftrasWorld.chunkSize;
+    for (let index = 0; index < cells.length; index++) {
+        const code = cells[index];
+        const blockCode = code & 31;
+        if (blockCode !== 20 && blockCode !== 21) continue;
+        torchEntries.push({
+            localX: index % chunkSize,
+            localY: Math.floor(index / chunkSize),
+            code,
+        });
+    }
+    if (torchEntries.length) global.craftrasWorld.torchChunkEntries.set(key, torchEntries);
+    else global.craftrasWorld.torchChunkEntries.delete(key);
 };
 let incoming = async function(message, socket) {
     if (window.fakeLagMS > 0) {
@@ -1025,6 +1084,7 @@ let incoming = async function(message, socket) {
                     global.gameUpdate = true;
                     // Now we can ask for spawn.
                     sendCraftrasInventorySaveToServer(socket);
+                    sendCraftrasAdminSessionToServer(socket);
                     socket.talk('s', global.playerName, 0, 1 * config.game.autoLevelUp, global.bodyID ? global.bodyID : false, 1 * config.game.incognitoMode);
                     global.bodyID = undefined;
                 }
@@ -1033,7 +1093,106 @@ let incoming = async function(message, socket) {
             global.createMessage(m[1], m[0]);
         } break;
         case "BM": { // Craftras boss message
-            global.createMessage(m[1], m[0], false, 2, m[2] || null);
+            global.createMessage(m[1], m[0], false, 2, m[2] || null, m[3] || null);
+        } break;
+        case "CBH": { // Craftras boss health bar
+            if (!m[0]) {
+                global.craftrasBossHealth.active = false;
+                global.craftrasBossHealth.expiresAt = 0;
+                break;
+            }
+            const previousId = global.craftrasBossHealth.id;
+            const amount = Math.max(0, Number(m[3]) || 0);
+            const max = Math.max(1, Number(m[4]) || 1);
+            global.craftrasBossHealth = {
+                active: true,
+                id: Number(m[1]) || 0,
+                name: String(m[2] || "Boss"),
+                amount,
+                max,
+                displayAmount: previousId === (Number(m[1]) || 0)
+                    ? Math.max(0, Number(global.craftrasBossHealth.displayAmount) || amount)
+                    : amount,
+                expiresAt: Date.now() + Math.max(0, Number(m[5]) || 0),
+            };
+        } break;
+        case "SDH": { // Sword Guy 2 duo health bars
+            if (!m[0]) {
+                global.craftrasSwordGuy2DuoHealth = { active: false, expiresAt: 0, bosses: [] };
+                break;
+            }
+            const previous = global.craftrasSwordGuy2DuoHealth?.bosses || [];
+            const bosses = [0, 1].map(index => {
+                const offset = 1 + index * 4;
+                const id = Number(m[offset]) || 0;
+                const amount = Math.max(0, Number(m[offset + 2]) || 0);
+                const max = Math.max(1, Number(m[offset + 3]) || 1);
+                const old = previous.find(entry => entry.id === id);
+                return {
+                    id,
+                    name: String(m[offset + 1] || "Boss"),
+                    amount,
+                    max,
+                    displayAmount: old ? old.displayAmount : amount,
+                };
+            });
+            global.craftrasSwordGuy2DuoHealth = {
+                active: true,
+                bosses,
+                expiresAt: Date.now() + Math.max(0, Number(m[9]) || 0),
+            };
+        } break;
+        case "BIF": { // Bominik entrance Inferno
+            global.craftrasBominikInferno = {
+                active: true,
+                startedAt: Date.now(),
+                holdDuration: Math.max(0, Number(m[0]) || 350),
+                fadeDuration: Math.max(100, Number(m[1]) || 1_250),
+            };
+        } break;
+        case "JSC": { // Jane phase-two screen cut
+            global.craftrasJaneScreenCut = {
+                active: true,
+                startedAt: Date.now(),
+                duration: Math.max(300, Number(m[0]) || 3_000),
+                warningDuration: Math.max(100, Number(m[1]) || 200),
+                parryWindow: Math.max(100, Number(m[2]) || 200),
+                maxShift: Math.max(20, Number(m[3]) || 72),
+            };
+        } break;
+        case "SCT": { // Instant screen-cut test effect
+            global.craftrasJaneScreenCut = {
+                active: true,
+                instant: true,
+                colorMode: "white",
+                startedAt: Date.now(),
+                duration: Math.max(300, Number(m[0]) || 2_000),
+                warningDuration: 0,
+                parryWindow: 0,
+                maxShift: Math.max(20, Number(m[1]) || 92),
+                cutAngle: Number(m[2]) || 0,
+            };
+        } break;
+        case "CSC": { // Custom weapon combo finisher screen cut (visual only)
+            global.craftrasJaneScreenCut = {
+                active: true,
+                instant: true,
+                colorMode: "pink",
+                startedAt: Date.now(),
+                duration: Math.max(300, Number(m[0]) || 720),
+                warningDuration: 0,
+                parryWindow: 0,
+                maxShift: Math.max(20, Number(m[1]) || 58),
+                cutAngle: Number(m[2]) || 0,
+            };
+        } break;
+        case "J2S": { // Jane phase-two rotating prison screen split
+            global.craftrasJanePhaseTwoSkillTwoScreen = {
+                active: true,
+                startedAt: Date.now(),
+                duration: Math.max(1_000, Number(m[0]) || 18_000),
+                maxShift: Math.max(16, Number(m[1]) || 54),
+            };
         } break;
         case "CD": { // Craftras curse darkness
             const duration = Math.max(0, Number(m[0]) || 0);
@@ -1073,7 +1232,8 @@ let incoming = async function(message, socket) {
                 teamName: String(m[1] || ""),
                 memberCount: Math.max(1, Math.trunc(Number(m[2]) || 1)),
                 isHost: !!m[3],
-            } : { open: false, teamName: "", memberCount: 1, isHost: true };
+                kind: m[4] === "world2" ? "world2" : "world1",
+            } : { open: false, teamName: "", memberCount: 1, isHost: true, kind: "world1" };
             if (!open) global.clickables?.challengeEntry?.hide?.();
         } break;
         case "CTR": {
@@ -1092,6 +1252,114 @@ let incoming = async function(message, socket) {
                 transition.duration = duration;
                 transition.alpha = Math.max(transition.alpha || 0, 1);
             }
+        } break;
+        case "CSE": {
+            const effect = global.craftrasChallengeStoryEffect;
+            if (!effect) break;
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.whiteoutDuration = Math.max(800, Math.trunc(Number(m[0]) || 3000));
+            effect.fogDuration = Math.max(effect.whiteoutDuration, Math.trunc(Number(m[1]) || 8000));
+        } break;
+        case "CBP": {
+            const effect = global.craftrasChallengeBlueParry;
+            if (!effect) break;
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.numberDuration = Math.max(200, Math.trunc(Number(m[0]) || 500));
+            effect.bangDuration = Math.max(100, Math.trunc(Number(m[1]) || 200));
+            effect.flashDuration = Math.max(500, Math.trunc(Number(m[2]) || 2000));
+        } break;
+        case "SGP": {
+            const effect = global.craftrasSwordGuy2Parry ??= {};
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.stepDuration = Math.max(100, Math.trunc(Number(m[0]) || 500));
+            effect.nowDuration = Math.max(100, Math.trunc(Number(m[1]) || 200));
+            effect.flashDuration = Math.max(200, Math.trunc(Number(m[2]) || 500));
+        } break;
+        case "MZW": {
+            const effect = global.craftrasWorld2MagicWarning ??= {};
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.stepDuration = Math.max(100, Math.trunc(Number(m[0]) || 500));
+            effect.flashDuration = Math.max(200, Math.trunc(Number(m[1]) || 500));
+        } break;
+        case "SGO": {
+            const effect = global.craftrasSwordGuy2Opening ??= {};
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.chargeDuration = Math.max(1500, Math.trunc(Number(m[0]) || 3000));
+            effect.stepDuration = Math.max(200, Math.trunc(Number(m[1]) || 500));
+            effect.nowDuration = Math.max(100, Math.trunc(Number(m[2]) || 200));
+        } break;
+        case "SG3": {
+            const effect = global.craftrasSwordGuy2DashCountdown ??= {};
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.stepDuration = Math.max(100, Math.trunc(Number(m[0]) || 500));
+            effect.bangDuration = Math.max(100, Math.trunc(Number(m[1]) || 200));
+        } break;
+        case "JPF": {
+            const effect = global.craftrasJanePinkFlash ??= {};
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.duration = Math.max(120, Math.trunc(Number(m[0]) || 420));
+            effect.alpha = Math.max(0.05, Math.min(0.5, Number(m[1]) || 0.24));
+        } break;
+        case "J4C": {
+            const effect = global.craftrasJaneSkillFourCountdown ??= {};
+            effect.active = true;
+            effect.startedAt = Date.now();
+            effect.stepDuration = Math.max(100, Math.trunc(Number(m[0]) || 500));
+            effect.impactDuration = Math.max(100, Math.trunc(Number(m[1]) || 200));
+        } break;
+        case "LZR": {
+            const beams = global.craftrasLaserBeams ??= new Map();
+            const id = Number(m[0]);
+            beams.set(id, {
+                id,
+                x: Number(m[1]) || 0,
+                y: Number(m[2]) || 0,
+                angle: Number(m[3]) || 0,
+                length: Math.max(1, Number(m[4]) || 2400),
+                width: Math.max(1, Number(m[5]) || 450),
+                duration: Math.max(1, Number(m[6]) || 700),
+                activeDelay: Math.max(0, Number(m[7]) || 0),
+                angularVelocity: Number(m[8]) || 0,
+                fadeOutStart: Math.max(0, Math.min(0.99, Number(m[9]) || 0.72)),
+                colorMode: String(m[10] || "pink"),
+                alphaScale: Math.max(0.02, Math.min(1, Number(m[11]) || 1)),
+                visualVariant: String(m[12] || "default"),
+                startedAt: Date.now(),
+                stoppingAt: 0,
+                stopDuration: 0,
+            });
+        } break;
+        case "LZU": {
+            const beam = global.craftrasLaserBeams?.get(Number(m[0]));
+            if (!beam) break;
+            beam.trackedFromAngle = Number.isFinite(beam.renderAngle)
+                ? beam.renderAngle
+                : Number(beam.angle) || 0;
+            beam.trackedTargetAngle = Number(m[1]) || 0;
+            beam.trackedUpdatedAt = Date.now();
+            if (Number.isFinite(Number(m[2]))) beam.x = Number(m[2]);
+            if (Number.isFinite(Number(m[3]))) beam.y = Number(m[3]);
+        } break;
+        case "LZS": {
+            const beam = global.craftrasLaserBeams?.get(Number(m[0]));
+            if (!beam) break;
+            beam.stoppingAt = Date.now();
+            beam.stopDuration = Math.max(1, Number(m[1]) || 140);
+        } break;
+        case "BLG": {
+            global.craftrasBlueLaser = {
+                gauge: Math.max(0, Math.min(100, Number(m[0]) || 0)),
+                overheatedUntil: Date.now() + Math.max(0, Number(m[1]) || 0),
+                equipped: !!m[2],
+                firing: !!m[3],
+            };
         } break;
         case "Em": {
             global.createMessage(m[1], m[0], true);
@@ -1195,7 +1463,9 @@ let incoming = async function(message, socket) {
             const wasChallengeMode = !!global.craftrasWorld.challengeMode;
             global.craftrasWorld.active = active;
             global.craftrasWorld.challengeMode = active && !!m[5];
+            global.craftrasWorld.world2ChallengeMode = active && !!m[9];
             if (global.craftrasWorld.challengeMode) {
+                if (!wasChallengeMode) global.craftrasWorld.challengeStoryEightReached = false;
                 global.craftrasWorld.weatherRainAlpha = 1;
                 global.craftrasWorld.weatherStormAlpha = 1;
                 global.craftrasWorld.weatherSurfaceAlpha = 1;
@@ -1203,12 +1473,14 @@ let incoming = async function(message, socket) {
                 global.craftrasWorld.weatherStormVisualAlpha = 1;
                 global.craftrasWorld.kingdomFogPresenceAlpha = 1;
             } else if (!active || wasChallengeMode) {
+                global.craftrasWorld.challengeStoryEightReached = false;
                 global.craftrasWorld.weatherRainAlpha = 0;
                 global.craftrasWorld.weatherStormAlpha = 0;
                 global.craftrasWorld.weatherSurfaceAlpha = 0;
                 global.craftrasWorld.weatherVisualAlpha = 0;
                 global.craftrasWorld.weatherStormVisualAlpha = 0;
                 global.craftrasWorld.kingdomFogPresenceAlpha = 0;
+                global.craftrasWorld.whiteInfernoAlpha = 0;
             }
             global.craftrasHotbar.active = active;
             global.craftrasInventory.active = active;
@@ -1230,7 +1502,7 @@ let incoming = async function(message, socket) {
                 global.craftrasCrafting.slots = Array(9).fill(null);
                 global.craftrasCrafting.output = null;
                 global.craftrasBlacksmith = { open: false, slot: null, offer: null, playerLevel: 0 };
-                global.craftrasCleric = { open: false, mode: "token", rebirths: 0, playerLevel: 0, levelCap: 100, canRebirth: false, nextLevelCap: 200, healthBonus: 0, requirements: [], slots: Array(4).fill(null), canToken: false };
+                global.craftrasCleric = { open: false, mode: "token", rebirths: 0, playerLevel: 0, levelCap: 100, canRebirth: false, nextLevelCap: 0, healthBonus: 0, requirements: [], slots: Array(4).fill(null), canToken: false };
                 global.craftrasMerchant = { open: false, points: 0, refreshIn: 0, refreshReceivedAt: Date.now(), offers: [], sellSlot: null };
                 global.craftrasBlesser = { open: false, points: 0, offers: [] };
                 global.craftrasUnlockedRecipes = [];
@@ -1252,11 +1524,18 @@ let incoming = async function(message, socket) {
             global.craftrasWorld.cavePrewarmQueue = [];
             global.craftrasWorld.cavePrewarmCursor = 0;
             global.craftrasWorld.caveNextPrewarmAt = performance.now() + 250;
+            global.craftrasWorld.cavePrewarmChunksDirty = true;
             if (active) {
                 global.craftrasWorld.worldSize = m[1];
+                global.craftrasWorld.regionSize = m[1];
                 global.craftrasWorld.blockSize = m[2];
                 global.craftrasWorld.wallSize = m[3];
                 global.craftrasWorld.chunkSize = m[4];
+                global.craftrasWorld.world2Enabled = !!m[6];
+                global.craftrasWorld.world2MinX = Number(m[7]) || m[1] / 2;
+                global.craftrasWorld.world2CenterX = Number(m[8]) || m[1];
+                global.craftrasWorld.displayRegion = 0;
+                global.craftrasWorld.pendingRegion = 0;
             }
         } break;
         case "HB": {
@@ -1270,13 +1549,63 @@ let incoming = async function(message, socket) {
             } catch {
                 global.craftrasHotbar.slots = Array(10).fill(null);
             }
+            global.craftrasFriendSkill ??= { cooldownEndsAt: 0 };
+            global.craftrasFriendSkill.cooldownEndsAt = Date.now() + Math.max(0, Number(m[2]) || 0);
+            try {
+                const keys = JSON.parse(m[3]);
+                global.craftrasCustomWeaponKeys = Array.isArray(keys) ? keys.map(key => String(key).toLowerCase()) : [];
+            } catch {
+                global.craftrasCustomWeaponKeys = [];
+            }
             saveCraftrasInventoryToBrowser();
+        } break;
+        case "FC": {
+            global.craftrasFriendSkill ??= { cooldownEndsAt: 0 };
+            global.craftrasFriendSkill.cooldownEndsAt = Date.now() + Math.max(0, Number(m[0]) || 0);
+        } break;
+        case "BFR": {
+            const active = !!m[0];
+            let cooldowns = [];
+            try {
+                const parsed = JSON.parse(m[2]);
+                if (Array.isArray(parsed)) cooldowns = parsed.map(value => Math.max(0, Number(value) || 0));
+            } catch {}
+            global.craftrasBossForm = {
+                active,
+                type: active ? String(m[1] || "world1_basic") : null,
+                activeSkill: active ? Math.max(-1, Math.min(7, Number(m[3]) || 0)) : -1,
+                cooldownEndsAt: cooldowns.map(value => Date.now() + value),
+            };
         } break;
         case "HP": {
             global.craftrasHealth = {
                 amount: Math.max(0, Number(m[0]) || 0),
                 max: Math.max(1, Number(m[1]) || 100),
             };
+        } break;
+        case "PY": {
+            global.craftrasParry = {
+                ...(global.craftrasParry || {}),
+                reduction: Math.max(0, Math.min(100, Number(m[0]) || 0)),
+                counter: Math.max(0, Math.min(1000, Number(m[1]) || 0)),
+                equipped: !!m[2],
+            };
+        } break;
+        case "MG": {
+            global.craftrasMagicBook = {
+                gauge: Math.max(0, Math.min(5000, Number(m[0]) || 0)),
+                regenLockedUntil: Date.now() + Math.max(0, Number(m[1]) || 0),
+                slashCooldownUntil: Date.now() + Math.max(0, Number(m[2]) || 0),
+                barrageCooldownUntil: Date.now() + Math.max(0, Number(m[3]) || 0),
+                charge: Math.max(0, Math.min(100, Number(m[4]) || 0)),
+                equipped: !!m[5],
+                shifting: !!m[6],
+            };
+        } break;
+        case "PF": {
+            global.craftrasParry ??= {};
+            global.craftrasParry.flashStartedAt = Date.now();
+            global.craftrasParry.flashDuration = Math.max(1, Number(m[0]) || 200);
         } break;
         case "DF": {
             try {
@@ -1294,12 +1623,27 @@ let incoming = async function(message, socket) {
             };
         } break;
         case "WE": {
+            const weatherType = String(m[0] || "clear").toLowerCase() === "rain" ? "rain" : "clear";
+            const whiteInfernoState = ["warning", "active"].includes(String(m[4] || "").toLowerCase())
+                ? String(m[4]).toLowerCase()
+                : "clear";
             global.craftrasWeather = {
-                type: String(m[0] || "clear").toLowerCase() === "rain" ? "rain" : "clear",
+                type: weatherType,
                 remaining: Math.max(0, Number(m[1]) || 0),
                 rainChance: Math.max(0, Math.min(1, Number(m[2]) || 0.05)),
+                whiteInfernoState,
+                whiteInfernoRemaining: Math.max(0, Number(m[5]) || 0),
+                whiteInfernoChance: Math.max(0, Math.min(1, Number(m[6]) || 0.10)),
                 receivedAt: Date.now(),
             };
+            global.craftrasWorld.challengeStoryEightReached = !!global.craftrasWorld.challengeMode && !!m[3];
+            if (global.craftrasWorld.challengeStoryEightReached && weatherType === "clear") {
+                global.craftrasWorld.weatherRainAlpha = 0;
+                global.craftrasWorld.weatherStormAlpha = 0;
+                global.craftrasWorld.weatherSurfaceAlpha = 0;
+                global.craftrasWorld.weatherVisualAlpha = 0;
+                global.craftrasWorld.weatherStormVisualAlpha = 0;
+            }
         } break;
         case "KW": {
             global.craftrasKingdomWeather = {
@@ -1338,6 +1682,30 @@ let incoming = async function(message, socket) {
             }
             saveCraftrasInventoryToBrowser();
         } break;
+        case "RC": {
+            try {
+                const recipes = JSON.parse(m[0]);
+                global.craftrasRecipeBookRecipes = Array.isArray(recipes) ? recipes : [];
+            } catch {
+                global.craftrasRecipeBookRecipes = [];
+            }
+            try {
+                const unlocked = JSON.parse(m[1]);
+                global.craftrasUnlockedRecipes = Array.isArray(unlocked) ? unlocked : [];
+            } catch {
+                global.craftrasUnlockedRecipes = [];
+            }
+            global.craftrasRecipeScroll = 0;
+        } break;
+        case "RN": {
+            try {
+                const items = JSON.parse(m[0]);
+                if (Array.isArray(items) && items.length) {
+                    global.craftrasRecipeUnlockQueue ??= [];
+                    global.craftrasRecipeUnlockQueue.push({ items, startedAt: 0 });
+                }
+            } catch {}
+        } break;
         case "CI": {
             global.craftrasCreative.active = !!m[0];
             try {
@@ -1346,6 +1714,27 @@ let incoming = async function(message, socket) {
             } catch {
                 global.craftrasCreative.items = [];
             }
+        } break;
+        case "PB": {
+            craftrasPersistenceBlocked = !!m[0];
+        } break;
+        case "AU": {
+            const token = typeof m[0] === "string" ? m[0] : "";
+            const expiresAt = Math.floor(Number(m[1]) || 0);
+            try {
+                if (token && expiresAt > Date.now()) {
+                    localStorage.setItem(CRAFTRAS_ADMIN_SESSION_KEY, JSON.stringify({ token, expiresAt }));
+                } else {
+                    localStorage.removeItem(CRAFTRAS_ADMIN_SESSION_KEY);
+                }
+            } catch {}
+        } break;
+        case "EC": {
+            global.craftrasEconomy = {
+                points: Math.max(0, Math.floor(Number(m[0]) || 0)),
+                tokens: Math.max(0, Math.floor(Number(m[1]) || 0)),
+                status: ["Admin", "Creative", "Spectator", "Survival"].includes(m[2]) ? m[2] : "Survival",
+            };
         } break;
         case "CV": {
             global.craftrasCrafting.mode = Number(m[0]) || 0;
@@ -1408,7 +1797,7 @@ let incoming = async function(message, socket) {
                 refreshReceivedAt: Date.now(),
                 offers: Array.isArray(offers) ? offers : [],
                 sellSlot,
-                kind: m[5] === "monster" ? "monster" : "normal",
+                kind: m[5] === "monster" ? "monster" : m[5] === "miner" ? "miner" : "normal",
             };
             if (global.craftrasMerchant.open) {
                 global.craftrasInventory.open = true;
@@ -1427,6 +1816,7 @@ let incoming = async function(message, socket) {
                 open: !!m[0],
                 points: Number(m[1]) || 0,
                 offers: Array.isArray(offers) ? offers : [],
+                kind: m[3] === "healer" ? "healer" : "blesser",
             };
             if (global.craftrasBlesser.open) {
                 global.craftrasInventory.open = true;
@@ -1449,7 +1839,7 @@ let incoming = async function(message, socket) {
                 playerLevel: Number(m[3]) || 0,
                 levelCap: Number(m[4]) || 100,
                 canRebirth: !!m[5],
-                nextLevelCap: Number(m[6]) || 200,
+                nextLevelCap: Number.isFinite(Number(m[6])) ? Number(m[6]) : 0,
                 healthBonus: Number(m[7]) || 0,
                 requirements: Array.isArray(requirements) ? requirements : [],
                 slots: Array.from({ length: 4 }, (_, index) => Array.isArray(slots) ? slots[index] ?? null : null),
@@ -1567,6 +1957,7 @@ let incoming = async function(message, socket) {
             global.craftrasWorld.chunks.set(key, cells);
             global.craftrasWorld.chunkEntries ??= new Map();
             rebuildCraftrasChunkEntries(global.craftrasWorld.chunkEntries, key, cells);
+            global.craftrasWorld.cavePrewarmChunksDirty = true;
         } break;
         case "FH": {
             const chunkX = m.shift();
@@ -1590,8 +1981,10 @@ let incoming = async function(message, socket) {
             const key = `${m[0]},${m[1]}`;
             global.craftrasWorld.chunks.delete(key);
             global.craftrasWorld.chunkEntries?.delete(key);
+            global.craftrasWorld.torchChunkEntries?.delete(key);
             global.craftrasWorld.floorChunks?.delete(key);
             global.craftrasWorld.floorChunkEntries?.delete(key);
+            global.craftrasWorld.cavePrewarmSeenChunks?.delete?.(key);
         } break;
         case "CB": {
             const blockX = m[0];
@@ -1649,9 +2042,20 @@ let incoming = async function(message, socket) {
         } break;
         case "CSPEC": {
             global.craftrasSpectator = !!m[0];
+            resetScreenShake();
             if (global.craftrasSpectator) {
                 global.died = false;
                 global.cannotRespawn = false;
+                global.showChat = false;
+                const canvas = global.canvas;
+                canvas?.chatInput?.blur?.();
+                canvas?.chatInput?.remove?.();
+                canvas?.chatBox?.remove?.();
+                if (canvas) {
+                    canvas.chatInput = null;
+                    canvas.chatBox = false;
+                    canvas.cv?.focus?.();
+                }
                 if (global.craftrasInventory) {
                     global.craftrasInventory.open = false;
                     global.craftrasInventory.drag = null;
@@ -1659,6 +2063,7 @@ let incoming = async function(message, socket) {
                     global.craftrasInventory.rightDrag = null;
                 }
             }
+            if (!global.craftrasSpectator) global.craftrasSpectatorRespawnBounds = null;
         } break;
         case "b": {
             if (startSettings.neededtoresync) return;
@@ -1676,6 +2081,7 @@ let incoming = async function(message, socket) {
             0 < c && global.metrics.latency.push(c);
         } break;
         case 'F': { // to pay respects
+            resetScreenShake();
             global.craftrasSpectator = false;
             global.deathAnimation = util.AdvancedSmoothBar(0, 4, 1);
             global.deathAnimation.set(4);
@@ -1795,12 +2201,18 @@ let incoming = async function(message, socket) {
         } break;
         case 'SH': {
             let data = JSON.parse(m[0]);
+            if (global.died || global.craftrasSpectator || global.disconnected) {
+                resetScreenShake();
+                break;
+            }
             if (data.type == "camera") { // If the server wants to shake our camera...
                 let set = config.graphical.shakeProperties.CameraShake; // Quick define
                 if (data.push) {
+                    const resetRevision = set.resetRevision || 0;
                     set.shakeDuration += data.duration; // add duration
                     set.shakeAmount += data.amount; // Add amount the shake
                     setTimeout(() => {
+                        if ((set.resetRevision || 0) !== resetRevision) return;
                         set.shakeDuration -= data.duration;
                         set.shakeAmount -= data.amount;
                     }, 500);
@@ -1815,9 +2227,11 @@ let incoming = async function(message, socket) {
             if (data.type == "gui") { // If the server wants to shake our GUI...
                 let set = config.graphical.shakeProperties.UIShake; // Quick define
                 if (data.push) {
+                    const resetRevision = set.resetRevision || 0;
                     set.shakeDuration += data.duration; // add duration
                     set.shakeAmount += data.amount; // Add amount the shake
                     setTimeout(() => {
+                        if ((set.resetRevision || 0) !== resetRevision) return;
                         set.shakeDuration -= data.duration;
                         set.shakeAmount -= data.amount;
                     }, 500);
@@ -1850,16 +2264,20 @@ let incoming = async function(message, socket) {
     
             // Setup
             global.gameLoading = true;
-            global.serverAdd = m[0];
+            const rawDestination = m[0];
+            global.serverAdd = normalizeServerAddress(rawDestination === "/" ? (location.host || "localhost:3000") : rawDestination);
+            window.__craftrasServerAdd = global.serverAdd;
             global.bodyID = m[1];
             if (global.serverMap[global.serverAdd]) global.serverMap[global.serverAdd].onclick();
 
             // Update the location hash
-            let server = global.servers.find(s => s.ip === m[0]);
-            if (server) location.hash = "#" + server.id;
-            else if (m[0] === "/") location.hash = "#server1";
-            else if (m[0].startsWith("/challenge-instance/")) location.hash = "#world1-challenge";
+            let server = global.servers.find(s => normalizeServerAddress(s.ip) === global.serverAdd);
+            const transferredServerId = server?.id || getCraftrasLocalServerId(rawDestination);
+            if (transferredServerId) location.hash = "#" + transferredServerId;
+            else if (rawDestination === "/") location.hash = "#server1";
+            else if (rawDestination.startsWith("/challenge-instance/")) location.hash = "#world1-challenge";
             global.locationHash = location.hash;
+            global.craftrasServerTransferPending = true;
 
             // Reconnect server
             global.reconnect();
@@ -1922,8 +2340,21 @@ let incoming = async function(message, socket) {
     };
 }
 const socketInit = () => {
+    craftrasPersistenceBlocked = false;
     window.resizeEvent();
-    global.serverAdd ||= window.__craftrasServerAdd || location.host || "localhost:3000";
+    const transferPending = !!global.craftrasServerTransferPending;
+    global.craftrasServerTransferPending = false;
+    const requestedServerId = location.hash.slice(1);
+    const requestedServer = global.servers?.find(server => server.id === requestedServerId);
+    const requestedServerAddress = requestedServer?.ip
+        || (requestedServerId === getCraftrasLocalServerId(window.__craftrasServerAdd) ? window.__craftrasServerAdd : "");
+    if (requestedServerId === "server1" && !transferPending) {
+        global.serverAdd = location.host || "localhost:3000";
+    } else if (!transferPending && requestedServerAddress) {
+        global.serverAdd = requestedServerAddress;
+    } else if (!global.serverAdd) {
+        global.serverAdd = window.__craftrasServerAdd || location.host || "localhost:3000";
+    }
     global.serverAdd = normalizeServerAddress(global.serverAdd);
     window.__craftrasServerAdd = global.serverAdd;
     let socket;

@@ -10,13 +10,20 @@
     <meta property="og:image:height" content="54">
     <title>Craftras.io</title>
     <link rel="stylesheet" href="./font.css"/>
-    <link rel="stylesheet" href="./main.css?v=20260711-main-art7"/>
+    <link rel="stylesheet" href="./main.css?v=20260814-asset-preload1"/>
     <link rel="icon" type="image/png" sizes="96x96" href="/img/craftras-io-logo.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/img/craftras-io-logo.png">
     <meta name="msapplication-TileColor" content="#1B3353">
     <meta name="theme-color" content="#1B3353">
 </head>
 <body oncontextmenu="return false" id="mainBody">
+    <div id="craftrasAssetLoading" role="status" aria-live="polite" hidden>
+        <div class="craftrasAssetLoadingContent">
+            <div id="craftrasAssetLoadingTitle">Loading...</div>
+            <div id="craftrasAssetLoadingProgress">Preparing images...</div>
+            <button id="craftrasAssetLoadingRetry" type="button" hidden>Retry</button>
+        </div>
+    </div>
     <div id="gameAreaWrapper" style="display: none;">
         <canvas id="gameCanvas" tabindex="1"></canvas>
         <canvas id="gameCanvas-background" tabindex="2"></canvas>
@@ -209,7 +216,6 @@
                                         <td><div><b data-key="KEY_OVER_RIDE">R</b><span> - </span>disable AI</div></td>
                                     </tr>
                                     <tr>
-                                        <td><div><b data-key="KEY_LEVEL_UP">N</b><span> - </span>level up</div></td>
                                         <td><div><b data-key="KEY_REVERSE_TANK">V</b><span> - </span>reverse tank</div></td>
                                         <td><div><b data-key="KEY_REVERSE_MOUSE">B</b><span> - </span>reverse mouse</div></td>
                                     </tr>
@@ -335,8 +341,8 @@
                     players: 0,
                     maxPlayers: 20,
                     id: "cave-builder",
-                    region: "Cave Builder",
-                    gameMode: "Cave Builder",
+                    region: "World Terrain Builder",
+                    gameMode: "World Terrain Builder",
                 },
                 {
                     ip: `${location.hostname || "localhost"}:3006`,
@@ -345,6 +351,22 @@
                     id: "world1-challenge",
                     region: "World 1 Challenge",
                     gameMode: "World 1 Challenge",
+                },
+                {
+                    ip: `${location.hostname || "localhost"}:3007`,
+                    players: 0,
+                    maxPlayers: 20,
+                    id: "world2-village",
+                    region: "World 2 Village Builder",
+                    gameMode: "World 2 Village Builder",
+                },
+                {
+                    ip: `${location.hostname || "localhost"}:3008`,
+                    players: 0,
+                    maxPlayers: 20,
+                    id: "world2-challenge",
+                    region: "World 2 Challenge",
+                    gameMode: "World 2 Challenge",
                 },
             ];
             const requestedBuilderServer = () => {
@@ -419,6 +441,6 @@
         })();
     </script>
     <script src="//code.jquery.com/jquery-2.2.0.min.js"></script>
-    <script type="module" src="./client/app.js?v=20260720-challenge-escort1"></script>
+    <script type="module" src="./client/app.js?v=20260815-play-fix1"></script>
 </body>
 </html>

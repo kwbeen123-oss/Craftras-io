@@ -1,4 +1,4 @@
-import { global } from "./global.js?v=20260719-challenge-instance1";
+import { global } from "./global.js?v=20260815-play-fix1";
 
 let svFilterRegionDoc = document.getElementById("serverFilterRegion"),
 svFilterModeDoc = document.getElementById("serverFilterMode");
@@ -324,8 +324,8 @@ const builderServers = [
         maxPlayers: 20,
         id: "cave-builder",
         featured: false,
-        region: "Cave Builder",
-        gameMode: "Cave Builder",
+        region: "World Terrain Builder",
+        gameMode: "World Terrain Builder",
     },
     {
         ip: `${location.hostname || "localhost"}:3006`,
@@ -335,6 +335,24 @@ const builderServers = [
         featured: false,
         region: "World 1 Challenge",
         gameMode: "World 1 Challenge",
+    },
+    {
+        ip: `${location.hostname || "localhost"}:3007`,
+        players: 0,
+        maxPlayers: 20,
+        id: "world2-village",
+        featured: false,
+        region: "World 2 Village Builder",
+        gameMode: "World 2 Village Builder",
+    },
+    {
+        ip: `${location.hostname || "localhost"}:3008`,
+        players: 0,
+        maxPlayers: 20,
+        id: "world2-challenge",
+        featured: false,
+        region: "World 2 Challenge",
+        gameMode: "World 2 Challenge",
     },
 ];
 

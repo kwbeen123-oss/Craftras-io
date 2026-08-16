@@ -6,15 +6,15 @@ let crypto = require("crypto"),
 let bans = global.bans || (global.bans = []);
 let permBans = global.permBans || (global.permBans = []);
 global.chatID = 0;
-const { ITEMS, findCraftingRecipe, makeItem } = require("../craftras/items.js");
+const { ITEMS, CRAFTING_RECIPES, findCraftingRecipe, makeItem } = require("../craftras/items.js");
 const challengeTeams = require("../craftras/challengeTeams.js");
 const CRAFTRAS_PLAYER_SAVES_FILE = path.join(__dirname, "../craftras/playerSaves.json");
 const CRAFTRAS_SPECTATOR_BLOCKED_PACKETS = new Set([
     "BI", "IM", "IA", "IR", "HE", "OF", "OE",
     "BA", "BU", "MB", "MS", "ML", "SB", "RS", "RA",
     "CG", "CA", "CT", "RU", "FA", "XA",
-    "DI", "DO", "DA", "PL", "PM", "GC", "CF", "EF",
-    "CSA",
+    "DI", "DO", "DA", "PL", "PM", "GC", "CF", "EF", "GF", "MK", "MR",
+    "CSA", "RD",
 ]);
 let craftrasPlayerSaves = null;
 global.craftrasCheatsEnabled ??= false;
@@ -28,11 +28,27 @@ class socketManager {
         this.disconnections = [];
         this.playersReceived = [];
         this.bans = [];
+        this.chatLoopTimeout = null;
         // Import permissions
         for (let entry of require("../permissions.js")) {
             this.permissionsDict[entry.key] = entry;
         }
     };
+
+    updateParentServerPresence() {
+        const playerNames = (this.clients || [])
+            .map(client => String(client?.player?.body?.name || "").trim())
+            .filter(Boolean);
+        if (global.gameManager.parentPort) {
+            global.gameManager.parentPort.postMessage([true, this.clients.length, playerNames]);
+            return;
+        }
+        const localServer = (global.servers || []).find(server => server?.gameManager === global.gameManager);
+        if (localServer) {
+            localServer.players = this.clients.length;
+            localServer.playerNames = playerNames;
+        }
+    }
 
     broadcast(message) {
         for (let i = 0; i < this.clients.length; i++) {
@@ -136,31 +152,49 @@ class socketManager {
         fs.writeFileSync(PERMABAN_FILE, JSON.stringify(permBans, null, 2));
     }
     chatLoop() {
-        // clean up expired messages
-        let now = Date.now();
-        for (let i in chats) {
-            chats[i].messages = chats[i].messages.filter((chat) => chat.expires > now);
+        if (this.chatLoopTimeout) {
+            clearTimeout(this.chatLoopTimeout);
+            this.chatLoopTimeout = null;
         }
 
-        // Send chat messages to everyone
-        for (let view of global.gameManager.views) {
-            let nearby = view.getNearby(),
-            array = [];
+        const now = Date.now();
+        let nextExpiry = Infinity;
+        for (const id in chats) {
+            chats[id].messages = chats[id].messages.filter((chat) => chat.expires > now);
+            for (const chat of chats[id].messages) {
+                nextExpiry = Math.min(nextExpiry, chat.expires);
+            }
+        }
 
-            for (let entity of nearby.values()) {
-                let id = entity.id;
-                if (chats[id]) {
-                    if (!this.canSeeCraftrasSpectatorChat(view.socket?.player?.body, entity)) continue;
-                    array.push({ id: id, messages: [] });
-                    let index = array.length - 1;
-                    for (let chat of chats[id].messages) {
-                        array[index].messages.push({ text: chat.message, id: chat.id });
-                    }
-                }
+        // Chat is event-driven, while each view's nearby cache updates on a slower
+        // interval. Send every current speaker and let the normal entity stream
+        // decide whether there is anything on-screen to draw.
+        for (let view of global.gameManager.views) {
+            const array = [];
+            for (const id in chats) {
+                const entity = entities.get(Number(id)) || entities.get(id);
+                if (!entity || !this.canSeeCraftrasSpectatorChat(view.socket?.player?.body, entity)) continue;
+                array.push({
+                    id: entity.id,
+                    messages: chats[id].messages.map((chat) => ({
+                        text: chat.message,
+                        id: chat.id,
+                    })),
+                });
             }
             if (view.socket.status.disablechat) {
                 view.socket.talk("CHAT_MESSAGE_ENTITY", JSON.stringify(array.map(o => {return {id: o.id, messages: []}})));
             } else view.socket.talk("CHAT_MESSAGE_ENTITY", JSON.stringify(array));
+        }
+
+        for (const id in chats) {
+            if (!chats[id].messages.length) delete chats[id];
+        }
+        if (Number.isFinite(nextExpiry)) {
+            this.chatLoopTimeout = setTimeout(() => {
+                this.chatLoopTimeout = null;
+                this.chatLoop();
+            }, Math.max(10, nextExpiry - Date.now() + 10));
         }
     }
 
@@ -180,6 +214,8 @@ class socketManager {
     }
 
     close(socket) {
+        if (socket.craftrasAdminSessionTimeout) clearTimeout(socket.craftrasAdminSessionTimeout);
+        socket.craftrasAdminSessionTimeout = null;
         if (Config.craftras) this.saveCraftrasPlayerSave(socket);
         if (Config.craftras) challengeTeams.removeSocket(global.gameManager, socket);
         // Figure out who the player was
@@ -236,14 +272,7 @@ class socketManager {
         if (Config.craftras_world1_challenge_builder && this.clients.length === 0) {
             global.gameManager.gamemodeManager?.gameCraftras?.resetWorld1ChallengeSession?.();
         }
-        if (!global.gameManager.parentPort) {
-            for (let i = 0; i < global.servers.length; i++) {
-                let server = global.servers[i];
-                if (server.gameManager) server.players--;
-            }
-        } else {
-            global.gameManager.parentPort.postMessage([true, this.clients.length]);
-        }
+        this.updateParentServerPresence();
         util.log("[INFO]: The connection has closed. Views: " + global.gameManager.views.length + ". Clients: " + this.clients.length + ".");
     }
     incoming(message, socket) {
@@ -277,6 +306,9 @@ class socketManager {
                     }
                     socket.key = key;
                 }
+                if (socket.permissions?.admin || socket.permissions?.creative) {
+                    this.markCraftrasPersistenceBlocked(socket, socket.permissions.admin ? "admin" : "creative");
+                } else this.syncCraftrasPersistenceState(socket, true);
                 socket.status.verified = true;
                 if (this.clients.length == 1) {
                     util.log('[INFO]: ' + this.clients.length + ' client connected');
@@ -336,7 +368,12 @@ class socketManager {
 
                 // Give it the room state and move the camera.
                 if (needsRoom) {
-                    if (Config.hidden && !Config.craftras_village_builder && !Config.craftras_steel_torch_builder) return socket.close(); // If the server is hidden then just kick the client.
+                    if (
+                        Config.hidden &&
+                        !Config.craftras_village_builder &&
+                        !Config.craftras_steel_torch_builder &&
+                        !Config.craftras_world2_challenge_builder
+                    ) return socket.close(); // Hidden Craftras destinations still need to serve transferred players.
                     this.newPlayer(socket);
                     socket.talk(
                         'R',
@@ -386,8 +423,15 @@ class socketManager {
                 socket.talk('S', synctick, util.time());
             } break;
             case 'CSR': {
-                const body = player.body;
-                if (!Config.craftras || !body?.craftrasSpectator) return 1;
+                let body = player.body;
+                if (!body?.craftrasSpectator && socket.craftrasSpectatorBodyId != null) {
+                    const spectatorBody = entities.get(socket.craftrasSpectatorBodyId);
+                    if (spectatorBody?.socket === socket && spectatorBody.craftrasSpectator) {
+                        body = spectatorBody;
+                        player.body = spectatorBody;
+                    }
+                }
+                if (!Config.craftras || Config.craftras_world1_challenge_builder || !body?.craftrasSpectator) return 1;
                 if (global.craftrasTheSwordLockedIds instanceof Set) global.craftrasTheSwordLockedIds.delete(body.id);
                 socket.status.deceased = true;
                 body.craftrasSpectatorFinalizing = true;
@@ -411,6 +455,15 @@ class socketManager {
                 const action = m[0];
                 if (action !== 0 && action !== 1) return 1;
                 global.gameManager.gamemodeManager?.gameCraftras?.handleChallengeEntryAction?.(socket, action);
+            } break;
+            case "DS": { // Skip an active Craftras dialogue sequence
+                if (
+                    !Config.craftras
+                    || m.length !== 1
+                    || typeof m[0] !== "string"
+                    || m[0].length > 64
+                ) return 1;
+                global.gameManager.gamemodeManager?.gameCraftras?.handleDialogueSkip?.(socket, m[0]);
             } break;
             case 'p': { // ping
                 if (m.length !== 1) { socket.kick('Ill-sized ping.'); return 1; }
@@ -501,16 +554,44 @@ class socketManager {
                 }
                 this.sendCraftrasHotbar(socket);
             } break;
+            case "GF": { // The Great's friend skill
+                if (!Config.craftras || m.length) return;
+                global.gameManager.gamemodeManager?.gameCraftras?.requestGreatFriendCombo?.(socket);
+            } break;
+            case "CWA": { // Custom weapon emote / special action
+                if (!Config.craftras || m.length !== 1 || typeof m[0] !== "string") return;
+                global.gameManager.gamemodeManager?.gameCraftras?.requestCustomWeaponSpecialAction?.(socket, m[0]);
+            } break;
+            case "BFA": { // Boss-form ability
+                if (!Config.craftras || m.length !== 1 || !Number.isInteger(m[0]) || m[0] < 0 || m[0] > 7) return;
+                global.gameManager.gamemodeManager?.gameCraftras?.requestBossFormSkill?.(socket, m[0]);
+            } break;
+            case "BFC": { // Cancel boss form without dropping its weapon
+                if (!Config.craftras || m.length) return;
+                global.gameManager.gamemodeManager?.gameCraftras?.cancelPlayerBossForm?.(socket);
+            } break;
+            case "MK": { // MAGIC BOOK Shift movement
+                if (!Config.craftras || m.length !== 1 || ![0, 1].includes(m[0])) return;
+                global.gameManager.gamemodeManager?.gameCraftras?.setMagicBookShiftInput?.(socket, !!m[0]);
+            } break;
+            case "MR": { // MAGIC BOOK bullet barrage
+                if (!Config.craftras || m.length) return;
+                global.gameManager.gamemodeManager?.gameCraftras?.requestMagicBookBarrage?.(socket);
+            } break;
             case "EF": { // Explicit Craftras food-use input
                 if (!Config.craftras || m.length !== 1 || ![0, 1].includes(m[0])) return;
                 socket.craftrasEatingInput = !!m[0];
             } break;
             case "IS": { // Browser-saved Craftras inventory restore
-                if (!Config.craftras || m.length !== 1 || typeof m[0] !== "string" || m[0].length > 12000) return;
+                if (!Config.craftras || !this.shouldPersistCraftrasInventory(socket) || m.length !== 1 || typeof m[0] !== "string" || m[0].length > 12000) return;
                 try {
                     const save = JSON.parse(m[0]);
                     if (save?.inventory && Array.isArray(save.inventory.slots)) socket.craftrasBrowserInventorySave = save;
                 } catch {}
+            } break;
+            case "AU": { // Restore a signed, short-lived Craftras admin session
+                if (!Config.craftras || m.length !== 1 || typeof m[0] !== "string" || m[0].length > 1024) return;
+                global.restoreCraftrasAdminSession?.(socket, this, m[0]);
             } break;
             case "IM": { // Move a Craftras inventory stack
                 if (!Config.craftras || m.length !== 2) return;
@@ -598,6 +679,10 @@ class socketManager {
                 if (!Config.craftras || m.length) return;
                 global.gameManager.gamemodeManager.gameCraftras.rebirthAtCleric(socket);
             } break;
+            case "RD": { // Rebirth-one double-Shift dash
+                if (!Config.craftras || m.length) return;
+                global.gameManager.gamemodeManager.gameCraftras.useRebirthDash(socket);
+            } break;
             case "CG": { // Open personal Craftras crafting grid
                 if (!Config.craftras || m.length !== 1 || m[0] !== 2) return;
                 this.openCraftrasCrafting(socket, 2);
@@ -647,6 +732,10 @@ class socketManager {
                 const index = m[0], button = m[1];
                 const items = this.getCraftrasCreativeItems(socket);
                 if (!Number.isInteger(index) || index < 0 || index >= items.length || ![0, 2].includes(button)) return;
+                if (!this.canUseCraftrasParryTool(socket, items[index])) {
+                    socket.player?.body?.sendMessage("Parry Tool requires Rebirth 1.");
+                    return;
+                }
                 this.initializeCraftrasInventory(socket);
                 socket.craftrasInventory.cursor = { ...items[index], count: button === 2 ? 64 : 1 };
                 this.sendCraftrasInventory(socket);
@@ -667,6 +756,14 @@ class socketManager {
                     body.shield.amount = Math.min(shield.amount, shield.max);
                     body.sendMessage(`Creative flight ${socket.craftrasCreativeFlight ? "enabled" : "disabled"}.`);
                 }
+            } break;
+            case "CQ": { // Toggle World 1 Challenge escort quick mode
+                if (!Config.craftras || m.length || global.craftrasCheatsEnabled === false) return;
+                if (!socket.permissions?.admin || !socket.permissions?.commands || (socket.permissions?.level ?? 0) < 1) return;
+                const craftras = global.gameManager.gamemodeManager?.gameCraftras;
+                const result = craftras?.toggleChallengeQuickMode?.();
+                if (!result?.ok) return;
+                socket.talk("m", 4_000, `Escort quick mode ${result.enabled ? "enabled (5x)" : "disabled (1x)"}.`);
             } break;
             case "#": {
                 try {
@@ -768,26 +865,6 @@ class socketManager {
                     } while (limit-- && max && player.body.skill.points && player.body.skill.amount(stat) < player.body.skill.cap(stat))
                 }
                 
-            } break;
-            case "L": {
-                // level up cheat
-                if (m.length !== 0) {
-                    socket.kick("Ill-sized level-up request.");
-                    return 1;
-                }
-                // cheatingbois
-                if (player.body == null || player.body.underControl) return;
-                const craftras = Config.craftras ? global.gameManager.gamemodeManager?.gameCraftras : null;
-                const levelCap = craftras ? craftras.getCraftrasLevelCap(socket) : Config.level_cap_cheat;
-                const canLevel = craftras
-                    ? player.body.skill.level < levelCap
-                    : player.body.skill.level < Config.level_cap_cheat || (socket.permissions && socket.permissions.infiniteLevelUp);
-                if (canLevel) {
-                    player.body.skill.score += player.body.skill.levelScore;
-                    player.body.skill.maintain();
-                    if (craftras) craftras.updateCraftrasScoreGate(socket, player.body);
-                    player.body.refreshBodyAttributes();
-                }
             } break;
             case "0": {
                 // testbed cheat
@@ -1325,7 +1402,178 @@ class socketManager {
     }
 
     shouldPersistCraftrasInventory(socket) {
-        return !!Config.craftras && !Config.craftras_village_builder && !Config.craftras_steel_torch_builder && !Config.craftras_world1_challenge_builder && !!socket;
+        return !!Config.craftras && !Config.craftras_village_builder && !Config.craftras_steel_torch_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_world2_challenge_builder && !!socket;
+    }
+
+    isCraftrasPersistenceBlocked(socket) {
+        return !!socket?.craftrasPersistenceBlocked;
+    }
+
+    syncCraftrasPersistenceState(socket, force = false) {
+        if (!Config.craftras || !socket?.talk) return false;
+        const blocked = this.isCraftrasPersistenceBlocked(socket)
+            || !!Config.craftras_world1_challenge_builder
+            || !!Config.craftras_world2_challenge_builder
+            || !!Config.craftras_village_builder
+            || !!Config.craftras_steel_torch_builder;
+        if (!force && socket.craftrasPersistenceStateSent === blocked) return false;
+        socket.craftrasPersistenceStateSent = blocked;
+        socket.talk("PB", blocked ? 1 : 0);
+        return true;
+    }
+
+    captureCraftrasSurvivalState(socket) {
+        if (!Config.craftras || !socket || socket.craftrasSurvivalState) return false;
+        this.initializeCraftrasInventory(socket);
+        this.saveCraftrasPlayerSave(socket);
+        const inventory = socket.craftrasInventory;
+        if (!inventory) return false;
+        const cloneStack = (stack, maxCount = 64) => this.sanitizeCraftrasSavedStack(stack, maxCount);
+        const skill = this.getCraftrasCurrentSkillSave(socket);
+        socket.craftrasSurvivalState = {
+            key: socket.key || "",
+            saveKey: socket.craftrasSaveKey || this.getCraftrasPlayerSaveKey(socket),
+            inventory: {
+                slots: Array.from({ length: 40 }, (_, index) => cloneStack(inventory.slots?.[index])),
+                cursor: cloneStack(inventory.cursor),
+                helmet: cloneStack(inventory.helmet, 1),
+                offhand: cloneStack(inventory.offhand, 1),
+            },
+            hotbarSelected: Math.max(0, Math.min(9, Math.floor(Number(socket.craftrasHotbar?.selected) || 0))),
+            shopPoints: Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0)),
+            currencyTokens: Math.max(0, Math.floor(Number(socket.craftrasCurrencyTokens) || 0)),
+            challengeTokenClaims: Array.from(socket.craftrasChallengeTokenClaims instanceof Set ? socket.craftrasChallengeTokenClaims : []),
+            rebirths: Math.max(0, Math.floor(Number(socket.craftrasRebirths) || 0)),
+            skill,
+            unlockedRecipes: Array.from(socket.craftrasUnlockedRecipes instanceof Set ? socket.craftrasUnlockedRecipes : []),
+            blesserNextFreeAt: { ...(socket.craftrasBlesserNextFreeAt || {}) },
+            blesserItemCooldowns: { ...(socket.craftrasBlesserItemCooldowns || {}) },
+        };
+        return true;
+    }
+
+    restoreCraftrasSurvivalState(socket) {
+        if (!Config.craftras || !socket) return false;
+        const state = socket.craftrasSurvivalState;
+        socket.craftrasPersistenceBlocked = false;
+        socket.craftrasPersistenceBlockedReason = "";
+        socket.craftrasPersistenceBlockedAt = 0;
+        socket.craftrasProgressSaveDirty = false;
+        socket.craftrasCreativeFlight = false;
+        socket.craftrasCreativeSent = null;
+        socket.craftrasEconomyStateSignature = null;
+        if (state?.inventory) {
+            socket.key = state.key || "";
+            socket.craftrasSaveKey = state.saveKey || null;
+            socket.craftrasSaveLoaded = true;
+            socket.craftrasInventory = {
+                slots: Array.from({ length: 40 }, (_, index) => state.inventory.slots?.[index] || null),
+                cursor: state.inventory.cursor || null,
+                helmet: state.inventory.helmet || null,
+                offhand: state.inventory.offhand || null,
+            };
+            socket.craftrasHotbar = {
+                selected: Math.max(0, Math.min(9, Math.floor(Number(state.hotbarSelected) || 0))),
+                slots: socket.craftrasInventory.slots,
+            };
+            socket.craftrasShopPoints = state.shopPoints;
+            socket.craftrasCurrencyTokens = state.currencyTokens;
+            socket.craftrasChallengeTokenClaims = new Set(state.challengeTokenClaims || []);
+            socket.craftrasRebirths = state.rebirths;
+            socket.craftrasSkillSave = state.skill || null;
+            socket.craftrasUnlockedRecipes = new Set(state.unlockedRecipes || []);
+            socket.craftrasBlesserNextFreeAt = { ...(state.blesserNextFreeAt || {}) };
+            socket.craftrasBlesserItemCooldowns = { ...(state.blesserItemCooldowns || {}) };
+        } else {
+            socket.key = "";
+            socket.craftrasSaveKey = null;
+            socket.craftrasSaveLoaded = false;
+            socket.craftrasInventory = null;
+            socket.craftrasHotbar = null;
+            this.initializeCraftrasInventory(socket);
+        }
+        const body = socket.player?.body;
+        if (body) {
+            body.craftrasPersistenceBlocked = false;
+            body.craftrasCreativeFlight = false;
+            body.craftrasCreativeFlightApplied = false;
+            body.craftrasSavedProgressApplied = false;
+            this.applyCraftrasSavedProgress(socket, body);
+            body.craftrasHotbar = socket.craftrasInventory.slots.slice(0, 10);
+            body.craftrasSelectedHotbarSlot = socket.craftrasHotbar.selected;
+            const selectedStack = socket.craftrasInventory.slots[socket.craftrasHotbar.selected] || null;
+            body.craftrasHeldItem = selectedStack?.id ?? null;
+            body.craftrasMainHandStack = selectedStack;
+            body.craftrasHelmet = socket.craftrasInventory.helmet?.id ?? null;
+            body.craftrasOffhandShield = socket.craftrasInventory.offhand || null;
+            body.refreshBodyAttributes?.();
+        }
+        socket.craftrasSurvivalState = null;
+        this.syncCraftrasPersistenceState(socket, true);
+        this.sendCraftrasInventory(socket);
+        this.syncCraftrasEconomyState(socket, true);
+        return true;
+    }
+
+    markCraftrasPersistenceBlocked(socket, reason = "admin-or-creative", notify = false) {
+        if (!Config.craftras || !socket) return false;
+        const changed = !socket.craftrasPersistenceBlocked;
+        socket.craftrasPersistenceBlocked = true;
+        socket.craftrasPersistenceBlockedReason ||= String(reason || "admin-or-creative");
+        socket.craftrasPersistenceBlockedAt ||= Date.now();
+        socket.craftrasProgressSaveDirty = false;
+        if (socket.player?.body) socket.player.body.craftrasPersistenceBlocked = true;
+        this.syncCraftrasPersistenceState(socket, true);
+        this.syncCraftrasEconomyState(socket, true);
+        if (changed && notify) {
+            socket.player?.body?.sendMessage?.("This session cannot save inventory, Points, or Tokens.");
+        }
+        return changed;
+    }
+
+    isCraftrasEconomyRewardBlocked(socket) {
+        return this.isCraftrasPersistenceBlocked(socket) || !!socket?.permissions?.admin || !!socket?.permissions?.creative;
+    }
+
+    getCraftrasPlayerStatus(socket) {
+        if (socket?.player?.body?.craftrasSpectator) return "Spectator";
+        if (socket?.permissions?.admin) return "Admin";
+        if (socket?.permissions?.creative) return "Creative";
+        return "Survival";
+    }
+
+    syncCraftrasEconomyState(socket, force = false) {
+        if (!Config.craftras || !socket?.talk) return false;
+        const points = Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0));
+        const tokens = Math.max(0, Math.floor(Number(socket.craftrasCurrencyTokens) || 0));
+        const status = this.getCraftrasPlayerStatus(socket);
+        const signature = `${points}:${tokens}:${status}`;
+        if (!force && socket.craftrasEconomyStateSignature === signature) return false;
+        socket.craftrasEconomyStateSignature = signature;
+        socket.talk("EC", points, tokens, status);
+        return true;
+    }
+
+    grantCraftrasChallengeToken(socket, challengeId, amount = 1) {
+        if (!Config.craftras || !socket || this.isCraftrasEconomyRewardBlocked(socket)) {
+            return { granted: false, reason: "blocked" };
+        }
+        const normalizedId = String(challengeId || "").trim().toLowerCase();
+        if (!normalizedId) return { granted: false, reason: "invalid" };
+        socket.craftrasChallengeTokenClaims ??= new Set();
+        if (!(socket.craftrasChallengeTokenClaims instanceof Set)) {
+            socket.craftrasChallengeTokenClaims = new Set(socket.craftrasChallengeTokenClaims || []);
+        }
+        if (socket.craftrasChallengeTokenClaims.has(normalizedId)) {
+            return { granted: false, reason: "claimed" };
+        }
+        const granted = Math.max(1, Math.floor(Number(amount) || 1));
+        socket.craftrasChallengeTokenClaims.add(normalizedId);
+        socket.craftrasCurrencyTokens = Math.max(0, Math.floor(Number(socket.craftrasCurrencyTokens) || 0)) + granted;
+        socket.craftrasProgressSaveDirty = true;
+        this.syncCraftrasEconomyState(socket, true);
+        this.saveCraftrasPlayerSave(socket);
+        return { granted: true, amount: granted };
     }
 
     getCraftrasPlayerSaveKey(socket) {
@@ -1426,16 +1674,23 @@ class socketManager {
         };
         socket.craftrasHotbar = { selected: Math.max(0, Math.min(9, Math.floor(Number(inventorySave?.hotbarSelected) || 0))), slots };
         socket.craftrasShopPoints = Math.max(0, Math.floor(Number(progressionSave?.shopPoints) || 0));
+        socket.craftrasCurrencyTokens = Math.max(0, Math.floor(Number(progressionSave?.currencyTokens) || 0));
+        socket.craftrasChallengeTokenClaims = new Set(
+            Array.isArray(progressionSave?.challengeTokenClaims)
+                ? progressionSave.challengeTokenClaims.filter(id => typeof id === "string")
+                : [],
+        );
         socket.craftrasRebirths = Math.max(0, Math.floor(Number(progressionSave?.rebirths) || 0));
         socket.craftrasSkillSave = this.sanitizeCraftrasSavedSkill(progressionSave?.skill);
         socket.craftrasUnlockedRecipes = new Set(Array.isArray(progressionSave?.unlockedRecipes) ? progressionSave.unlockedRecipes.filter(id => typeof id === "string") : []);
+        this.ensureCraftrasRebirthUnlocks(socket);
         socket.craftrasBlesserNextFreeAt = progressionSave?.blesserNextFreeAt && typeof progressionSave.blesserNextFreeAt === "object" ? { ...progressionSave.blesserNextFreeAt } : {};
         socket.craftrasBlesserItemCooldowns = progressionSave?.blesserItemCooldowns && typeof progressionSave.blesserItemCooldowns === "object" ? { ...progressionSave.blesserItemCooldowns } : {};
         return true;
     }
 
     saveCraftrasPlayerSave(socket) {
-        if (!this.shouldPersistCraftrasInventory(socket) || !socket?.craftrasInventory) return false;
+        if (!this.shouldPersistCraftrasInventory(socket) || this.isCraftrasPersistenceBlocked(socket) || !socket?.craftrasInventory) return false;
         const key = socket.craftrasSaveKey || this.getCraftrasPlayerSaveKey(socket);
         if (!key) return false;
         socket.craftrasSaveKey = key;
@@ -1453,6 +1708,8 @@ class socketManager {
             },
             hotbarSelected: Math.max(0, Math.min(9, Math.floor(Number(socket.craftrasHotbar?.selected) || 0))),
             shopPoints: Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0)),
+            currencyTokens: Math.max(0, Math.floor(Number(socket.craftrasCurrencyTokens) || 0)),
+            challengeTokenClaims: Array.from(socket.craftrasChallengeTokenClaims instanceof Set ? socket.craftrasChallengeTokenClaims : []),
             rebirths: Math.max(0, Math.floor(Number(socket.craftrasRebirths) || 0)),
             skill: skillSave,
             unlockedRecipes: Array.from(socket.craftrasUnlockedRecipes instanceof Set ? socket.craftrasUnlockedRecipes : []),
@@ -1469,14 +1726,68 @@ class socketManager {
         }
     }
 
+    saveCraftrasPlayerLevel(socket) {
+        if (!Config.craftras || !socket) return false;
+        const skill = this.getCraftrasCurrentSkillSave(socket);
+        if (!skill) return false;
+        socket.craftrasSkillSave = skill;
+        if (socket.craftrasSurvivalState) socket.craftrasSurvivalState.skill = { ...skill, raw: [...skill.raw] };
+
+        if (!this.isCraftrasPersistenceBlocked(socket)) {
+            socket.craftrasProgressSaveDirty = false;
+            return this.saveCraftrasPlayerSave(socket);
+        }
+
+        const key = socket.craftrasSurvivalState?.saveKey
+            || socket.craftrasSaveKey
+            || this.getCraftrasPlayerSaveKey(socket);
+        if (!key) return false;
+        const saves = this.getCraftrasPlayerSaves();
+        const previous = saves[key] && typeof saves[key] === "object" ? saves[key] : {};
+        saves[key] = {
+            ...previous,
+            savedAt: previous.inventory ? Date.now() : Math.max(0, Number(previous.savedAt) || 0),
+            skill,
+        };
+        try {
+            fs.mkdirSync(path.dirname(CRAFTRAS_PLAYER_SAVES_FILE), { recursive: true });
+            fs.writeFileSync(CRAFTRAS_PLAYER_SAVES_FILE, JSON.stringify(saves, null, 2));
+            socket.craftrasProgressSaveDirty = false;
+            return true;
+        } catch (error) {
+            util.warn(`[Craftras] Failed to write player level save: ${error.message}`);
+            return false;
+        }
+    }
+
     initializeCraftrasInventory(socket) {
         if (!Config.craftras) return;
         if ((Config.craftras_village_builder || Config.craftras_steel_torch_builder) && !socket.craftrasVillageCreative) {
             socket.permissions = { ...(socket.permissions || {}), creative: true, admin: true, commands: true, level: Math.max(socket.permissions?.level ?? 0, 1) };
             socket.craftrasVillageCreative = true;
             socket.craftrasCreativeSent = null;
+            this.markCraftrasPersistenceBlocked(socket, "builder");
         }
-        if (Config.craftras_world1_challenge_builder && !socket.craftrasChallengeLoadoutApplied) {
+        if (Config.craftras_world2_challenge_builder && !socket.craftrasWorld2ChallengeLoadoutApplied) {
+            const slots = Array(40).fill(null);
+            slots[0] = { ...ITEMS.blue_laser_beam, count: 1 };
+            const importedHelmetId = socket.player?.body?.craftrasHelmet;
+            const transferredHelmet = importedHelmetId && ITEMS[importedHelmetId]
+                ? { ...ITEMS[importedHelmetId], count: 1 }
+                : null;
+            const saveKey = this.getCraftrasPlayerSaveKey(socket);
+            const savedHelmet = saveKey
+                ? this.sanitizeCraftrasSavedStack(this.getCraftrasPlayerSaves()[saveKey]?.inventory?.helmet, 1)
+                : null;
+            socket.craftrasInventory = {
+                slots,
+                cursor: null,
+                helmet: transferredHelmet || savedHelmet,
+                offhand: null,
+            };
+            socket.craftrasHotbar = { selected: 0, slots };
+            socket.craftrasWorld2ChallengeLoadoutApplied = true;
+        } else if (Config.craftras_world1_challenge_builder && !socket.craftrasChallengeLoadoutApplied) {
             const slots = Array(40).fill(null);
             slots[0] = { ...ITEMS.iron_sword, count: 1 };
             slots[1] = { ...ITEMS.cooked_beef, count: 30 };
@@ -1502,8 +1813,13 @@ class socketManager {
         socket.craftrasInventory.offhand ??= null;
         socket.craftrasHotbar ??= { selected: 0 };
         socket.craftrasHotbar.slots = socket.craftrasInventory.slots;
+        socket.craftrasCurrencyTokens = Math.max(0, Math.floor(Number(socket.craftrasCurrencyTokens) || 0));
+        if (!(socket.craftrasChallengeTokenClaims instanceof Set)) {
+            socket.craftrasChallengeTokenClaims = new Set(socket.craftrasChallengeTokenClaims || []);
+        }
         const body = socket.player?.body;
         if (body) {
+            body.craftrasPersistenceBlocked = this.isCraftrasPersistenceBlocked(socket);
             this.applyCraftrasSavedProgress(socket, body);
             body.craftrasHotbar = socket.craftrasInventory.slots.slice(0, 10);
             body.craftrasSelectedHotbarSlot = socket.craftrasHotbar.selected;
@@ -1535,27 +1851,116 @@ class socketManager {
 
     sendCraftrasHotbar(socket) {
         if (!Config.craftras || !socket.craftrasHotbar) return;
-        socket.talk("HB", socket.craftrasHotbar.selected, JSON.stringify(socket.craftrasInventory.slots.slice(0, 10)));
+        this.syncCraftrasPersistenceState(socket);
+        const body = socket.player?.body;
+        const friendCooldownRemaining = Math.max(0, (body?.craftrasNextGreatFriendComboAt || 0) - Date.now());
+        const selectedItemId = socket.craftrasHotbar.slots[socket.craftrasHotbar.selected]?.id;
+        const customActionKeys = (ITEMS[selectedItemId]?.customWeapon ? ITEMS[selectedItemId].weapon?.specialActions : [])
+            .map(action => String(action?.key || "").toLowerCase())
+            .filter(key => ["z", "x", "c", "v", "b", "n", "m"].includes(key));
+        socket.talk(
+            "HB",
+            socket.craftrasHotbar.selected,
+            JSON.stringify(socket.craftrasInventory.slots.slice(0, 10)),
+            friendCooldownRemaining,
+            JSON.stringify(customActionKeys),
+        );
     }
 
     sendCraftrasInventory(socket) {
         if (!Config.craftras || !socket.craftrasInventory) return;
+        this.ensureCraftrasRebirthUnlocks(socket);
+        this.syncCraftrasPersistenceState(socket);
         socket.talk("IV", JSON.stringify(socket.craftrasInventory.slots), JSON.stringify(socket.craftrasInventory.cursor), JSON.stringify(socket.craftrasInventory.helmet), JSON.stringify(socket.craftrasInventory.offhand));
         this.saveCraftrasPlayerSave(socket);
+        this.syncCraftrasEconomyState(socket);
         const creative = this.hasCraftrasCreativeAccess(socket);
         if (socket.craftrasCreativeSent !== creative) {
             socket.craftrasCreativeSent = creative;
             socket.talk("CI", creative ? 1 : 0, creative ? JSON.stringify(this.getCraftrasCreativeItems(socket)) : "[]");
         }
+        this.sendCraftrasRecipeCatalog(socket);
+    }
+
+    ensureCraftrasRebirthUnlocks(socket) {
+        if (!socket) return false;
+        if (!(socket.craftrasUnlockedRecipes instanceof Set)) {
+            socket.craftrasUnlockedRecipes = new Set(Array.isArray(socket.craftrasUnlockedRecipes) ? socket.craftrasUnlockedRecipes : []);
+        }
+        if (Math.max(0, Math.floor(Number(socket.craftrasRebirths) || 0)) < 1) return false;
+        let changed = false;
+        for (const itemId of ["great_iron_helmet", "great_diamond_helmet"]) {
+            if (socket.craftrasUnlockedRecipes.has(itemId)) continue;
+            socket.craftrasUnlockedRecipes.add(itemId);
+            changed = true;
+        }
+        return changed;
+    }
+
+    getCraftrasRecipeCatalog(socket) {
+        this.initializeCraftrasCrafting(socket);
+        return CRAFTING_RECIPES.map((recipe, index) => {
+            const pattern = Array.from({ length: 3 }, () => Array(3).fill(null));
+            if (Array.isArray(recipe.shapeless)) {
+                recipe.shapeless.slice(0, 9).forEach((itemId, slot) => {
+                    pattern[Math.floor(slot / 3)][slot % 3] = itemId;
+                });
+            } else {
+                const recipeWidth = Math.max(0, ...Array.from({ length: Math.min(3, recipe.pattern?.length || 0) }, (_, row) => Math.min(3, recipe.pattern[row]?.length || 0)));
+                const columnOffset = Math.max(0, Math.floor((3 - recipeWidth) / 2));
+                for (let row = 0; row < Math.min(3, recipe.pattern?.length || 0); row++) {
+                    for (let column = 0; column < Math.min(3, recipe.pattern[row]?.length || 0); column++) {
+                        pattern[row][column + columnOffset] = recipe.pattern[row][column] || null;
+                    }
+                }
+            }
+            const outputId = recipe.output?.[0];
+            const ingredientNames = pattern.flat().filter(Boolean).map(id => ITEMS[id]?.name || id);
+            return {
+                id: `${outputId || "recipe"}:${index}`,
+                name: ITEMS[outputId]?.name || outputId || "Unknown Recipe",
+                pattern,
+                output: outputId,
+                outputCount: Math.max(1, Math.floor(Number(recipe.output?.[1]) || 1)),
+                unlock: recipe.unlock || null,
+                shapeless: Array.isArray(recipe.shapeless),
+                note: ["great_iron_helmet", "great_diamond_helmet"].includes(recipe.unlock)
+                    ? "Rebirth 1"
+                    : recipe.unlock ? "Recipe unlock" : Array.isArray(recipe.shapeless) ? "Shapeless" : "Crafting Table",
+                search: [ITEMS[outputId]?.name, outputId, ...ingredientNames].filter(Boolean).join(" "),
+            };
+        }).filter(recipe => recipe.output);
+    }
+
+    sendCraftrasRecipeCatalog(socket, force = false) {
+        if (!Config.craftras || !socket) return false;
+        this.initializeCraftrasCrafting(socket);
+        const unlocked = Array.from(socket.craftrasUnlockedRecipes).sort();
+        const signature = JSON.stringify(unlocked);
+        if (!force && socket.craftrasRecipeCatalogSignature === signature) return false;
+        socket.craftrasRecipeCatalogSignature = signature;
+        socket.talk("RC", JSON.stringify(this.getCraftrasRecipeCatalog(socket)), JSON.stringify(unlocked));
+        return true;
+    }
+
+    sendCraftrasRecipeUnlock(socket, itemIds) {
+        if (!Config.craftras || !socket || !Array.isArray(itemIds) || !itemIds.length) return false;
+        const items = itemIds.map(id => ITEMS[id]).filter(Boolean).map(item => ({ id: item.id, name: item.name || item.id }));
+        if (!items.length) return false;
+        socket.talk("RN", JSON.stringify(items));
+        return true;
     }
 
     getCraftrasCreativeItems(socket) {
         if (!this.hasCraftrasCreativeAccess(socket)) return [];
-        return Object.values(ITEMS).filter(item => !item.adminOnly || socket.permissions?.admin);
+        return Object.values(ITEMS).filter(item =>
+            !item.hiddenFromCreative && (!item.adminOnly || socket.permissions?.admin)
+        );
     }
 
     grantTemporaryCraftrasCreative(socket, duration) {
         if (!Config.craftras || global.craftrasCheatsEnabled === false || !socket || !Number.isFinite(duration) || duration <= 0) return false;
+        this.markCraftrasPersistenceBlocked(socket, "temporary-creative", true);
         const now = Date.now();
         if (!socket.craftrasTemporaryCreativeUntil) {
             socket.craftrasTemporaryCreativeBasePermissions = socket.permissions;
@@ -1594,6 +1999,11 @@ class socketManager {
         if (!(socket.craftrasUnlockedRecipes instanceof Set)) {
             socket.craftrasUnlockedRecipes = new Set(Array.isArray(socket.craftrasUnlockedRecipes) ? socket.craftrasUnlockedRecipes : []);
         }
+        this.ensureCraftrasRebirthUnlocks(socket);
+    }
+
+    canUseCraftrasParryTool(socket, item) {
+        return item?.id !== "parry_tool" || Math.max(0, Math.floor(Number(socket?.craftrasRebirths) || 0)) >= 1;
     }
 
     getCraftrasCraftingMatch(socket) {
@@ -1924,6 +2334,14 @@ class socketManager {
 
     addCraftrasItem(socket, item, amount = 1) {
         if (!Config.craftras || !item?.id || amount <= 0) return 0;
+        if (!this.canUseCraftrasParryTool(socket, item)) {
+            const now = Date.now();
+            if (now >= (socket.craftrasNextParryToolLockedMessageAt || 0)) {
+                socket.craftrasNextParryToolLockedMessageAt = now + 1500;
+                socket.player?.body?.sendMessage("Parry Tool requires Rebirth 1.");
+            }
+            return 0;
+        }
         this.initializeCraftrasInventory(socket);
         const slots = socket.craftrasInventory.slots;
         let remaining = Math.floor(amount);
@@ -2056,7 +2474,13 @@ class socketManager {
         const inventory = socket.craftrasInventory;
         const cursor = inventory.cursor;
         const helmet = inventory.helmet;
-        const isHelmet = item => item?.id === "iron_helmet" || item?.id === "diamond_helmet" || item?.id === "zombie_crown" || item?.id === "cleric_hat" || item?.id === "pope_hat" || item?.id === "blesser_hat" || item?.id === "merchant_hat" || item?.id === "monster_merchant_hat";
+        const isHelmet = item => item?.id === "iron_helmet" || item?.id === "diamond_helmet"
+            || item?.id === "great_iron_helmet" || item?.id === "great_diamond_helmet"
+            || item?.id === "ruby_helmet" || item?.id === "sapphire_helmet"
+            || item?.id === "sturdy_helmet"
+            || item?.id === "zombie_crown" || item?.id === "cleric_hat" || item?.id === "pope_hat"
+            || item?.id === "blesser_hat" || item?.id === "merchant_hat" || item?.id === "monster_merchant_hat"
+            || item?.id === "jane_hat";
 
         if (!cursor) {
             if (!helmet) return false;
@@ -2088,13 +2512,17 @@ class socketManager {
         const inventory = socket.craftrasInventory;
         const cursor = inventory.cursor;
         const offhand = inventory.offhand;
-        const isShield = item => !!ITEMS[item?.id]?.shieldHealth;
+        const isOffhandItem = item => !!(ITEMS[item?.id]?.shieldHealth || ITEMS[item?.id]?.offhandSlot);
+        if (cursor && !this.canUseCraftrasParryTool(socket, cursor)) {
+            socket.player?.body?.sendMessage("Parry Tool requires Rebirth 1.");
+            return false;
+        }
 
         if (!cursor) {
             if (!offhand) return false;
             inventory.cursor = offhand;
             inventory.offhand = null;
-        } else if (isShield(cursor)) {
+        } else if (isOffhandItem(cursor)) {
             inventory.offhand = { ...cursor, count: 1 };
             cursor.count--;
             if (cursor.count <= 0) inventory.cursor = offhand || null;
@@ -2119,7 +2547,11 @@ class socketManager {
         this.initializeCraftrasInventory(socket);
         const inventory = socket.craftrasInventory;
         const stack = inventory.slots[slotIndex];
-        if (!ITEMS[stack?.id]?.shieldHealth) return false;
+        if (!(ITEMS[stack?.id]?.shieldHealth || ITEMS[stack?.id]?.offhandSlot)) return false;
+        if (!this.canUseCraftrasParryTool(socket, stack)) {
+            socket.player?.body?.sendMessage("Parry Tool requires Rebirth 1.");
+            return false;
+        }
         const previous = inventory.offhand;
         inventory.offhand = { ...stack, count: 1 };
         stack.count--;
@@ -2222,10 +2654,24 @@ class socketManager {
                 }
             }
         }
-        socket.talk("CIV", Config.craftras_world1_challenge_builder ? 1 : 0);
+        socket.talk("CIV", Config.craftras_world1_challenge_builder || Config.craftras_world2_challenge_builder ? 1 : 0);
         this.initializeCraftrasHotbar(socket);
+        if (bodyInfo?.craftrasEconomy && typeof bodyInfo.craftrasEconomy === "object") {
+            const economy = bodyInfo.craftrasEconomy;
+            socket.craftrasShopPoints = Math.max(0, Math.floor(Number(economy.shopPoints) || 0));
+            socket.craftrasCurrencyTokens = Math.max(0, Math.floor(Number(economy.currencyTokens) || 0));
+            socket.craftrasChallengeTokenClaims = new Set(
+                Array.isArray(economy.challengeTokenClaims)
+                    ? economy.challengeTokenClaims.filter(id => typeof id === "string")
+                    : [],
+            );
+            if (economy.persistenceBlocked) {
+                this.markCraftrasPersistenceBlocked(socket, economy.persistenceBlockedReason || "transferred-session");
+            }
+        }
         this.sendCraftrasHotbar(socket);
         this.sendCraftrasInventory(socket);
+        this.updateParentServerPresence();
         // Log it 
         util.log(`[INFO]: ${name == "" ? "An unnamed player" : name} has spawned into the game on team ${socket.player.body.team}! Players: ${this.players.length}`);
         // Stop the timeout
@@ -2358,6 +2804,10 @@ class socketManager {
                 })
             }
         }
+        if (Config.craftras) {
+            body.craftrasDefaultBodyColor ??= body.color.base;
+            if (socket.craftrasBodyColor) body.color.base = socket.craftrasBodyColor;
+        }
         this.preparePlayer(socket, player, body);
         return player;
     };
@@ -2385,17 +2835,21 @@ class socketManager {
         // Set up the recording commands
         if (!doNotTakeAction.dontOverrideRecords) {
             let begin = util.time();
-            player.records = () => [
-                player.body.skill.score,
-                Math.floor((util.time() - begin) / 1000),
-                Config.respawn_delay,
-                player.body.killCount.solo,
-                player.body.killCount.assists,
-                player.body.killCount.bosses,
-                player.body.killCount.polygons,
-                player.body.killCount.killers.length,
-                ...player.body.killCount.killers,
-            ];
+            const recordsBody = body;
+            player.records = (sourceBody = recordsBody) => {
+                const source = sourceBody || recordsBody;
+                return [
+                    source.skill.score,
+                    Math.floor((util.time() - begin) / 1000),
+                    Config.respawn_delay,
+                    source.killCount.solo,
+                    source.killCount.assists,
+                    source.killCount.bosses,
+                    source.killCount.polygons,
+                    source.killCount.killers.length,
+                    ...source.killCount.killers,
+                ];
+            };
         }
         // Set up the player's gui
         player.gui = this.newgui(player);
@@ -2645,6 +3099,9 @@ class socketManager {
                     fovNow = camera.fov;
                 // If we are alive, update the camera.
                 if (player.body != null) {
+                    if (player.body.isDead() && Config.craftras && !player.body.craftrasSpectatorFinalizing) {
+                        player.body.enterCraftrasSpectator?.();
+                    }
                     // If we are dead, then let the client know.
                     if (player.body.isDead()) {
                         let purge = () => player.body = null; // Remove our bonded body.
@@ -3181,6 +3638,13 @@ class socketManager {
                 skillcap: socket.player.body.skill.caps,
                 skill: socket.player.body.skill.raw,
                 points: socket.player.body.skill.points,
+                craftrasEconomy: Config.craftras ? {
+                    shopPoints: Math.max(0, Math.floor(Number(socket.craftrasShopPoints) || 0)),
+                    currencyTokens: Math.max(0, Math.floor(Number(socket.craftrasCurrencyTokens) || 0)),
+                    challengeTokenClaims: Array.from(socket.craftrasChallengeTokenClaims instanceof Set ? socket.craftrasChallengeTokenClaims : []),
+                    persistenceBlocked: this.isCraftrasPersistenceBlocked(socket),
+                    persistenceBlockedReason: socket.craftrasPersistenceBlockedReason || "",
+                } : null,
             }),
         }).then(async (r) => {
             if (r.status === 200) {
@@ -3353,14 +3817,7 @@ class socketManager {
 
         this.clients.push(socket);
 
-        if (!global.gameManager.parentPort) {
-            for (let i = 0; i < global.servers.length; i++) {
-                let server = global.servers[i];
-                if (server.gameManager) server.players++;
-            }
-        } else {
-            global.gameManager.parentPort.postMessage([true, this.clients.length]);
-        }
+        this.updateParentServerPresence();
         util.log(`[INFO]: Client has been welcomed!`);
 
         if (Config.load_all_mockups) {

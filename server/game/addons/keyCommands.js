@@ -63,7 +63,14 @@ function init() {
             }
             return bonus;
         };
-        const helmetBonus = body.craftrasHelmet === "pope_hat" ? 5000 : body.craftrasHelmet === "blesser_hat" ? 200 : body.craftrasHelmet === "zombie_crown" ? 300 : body.craftrasHelmet === "diamond_helmet" ? 100 : body.craftrasHelmet === "iron_helmet" ? 50 : 0;
+        const helmetBonus = body.craftrasHelmet === "pope_hat" ? 5000
+            : body.craftrasHelmet === "blesser_hat" ? 200
+            : body.craftrasHelmet === "zombie_crown" ? 300
+            : body.craftrasHelmet === "sturdy_helmet" ? 2000
+            : body.craftrasHelmet === "sapphire_helmet" ? 600
+            : body.craftrasHelmet === "ruby_helmet" ? 500
+            : body.craftrasHelmet === "diamond_helmet" ? 100
+            : body.craftrasHelmet === "iron_helmet" ? 50 : 0;
         const adminPickaxeBonus = body.craftrasHeldItem === "admin_pickaxe" ? 1e100 : 0;
         const levelHealth = getLevelHealthBonus(body.skill.level);
         const desiredHealth = 100 + helmetBonus + levelHealth + adminPickaxeBonus;
@@ -660,20 +667,6 @@ function init() {
                     ]
                     socket.talk("Em", 20_000, JSON.stringify(message));
                 });
-            }
-        },
-        {
-            name: "Infinite level up",
-            keys: [[[78, "N"]]],
-            level: 1,
-            operatorAccess: true,
-            run: ({ socket, player }) => {
-                const craftras = Config.craftras ? global.gameManager.gamemodeManager?.gameCraftras : null;
-                if (craftras && !craftras.updateCraftrasScoreGate(socket, player.body)) return;
-                player.body.skill.score += player.body.skill.levelScore;
-                player.body.skill.maintain();
-                if (craftras) craftras.updateCraftrasScoreGate(socket, player.body);
-                player.body.refreshBodyAttributes();
             }
         },
         {

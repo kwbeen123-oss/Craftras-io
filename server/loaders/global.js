@@ -66,7 +66,7 @@ global.getTeamColor = (team, fixMode = false) => {
     if (fixMode) color = color + " 0 1 0 false";
     return color;
 }
-global.isPlayerTeam = team => team < 0 || team > -11;
+global.isPlayerTeam = team => team < 0 && team > -11;
 global.getWeakestTeam = () => {
     let teamCounts = {};
     for (let i = -Config.teams; i < 0; i++) {
@@ -221,6 +221,42 @@ global.runMove = (() => {
             gactive = (g.x !== 0 || g.y !== 0),
             engine = { x: 0, y: 0, },
             a = my.acceleration / global.gameManager.roomSpeed;
+        if (Config.craftras_world2_challenge_builder && my.isPlayer && !my.craftrasSpectator) {
+            const momentum = my.craftrasWorld2ChallengeMomentum ||= { x: 0, y: 0 };
+            const expected = my.craftrasWorld2ChallengeExpectedVelocity;
+            if (expected && Number.isFinite(expected.x) && Number.isFinite(expected.y)) {
+                // Anything that changed velocity since the previous movement tick
+                // came from recoil, impact, or another external knockback.
+                momentum.x += my.velocity.x - expected.x;
+                momentum.y += my.velocity.y - expected.y;
+            }
+
+            const inputLength = Math.hypot(g.x, g.y);
+            const inputSpeed = Math.max(0, Number(my.topSpeed) || 0) * Math.max(0, Number(my.control.power) || 0);
+            const movementX = inputLength ? g.x / inputLength * inputSpeed : 0;
+            const movementY = inputLength ? g.y / inputLength * inputSpeed : 0;
+            if (my.control.fire) {
+                const targetX = Number(my.control.target?.x) || 0;
+                const targetY = Number(my.control.target?.y) || 0;
+                const targetLength = Math.hypot(targetX, targetY);
+                if (targetLength > 0.001) {
+                    const mouseAcceleration = Math.max(0.35, inputSpeed * 0.04);
+                    momentum.x += targetX / targetLength * mouseAcceleration;
+                    momentum.y += targetY / targetLength * mouseAcceleration;
+                }
+            }
+            my.velocity.x = movementX + momentum.x;
+            my.velocity.y = movementY + momentum.y;
+            my.accel.x = 0;
+            my.accel.y = 0;
+            my.maxSpeed = Math.hypot(my.velocity.x, my.velocity.y);
+            my.damp = 0;
+            my.craftrasWorld2ChallengeExpectedVelocity = {
+                x: my.velocity.x,
+                y: my.velocity.y,
+            };
+            return;
+        }
         if (my.craftrasDirectMovement) {
             const length = Math.hypot(g.x, g.y);
             const speed = Math.max(0, Number(my.topSpeed) || 0);
