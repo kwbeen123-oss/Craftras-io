@@ -141,6 +141,7 @@ const craftrasWorld2OreOverlayImages = Object.fromEntries([
     image.src = `./img/${file}?v=20260727-world2-mobs1`;
     return [code, image];
 }));
+const CRAFTRAS_EQUIPMENT_ASSET_VERSION = "20260818-ruby-sapphire1";
 const craftrasHelmetImages = Object.fromEntries([
     ["iron_helmet", "craftras-iron-helmet.png"],
     ["diamond_helmet", "craftras-diamond-helmet.png"],
@@ -162,7 +163,7 @@ const craftrasHelmetImages = Object.fromEntries([
     ["jane_hat", "craftras-jane-hat.png"],
 ].map(([id, file]) => {
     const image = new Image();
-    image.src = `./img/${file}?v=20260731-jane-assets2`;
+    image.src = `./img/${file}?v=${CRAFTRAS_EQUIPMENT_ASSET_VERSION}`;
     return [id, image];
 }));
 const craftrasBandageImage = new Image();
@@ -314,7 +315,7 @@ const craftrasResourceItemImages = Object.fromEntries([
     ["ruby", "craftras-ruby-item.png"],
 ].map(([id, file]) => {
     const image = new Image();
-    image.src = `./img/${file}?v=20260711-ore-item1`;
+    image.src = `./img/${file}?v=${CRAFTRAS_EQUIPMENT_ASSET_VERSION}`;
     return [id, image];
 }));
 const craftrasM134HeatedImage = document.createElement("canvas");
@@ -528,7 +529,7 @@ const craftrasToolImageFiles = {
 };
 const craftrasToolImages = Object.fromEntries(Object.entries(craftrasToolImageFiles).map(([id, file]) => {
     const image = new Image();
-    image.src = `./img/${file}?v=20260731-jane-assets2`;
+    image.src = `./img/${file}?v=${CRAFTRAS_EQUIPMENT_ASSET_VERSION}`;
     return [id, image];
 }));
 const craftrasCustomToolDefinitions = Object.create(null);
@@ -595,7 +596,7 @@ function getCraftrasToolStyle(itemId) {
     if (itemId === "the_great") return { material: "iron", type: "sword" };
     if (itemId === "the_great_friend") return { material: "iron", type: "sword" };
     if (itemId === "jane_sword") return { material: "ruby", type: "sword" };
-    const match = /^(wooden|stone|iron|gold|diamond)_(pickaxe|axe|shovel|sword)$/.exec(itemId || "");
+    const match = /^(wooden|stone|iron|gold|diamond|ruby|sapphire)_(pickaxe|axe|shovel|sword)$/.exec(itemId || "");
     return match ? { material: match[1], type: match[2] } : null;
 }
 

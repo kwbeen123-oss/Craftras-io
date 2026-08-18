@@ -3716,7 +3716,7 @@ const CRAFTRAS_HELD_TOOL_ITEMS = [...new Set([
     "ruby_pickaxe", "sapphire_pickaxe",
     "wooden_axe", "stone_axe", "iron_axe", "gold_axe", "diamond_axe",
     "wooden_shovel", "stone_shovel", "iron_shovel", "gold_shovel", "diamond_shovel",
-    "wooden_sword", "stone_sword", "iron_sword", "gold_sword", "diamond_sword",
+    "wooden_sword", "stone_sword", "iron_sword", "gold_sword", "diamond_sword", "ruby_sword", "sapphire_sword",
     "venom_sword", "horn_sword", "the_great", "the_great_friend", "jane_sword",
     "blacksmith_hammer",
     "cleric_staff", "zombie_wizard_staff", "cleric_staff_op", "pope_staff", "blesser_staff",
