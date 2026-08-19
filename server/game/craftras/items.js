@@ -227,6 +227,13 @@ const BUILTIN_ITEMS = Object.freeze({
     cooked_pork: { id: "cooked_pork", name: "Cooked Pork", heal: 40 },
     raw_chicken: { id: "raw_chicken", name: "Raw Chicken", heal: 5 },
     cooked_chicken: { id: "cooked_chicken", name: "Cooked Chicken", heal: 40 },
+    cactus_sap: {
+        id: "cactus_sap",
+        name: "Cactus Sap",
+        description: "Regenerates 100 health per second for 1 minute.",
+        healOverTimePerSecond: 100,
+        healOverTimeDuration: 60_000,
+    },
 });
 
 const CUSTOM_ITEMS_DIRECTORIES = [

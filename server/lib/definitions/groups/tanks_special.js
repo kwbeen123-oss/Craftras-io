@@ -761,11 +761,11 @@ const CRAFTRAS_HELD_ITEM_IDS = Object.freeze([
     "cleric_staff_recipe", "cleric_staff_head", "cleric_staff_body", "cleric_staff_handle",
     "king_zombie_summon_ticket", "queen_spider_summon_ticket", "annihilator_summon_ticket", "sword_guy_summon_ticket",
     "knight_shield_fragment", "iron_shield", "gold_shield", "diamond_shield", "knight_shield", "parry_tool", "parry_tool_op",
-    "raw_beef", "cooked_beef", "raw_pork", "cooked_pork", "raw_chicken", "cooked_chicken",
+    "raw_beef", "cooked_beef", "raw_pork", "cooked_pork", "raw_chicken", "cooked_chicken", "cactus_sap",
     "creative_24h", "creative_1h", "world1_badge",
 ]);
 const CRAFTRAS_FOOD_ITEMS = new Set([
-    "raw_beef", "cooked_beef", "raw_pork", "cooked_pork", "raw_chicken", "cooked_chicken",
+    "raw_beef", "cooked_beef", "raw_pork", "cooked_pork", "raw_chicken", "cooked_chicken", "cactus_sap",
     "creative_24h", "creative_1h",
 ]);
 const CRAFTRAS_SHIELD_HEALTH = Object.freeze({

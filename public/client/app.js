@@ -254,6 +254,7 @@ const craftrasLootImages = Object.fromEntries([
     ["magic_crystal", "craftras-magic-crystal.png"],
     ["gunpowder", "craftras-gunpowder.png"],
     ["crown_fragment", "craftras-crown-fragment.png"],
+    ["cactus_sap", "craftras-cactus-sap.png"],
     ["royal_key", "craftras-royal-key.png"],
     ["spider_eye", "craftras-spider-eye.png"],
     ["toxic_spider_eye", "craftras-toxic-spider-eye.png"],
@@ -347,7 +348,7 @@ const craftrasFlatItemIds = new Set([
     "spider_leg", "string", "spider_venom", "venom_sword_recipe",
     "zombie_crown_recipe", "knight_shield_recipe",
     "knight_shield_fragment", "iron_shield", "gold_shield", "diamond_shield", "knight_shield", "parry_tool", "parry_tool_op", "magic_book",
-    "raw_beef", "cooked_beef", "raw_pork", "cooked_pork", "raw_chicken", "cooked_chicken",
+    "raw_beef", "cooked_beef", "raw_pork", "cooked_pork", "raw_chicken", "cooked_chicken", "cactus_sap",
     "blacksmith_hammer", "world1_badge", "cleric_hat", "pope_hat", "pope_staff", "blesser_hat", "blesser_staff",
     "merchant_hat", "monster_merchant_hat",
     "cleric_staff_recipe", "cleric_staff_head", "cleric_staff_body", "cleric_staff_handle",
@@ -420,6 +421,7 @@ const craftrasHeldItemClasses = {
     craftrasHeldItemCookedPork: "cooked_pork",
     craftrasHeldItemRawChicken: "raw_chicken",
     craftrasHeldItemCookedChicken: "cooked_chicken",
+    craftrasHeldItemCactusSap: "cactus_sap",
     craftrasHeldItemCreative24h: "creative_24h",
     craftrasHeldItemCreative1h: "creative_1h",
     craftrasHeldItemWorld1Badge: "world1_badge",
@@ -4743,6 +4745,7 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
             else if (code === 26) { fill = "#a653ff"; stroke = "#4b167d"; }
             else if (code === 27) { fill = "#dabb70"; stroke = "#a88442"; }
             else if (code === 28) { fill = "#5f646b"; stroke = "#3d4248"; }
+            else if (code === 30) { fill = "#2499e9"; stroke = "#104b86"; }
             return { fill, stroke };
         };
 
@@ -4901,6 +4904,19 @@ global.craftrasChest ??= { open: false, key: null, slots: Array(27).fill(null) }
                     context.save();
                     context.globalAlpha = 0.3 * cellAlpha;
                     drawCraftrasPolygon(context, screenX, screenY, size, 9, -Math.PI / 2, "#166b35", "#0e4c25");
+                    context.restore();
+                } else if (code === 30) {
+                    context.save();
+                    const cactusSize = size * 0.48;
+                    drawCraftrasPolygon(context, screenX, screenY, cactusSize, 8, Math.PI / 8, "#2499e9", "#104b86");
+                    context.globalAlpha = 0.5 * cellAlpha;
+                    context.fillStyle = "#76d8ff";
+                    context.beginPath();
+                    context.moveTo(screenX, screenY - cactusSize * 0.9);
+                    context.lineTo(screenX + cactusSize * 0.55, screenY);
+                    context.lineTo(screenX, screenY + cactusSize * 0.18);
+                    context.closePath();
+                    context.fill();
                     context.restore();
                 } else {
                     const { fill, stroke } = getBlockStyle(code, CraftrasWorld.isInsideWorld2?.(blockX, blockY));

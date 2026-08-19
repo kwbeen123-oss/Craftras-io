@@ -791,6 +791,10 @@ const WHITE_INFERNO_AFTERMATH_DURATION = 10 * 60 * 1000;
 const WHITE_INFERNO_DAMAGE_INTERVAL = 500;
 const WHITE_INFERNO_HEALTH_DAMAGE_RATIO = 0.01;
 const WHITE_INFERNO_MAX_DAMAGE = 500;
+const CRAFTRAS_CACTUS_RESPAWN_DURATION = 20_000;
+const CRAFTRAS_CACTUS_CONTACT_DAMAGE = 100;
+const CRAFTRAS_CACTUS_CONTACT_DAMAGE_INTERVAL = 1_000;
+const CRAFTRAS_CACTUS_SAP_DROP_CHANCE = 0.10;
 const KINGDOM_WEATHER_TRANSITION_DURATION = 60_000;
 const KINGDOM_WEATHER_SWAP_DELAY = KINGDOM_WEATHER_TRANSITION_DURATION / 2;
 const BLOCK_CODES = Object.freeze({
@@ -821,6 +825,7 @@ const BLOCK_CODES = Object.freeze({
     [BLOCKS.CHALLENGE_SPAWN]: 23,
     [BLOCKS.TRANSPARENT_BLOCK]: 24,
     [BLOCKS.ROUTE_MARKER]: 25,
+    [BLOCKS.CACTUS]: 30,
     [FLOORS.SAND]: 27,
 });
 const WORLD2_STONE_FLOOR_CODE = 28;
@@ -835,6 +840,7 @@ const BLOCK_HEALTH = Object.freeze({
     [BLOCKS.GOLD_ORE]: 200,
     [BLOCKS.CRYSTAL_ORE]: 300,
     [BLOCKS.TREE]: 75,
+    [BLOCKS.CACTUS]: 75,
     [BLOCKS.PLANK]: 75,
     [BLOCKS.CRAFTING_TABLE]: 75,
     [BLOCKS.FURNACE]: 100,
@@ -1120,7 +1126,7 @@ const PLACEABLE_ITEMS = Object.freeze({
     transparent_block: BLOCKS.TRANSPARENT_BLOCK,
     route_marker_block: BLOCKS.ROUTE_MARKER,
 });
-const AXE_BLOCKS = new Set([BLOCKS.TREE, BLOCKS.PLANK, BLOCKS.CRAFTING_TABLE, BLOCKS.TORCH, BLOCKS.STEEL_TORCH, BLOCKS.CHEST]);
+const AXE_BLOCKS = new Set([BLOCKS.TREE, BLOCKS.CACTUS, BLOCKS.PLANK, BLOCKS.CRAFTING_TABLE, BLOCKS.TORCH, BLOCKS.STEEL_TORCH, BLOCKS.CHEST]);
 const PICKAXE_BLOCKS = new Set([
     BLOCKS.ROCK, BLOCKS.CORE_ROCK, BLOCKS.COAL_ORE, BLOCKS.IRON_ORE,
     BLOCKS.GOLD_ORE, BLOCKS.CRYSTAL_ORE, BLOCKS.FURNACE, BLOCKS.COAL_BLOCK,
@@ -1132,6 +1138,7 @@ const ALWAYS_HARVESTABLE_BLOCKS = new Set([
     BLOCKS.DIRT_WALL,
     BLOCKS.DIRT_PATH,
     BLOCKS.TREE,
+    BLOCKS.CACTUS,
     BLOCKS.TORCH,
     BLOCKS.STEEL_TORCH,
 ]);
@@ -1354,6 +1361,7 @@ class Craftras {
         this.seed = 1337;
         this.cellCache = new Map();
         this.destroyedWallKeys = new Set();
+        this.cactusRespawns = new Map();
         this.brokenKingdomBlueprintClearedKeys = new Set();
         this.caveBlueprintClearedKeys = new Set();
         this.world2VillageBlueprintClearedKeys = new Set();
@@ -1518,6 +1526,7 @@ class Craftras {
         this.challengeCompletion = null;
         this.challengeStoryEightReached = false;
         this.clearLoadedTrees();
+        this.cactusRespawns.clear();
         this.cellCache.clear();
         this.clientStates = new WeakMap();
         this.treeClientCount = 0;
@@ -3098,11 +3107,30 @@ class Craftras {
     getBlock(x, y) {
         const key = this.wallKey(x, y);
         if (this.placedBlocks.has(key)) return this.placedBlocks.get(key);
+        if (this.cactusRespawns.has(key)) return BLOCKS.AIR;
         if (this.destroyedWallKeys.has(key)) return BLOCKS.AIR;
         if (Config.craftras_village_builder && !Config.craftras_broken_kingdom_builder && !Config.craftras_intact_kingdom_builder && !Config.craftras_world1_challenge_builder && !Config.craftras_cave_builder && !Config.craftras_world2_village_builder) return BLOCKS.AIR;
         const generatedBlock = this.getCell(x, y)?.block ?? BLOCKS.AIR;
         if (generatedBlock === BLOCKS.TREE && this.isInsideVillageNatureClearZone(x, y)) return BLOCKS.AIR;
         return generatedBlock;
+    }
+
+    scheduleCactusRespawn(x, y, now = Date.now()) {
+        const key = this.wallKey(x, y);
+        this.destroyedWallKeys.delete(key);
+        this.cactusRespawns.set(key, now + CRAFTRAS_CACTUS_RESPAWN_DURATION);
+    }
+
+    updateCactusRespawns(now = Date.now()) {
+        if (!this.cactusRespawns.size) return;
+        for (const [key, respawnAt] of this.cactusRespawns) {
+            if (now < respawnAt) continue;
+            this.cactusRespawns.delete(key);
+            if (this.placedBlocks.has(key)) continue;
+            const [x, y] = key.split(",").map(Number);
+            if (this.getCell(x, y)?.block !== BLOCKS.CACTUS) continue;
+            this.broadcastBlockUpdate(x, y, this.getBlockRenderCode(x, y), { immediate: true });
+        }
     }
 
     getFloor(x, y) {
@@ -4155,6 +4183,7 @@ class Craftras {
         const currentBlock = this.getBlock(x, y);
         const hadDamage = this.damagedWallHealth.has(key) || this.permanentBlockDamageStages.has(key);
         if (currentBlock === targetBlock && !hadDamage) return false;
+        this.cactusRespawns.delete(key);
 
         if (currentBlock !== targetBlock) {
             const tree = this.loadedTrees.get(key);
@@ -12142,6 +12171,18 @@ class Craftras {
                 body.health.amount = Math.min(body.health.max, body.health.amount + 10);
                 body.craftrasNextRegenAt += 5000;
             }
+            if (now < (body.craftrasCactusSapUntil || 0)) {
+                const nextAt = body.craftrasNextCactusSapRegenAt || now + 1000;
+                if (now >= nextAt) {
+                    const ticks = Math.max(1, Math.floor((now - nextAt) / 1000) + 1);
+                    const amount = ITEMS.cactus_sap.healOverTimePerSecond * ticks;
+                    if (body.health.amount > 0) body.health.amount = Math.min(body.health.max, body.health.amount + amount);
+                    body.craftrasNextCactusSapRegenAt = nextAt + ticks * 1000;
+                }
+            } else {
+                body.craftrasCactusSapUntil = 0;
+                body.craftrasNextCactusSapRegenAt = 0;
+            }
             if (body.craftrasHelmet === "pope_hat" && now >= (body.craftrasNextPopeHatRegenAt || 0) && body.health.amount > 0 && body.health.amount < body.health.max) {
                 body.health.amount = Math.min(body.health.max, body.health.amount + CRAFTRAS_POPE_HAT_REGEN_PER_SECOND);
                 body.craftrasNextPopeHatRegenAt = now + 1000;
@@ -12178,7 +12219,7 @@ class Craftras {
 
     updatePlayerEating(socket, body, now) {
         const item = ITEMS[body.craftrasHeldItem];
-        const canEat = (!!item?.heal || !!item?.creativeDuration) && body.health.amount > 0;
+        const canEat = (!!item?.heal || !!item?.healOverTimePerSecond || !!item?.creativeDuration) && body.health.amount > 0;
         if (!canEat || !(body.control.alt || socket.craftrasEatingInput)) {
             body.craftrasEating = false;
             body.craftrasEatingStarted = 0;
@@ -12204,6 +12245,9 @@ class Craftras {
         if (!this.gameManager.socketManager.consumeCraftrasSelectedItem(socket, 1, true)) return;
         if (item.creativeDuration) {
             this.gameManager.socketManager.grantTemporaryCraftrasCreative(socket, item.creativeDuration);
+        } else if (item.healOverTimePerSecond) {
+            body.craftrasCactusSapUntil = Math.max(now, body.craftrasCactusSapUntil || 0) + item.healOverTimeDuration;
+            body.craftrasNextCactusSapRegenAt = now + 1000;
         } else {
             body.health.amount = Math.min(body.health.max, body.health.amount + item.heal);
         }
@@ -28094,7 +28138,8 @@ class Craftras {
         this.damagedWallLastHitAt.delete(key);
         this.permanentBlockDamageStages.delete(key);
         const villageRepair = this.registerVillageRepairJob(x, y, block);
-        this.destroyedWallKeys.add(key);
+        if (block === BLOCKS.CACTUS) this.scheduleCactusRespawn(x, y);
+        else this.destroyedWallKeys.add(key);
         this.placedBlocks.delete(key);
         this.placedBlockDirections.delete(key);
         if (block === BLOCKS.ROUTE_MARKER) this.routeMarkerRevision++;
@@ -28108,7 +28153,7 @@ class Craftras {
             }
         } else if (!villageRepair) {
             this.dropStationContents(key, location);
-            this.spawnItemDrop(block, location);
+            if (block !== BLOCKS.CACTUS) this.spawnItemDrop(block, location);
         }
         const tree = this.loadedTrees.get(key);
         if (tree) {
@@ -29217,9 +29262,10 @@ class Craftras {
                     if (original?.type === block) continue;
                 }
 
+                const heldItem = body.craftrasHeldItem || "";
+                if (block === BLOCKS.CACTUS && !heldItem.endsWith("_axe")) continue;
                 body.craftrasMiningHitKeys.add(key);
                 const maxHealth = this.getBlockMaxHealth(x, y, block) || 100;
-                const heldItem = body.craftrasHeldItem || "";
                 const correctTool = heldItem.endsWith("_axe") ? AXE_BLOCKS.has(block)
                     : heldItem.endsWith("_pickaxe") ? PICKAXE_BLOCKS.has(block)
                     : heldItem.endsWith("_shovel") ? SHOVEL_BLOCKS.has(block)
@@ -29258,7 +29304,8 @@ class Craftras {
                 this.damagedWallHealth.delete(key);
                 this.damagedWallLastHitAt.delete(key);
                 this.permanentBlockDamageStages.delete(key);
-                this.destroyedWallKeys.add(key);
+                if (block === BLOCKS.CACTUS) this.scheduleCactusRespawn(x, y);
+                else this.destroyedWallKeys.add(key);
                 this.placedBlocks.delete(key);
                 this.placedBlockDirections.delete(key);
                 if (block === BLOCKS.ROUTE_MARKER) this.routeMarkerRevision++;
@@ -29272,7 +29319,11 @@ class Craftras {
                     }
                 } else if (!villageRepair) {
                     this.dropStationContents(key, location);
-                    if (canHarvest && !suppressKingdomBlockDrop) this.spawnItemDrop(block, location);
+                    if (canHarvest && !suppressKingdomBlockDrop) {
+                        if (block === BLOCKS.CACTUS) {
+                            if (Math.random() < CRAFTRAS_CACTUS_SAP_DROP_CHANCE) this.spawnItemEntity(ITEMS.cactus_sap, location, { pickupDelay: 150 });
+                        } else this.spawnItemDrop(block, location);
+                    }
                 }
                 const tree = this.loadedTrees.get(key);
                 if (tree) {
@@ -29365,6 +29416,7 @@ class Craftras {
         const blockRadius = Math.ceil((radius + halfWall) / BLOCK_SIZE) + 1;
         const canBreakBlocks = this.mobCanBreakBlocks(body);
         const now = canBreakBlocks ? Date.now() : 0;
+        const cactusDamageNow = Date.now();
 
         // Two passes settle corner contacts without creating physics entities.
         for (let pass = 0; pass < 2; pass++) {
@@ -29381,6 +29433,11 @@ class Craftras {
                     let dy = body.y - nearestY;
                     let distanceSquared = dx * dx + dy * dy;
                     if (distanceSquared >= radius * radius) continue;
+
+                    if (block === BLOCKS.CACTUS && this.getSocketForBody(body) && cactusDamageNow >= (body.craftrasNextCactusDamageAt || 0)) {
+                        body.craftrasNextCactusDamageAt = cactusDamageNow + CRAFTRAS_CACTUS_CONTACT_DAMAGE_INTERVAL;
+                        this.applyPlayerDamage(body, CRAFTRAS_CACTUS_CONTACT_DAMAGE, null, { noKnockback: true, bypassParry: true });
+                    }
 
                     if (canBreakBlocks && now >= (body.craftrasNextBlockDamageAt || 0)) {
                         body.craftrasNextBlockDamageAt = now + 350;
@@ -29721,6 +29778,7 @@ class Craftras {
         }
         markPerformance?.("combatExtras");
         if (!timeStopped) this.updateDamagedBlockRegeneration(now);
+        this.updateCactusRespawns(now);
         this.resolvePlayerBlockCollisions();
         this.syncStationTouches();
         this.collectItemDrops();

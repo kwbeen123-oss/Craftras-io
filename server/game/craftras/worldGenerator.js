@@ -51,6 +51,7 @@ const BLOCKS = Object.freeze({
     CHALLENGE_SPAWN: "challenge_spawn",
     TRANSPARENT_BLOCK: "transparent_block",
     ROUTE_MARKER: "route_marker",
+    CACTUS: "cactus",
 });
 
 function clamp(v, min, max) {
@@ -171,6 +172,18 @@ function isTreeClusterCell(x, y, seed) {
     }
 
     return false;
+}
+
+function isWorld2CactusCell(x, y, seed) {
+    // One deterministic cactus per eligible sector keeps the desert populated
+    // without introducing an entity or an expensive spawn pass for every cactus.
+    const sectorSize = 22;
+    const sectorX = Math.floor(x / sectorSize);
+    const sectorY = Math.floor(y / sectorSize);
+    if (hash01(sectorX, sectorY, seed + 4600) < 0.55) return false;
+    const cactusX = sectorX * sectorSize + 3 + Math.floor(hash01(sectorX, sectorY, seed + 4601) * (sectorSize - 6));
+    const cactusY = sectorY * sectorSize + 3 + Math.floor(hash01(sectorX, sectorY, seed + 4602) * (sectorSize - 6));
+    return x === cactusX && y === cactusY;
 }
 
 function getSmallPathScore(x, y, seed) {
@@ -845,7 +858,7 @@ function generateWorld2Cell(x, y, seed) {
         return {
             region: "surface",
             floor: terrainType === 2 ? FLOORS.GRASS : FLOORS.SAND,
-            block: BLOCKS.AIR,
+            block: terrainType === 1 && isWorld2CactusCell(x, y, seed) ? BLOCKS.CACTUS : BLOCKS.AIR,
             world: 2,
         };
     }
